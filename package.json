@@ -1,0 +1,28 @@
+{
+  "name": "rustdbgrid",
+  "version": "0.1.0",
+  "description": "Cross-platform database manager",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3.1.0",
+    "@tauri-apps/cli": "^2.1.0",
+    "svelte": "^4.2.0",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "@codemirror/lang-sql": "^6.7.0",
+    "@codemirror/theme-one-dark": "^6.1.2",
+    "@fortawesome/fontawesome-free": "^6.5.0",
+    "@popperjs/core": "^2.11.8",
+    "@tauri-apps/api": "^2.1.0",
+    "@tauri-apps/plugin-shell": "^2.0.0",
+    "bootstrap": "^5.3.8",
+    "codemirror": "^6.0.1"
+  }
+}
