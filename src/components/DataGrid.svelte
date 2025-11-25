@@ -460,7 +460,7 @@
         class="table table-sm table-hover table-bordered data-table mb-0"
         style="table-layout: auto;"
       >
-        <thead class="table-light sticky-top">
+        <thead class="sticky-top" style="background-color: #e7f1ff;">
           <tr>
             <th class="text-center" style="width: 50px;">#</th>
             {#each data.columns as column}

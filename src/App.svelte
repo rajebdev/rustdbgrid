@@ -172,7 +172,7 @@
 
   <div class="d-flex flex-grow-1 overflow-hidden">
     {#if showSidebar}
-      <div class="border-end" style="width: 250px; flex-shrink: 0;">
+      <div class="border-end" style="width: 275px; flex-shrink: 0;">
         <Sidebar on:openTableTab={handleOpenTableTab} />
       </div>
     {/if}
