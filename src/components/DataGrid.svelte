@@ -243,6 +243,9 @@
       tabDataStore.setFilters(tabId, columnFilters);
     }
 
+    // Reset final query
+    finalQuery = "";
+
     closeFilterModal();
 
     // Trigger server-side reload
@@ -387,6 +390,9 @@
     selectedFilterValues = {};
     sortColumn = null;
     sortDirection = "asc";
+
+    // Reset final query
+    finalQuery = "";
 
     if (tabId) {
       tabDataStore.setFilters(tabId, {});
