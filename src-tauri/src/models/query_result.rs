@@ -7,6 +7,8 @@ pub struct QueryResult {
     pub rows: Vec<HashMap<String, serde_json::Value>>,
     pub rows_affected: Option<u64>,
     pub execution_time: u128,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_query: Option<String>,
 }
 
 #[allow(dead_code)]

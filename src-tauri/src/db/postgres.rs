@@ -13,6 +13,12 @@ impl PostgresConnection {
     }
 }
 
+impl Default for PostgresConnection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl DatabaseConnection for PostgresConnection {
     async fn connect(&mut self, _config: &ConnectionConfig) -> Result<()> {

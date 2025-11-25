@@ -13,6 +13,12 @@ impl RedisConnection {
     }
 }
 
+impl Default for RedisConnection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl DatabaseConnection for RedisConnection {
     async fn connect(&mut self, _config: &ConnectionConfig) -> Result<()> {

@@ -125,13 +125,13 @@
         connection,
         database.name,
         table.name,
-        100,
+        200,
         0
       );
       console.log("Table data loaded:", tableData);
 
       // Set query result and the query used
-      const tableQuery = `SELECT * FROM ${database.name}.${table.name} LIMIT 100`;
+      const tableQuery = `SELECT * FROM ${database.name}.${table.name} LIMIT 200`;
       tabDataStore.setQueryResult(newTab.id, tableData);
       tabDataStore.setExecutedQuery(newTab.id, tableQuery);
 

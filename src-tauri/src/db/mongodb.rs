@@ -13,6 +13,12 @@ impl MongoDBConnection {
     }
 }
 
+impl Default for MongoDBConnection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl DatabaseConnection for MongoDBConnection {
     async fn connect(&mut self, _config: &ConnectionConfig) -> Result<()> {

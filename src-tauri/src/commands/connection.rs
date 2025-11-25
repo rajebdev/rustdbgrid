@@ -28,6 +28,12 @@ impl ConnectionStore {
     }
 }
 
+impl Default for ConnectionStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[tauri::command]
 pub async fn test_connection(config: ConnectionConfig) -> Result<ConnectionStatus, String> {
     let mut conn = crate::db::traits::create_connection(&config.db_type);

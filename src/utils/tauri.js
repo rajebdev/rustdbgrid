@@ -28,14 +28,41 @@ export async function executeQueryWithFilters(
   sortDirection = null,
   limit = null
 ) {
-  return await invoke("execute_query_with_filters", {
-    config,
-    base_query: baseQuery,
+  if (!baseQuery || baseQuery.trim() === "") {
+    throw new Error("baseQuery is required and cannot be empty");
+  }
+
+  if (!config) {
+    throw new Error("config is required");
+  }
+
+  console.log("📤 executeQueryWithFilters called with:", {
+    config: config
+      ? {
+          id: config.id,
+          name: config.name,
+          db_type: config.db_type,
+        }
+      : "NULL",
+    baseQuery: baseQuery.substring(0, 100),
     filters,
-    sort_column: sortColumn,
-    sort_direction: sortDirection,
+    sortColumn,
+    sortDirection,
     limit,
   });
+
+  const payload = {
+    config,
+    baseQuery: baseQuery, // Try camelCase instead of snake_case
+    filters,
+    sortColumn: sortColumn,
+    sortDirection: sortDirection,
+    limit,
+  };
+
+  console.log("📦 Full payload:", JSON.stringify(payload, null, 2));
+
+  return await invoke("execute_query_with_filters", payload);
 }
 
 export async function getFilterValues(

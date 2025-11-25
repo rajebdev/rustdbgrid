@@ -32,6 +32,7 @@
   let filterValuesCache = {}; // Cache for server-side filter values
   let loadingFilterValues = false;
   let isLoadingData = false;
+  let finalQuery = ""; // Store the final executed query with filters
 
   // Load saved state when tab changes
   $: if (tabId && $tabDataStore[tabId]) {
@@ -65,19 +66,38 @@
       return; // Use original data
     }
 
-    if (!executedQuery || !$activeConnection) {
+    // Validate executedQuery is not empty
+    if (!executedQuery || executedQuery.trim() === "") {
+      console.log("⚠️ Cannot reload - executedQuery is empty");
+      return;
+    }
+
+    if (!$activeConnection) {
+      console.log("⚠️ Cannot reload - no active connection");
       return;
     }
 
     isLoadingData = true;
     try {
+      console.log("🔄 Reloading with filters:", {
+        executedQuery: executedQuery.substring(0, 100),
+        columnFilters,
+        sortColumn,
+        sortDirection,
+      });
+
       // Convert columnFilters to the format expected by backend
       const filters = {};
       for (const [col, value] of Object.entries(columnFilters)) {
+        // Support both array (from modal) and string (from text input)
         if (Array.isArray(value) && value.length > 0) {
+          filters[col] = value;
+        } else if (typeof value === "string" && value.trim() !== "") {
           filters[col] = value;
         }
       }
+
+      console.log("📦 Filters to send:", filters);
 
       const result = await executeQueryWithFilters(
         $activeConnection,
@@ -85,11 +105,16 @@
         Object.keys(filters).length > 0 ? filters : null,
         sortColumn,
         sortColumn ? sortDirection.toUpperCase() : null,
-        10000 // Default limit
+        200 // Default limit 200 rows
       );
 
       // Update data with filtered results
       data = result;
+
+      // Store the final query from backend
+      if (result.final_query) {
+        finalQuery = result.final_query;
+      }
     } catch (error) {
       console.error("❌ Failed to reload data with filters:", error);
     } finally {
@@ -154,6 +179,29 @@
 
     // Trigger server-side reload
     reloadDataWithFilters();
+  }
+
+  function handleFilterKeydown(column, event) {
+    if (event.key === "Enter") {
+      const value = event.target.value.trim();
+
+      if (value) {
+        // Set as string filter (for LIKE query)
+        columnFilters[column] = value;
+      } else {
+        // Clear filter if empty
+        delete columnFilters[column];
+      }
+
+      columnFilters = { ...columnFilters };
+
+      if (tabId) {
+        tabDataStore.setFilters(tabId, columnFilters);
+      }
+
+      // Trigger server-side reload
+      reloadDataWithFilters();
+    }
   }
 
   function updateFilter(column, value) {
@@ -447,12 +495,13 @@
                     class="form-control form-control-sm {isNumeric
                       ? 'text-end'
                       : ''}"
-                    placeholder="Filter..."
-                    on:input={(e) => updateFilter(column, e.target.value)}
+                    placeholder="Type and press Enter..."
+                    on:keydown={(e) => handleFilterKeydown(column, e)}
                     value={Array.isArray(columnFilters[column])
                       ? `${columnFilters[column].length} selected`
                       : columnFilters[column] || ""}
                     readonly={Array.isArray(columnFilters[column])}
+                    title="Type text and press Enter to filter"
                   />
                 </div>
               </th>
@@ -480,23 +529,6 @@
         </tbody>
       </table>
     </div>
-
-    {#if executedQuery}
-      <div
-        class="d-flex align-items-center gap-2 p-2 bg-light border-top font-monospace small"
-      >
-        <div class="d-flex align-items-center gap-2 text-primary fw-semibold">
-          <i class="fas fa-code"></i>
-          <span>Query:</span>
-        </div>
-        <div
-          class="flex-grow-1 text-truncate bg-white px-2 py-1 border rounded"
-          title={executedQuery}
-        >
-          {executedQuery}
-        </div>
-      </div>
-    {/if}
   {:else if data}
     <div
       class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary"
@@ -514,6 +546,30 @@
       <i class="fas fa-table fa-3x mb-3 opacity-25"></i>
       <p class="fs-5">No data to display</p>
       <p class="text-muted">Execute a query to see results here</p>
+    </div>
+  {/if}
+
+  <!-- Sticky footer untuk menampilkan final query -->
+  {#if finalQuery || executedQuery}
+    <div
+      class="sticky-bottom bg-light border-top shadow-sm"
+      style="position: sticky; bottom: 0; z-index: 10;"
+    >
+      <div class="d-flex align-items-center gap-2 p-2 font-monospace small">
+        <div
+          class="d-flex align-items-center gap-2 text-primary fw-semibold"
+          style="min-width: 80px;"
+        >
+          <i class="fas fa-code"></i>
+          <span>Query:</span>
+        </div>
+        <div
+          class="flex-grow-1 text-truncate bg-white px-2 py-1 border rounded"
+          title={finalQuery || executedQuery}
+        >
+          {finalQuery || executedQuery}
+        </div>
+      </div>
     </div>
   {/if}
 </div>
@@ -584,34 +640,43 @@
               {@const availableValues =
                 filterValuesCache[cacheKey] ||
                 getDistinctValues(filterModalColumn)}
-              {#each availableValues as value}
-                <div class="form-check p-2 border-bottom">
-                  <input
-                    class="form-check-input"
-                    type="checkbox"
-                    id="filter-{value}"
-                    checked={selectedFilterValues[filterModalColumn]?.has(
-                      value
-                    ) || false}
-                    on:change={() =>
-                      toggleFilterValue(filterModalColumn, value)}
-                  />
-                  <label
-                    class="form-check-label w-100 text-truncate"
-                    for="filter-{value}"
-                    title={value}
-                  >
-                    {value}
-                  </label>
-                </div>
-              {:else}
-                <div
-                  class="d-flex flex-column align-items-center justify-content-center p-4 text-muted"
-                >
-                  <i class="fas fa-info-circle fa-2x mb-2"></i>
-                  <span>No values found</span>
-                </div>
-              {/each}
+              <table class="table table-sm table-hover mb-0">
+                <tbody>
+                  {#each availableValues as value}
+                    <tr>
+                      <td class="text-center" style="width: 40px;">
+                        <input
+                          class="form-check-input"
+                          type="checkbox"
+                          id="filter-{value}"
+                          checked={selectedFilterValues[filterModalColumn]?.has(
+                            value
+                          ) || false}
+                          on:change={() =>
+                            toggleFilterValue(filterModalColumn, value)}
+                        />
+                      </td>
+                      <td>
+                        <label
+                          class="form-check-label w-100 mb-0"
+                          for="filter-{value}"
+                          title={value}
+                          style="cursor: pointer;"
+                        >
+                          {value}
+                        </label>
+                      </td>
+                    </tr>
+                  {:else}
+                    <tr>
+                      <td colspan="2" class="text-center p-4 text-muted">
+                        <i class="fas fa-info-circle fa-2x mb-2"></i>
+                        <div>No values found</div>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
             {/if}
           </div>
         </div>

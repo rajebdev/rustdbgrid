@@ -16,6 +16,12 @@ impl MySQLConnection {
     }
 }
 
+impl Default for MySQLConnection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl DatabaseConnection for MySQLConnection {
     async fn connect(&mut self, config: &ConnectionConfig) -> Result<()> {
@@ -62,6 +68,7 @@ impl DatabaseConnection for MySQLConnection {
                 rows: vec![],
                 rows_affected: None,
                 execution_time,
+                final_query: None,
             });
         }
 
@@ -86,6 +93,7 @@ impl DatabaseConnection for MySQLConnection {
             rows: result_rows,
             rows_affected: None,
             execution_time,
+            final_query: None,
         })
     }
 
@@ -126,8 +134,7 @@ impl DatabaseConnection for MySQLConnection {
                 Table {
                     name,
                     schema: None,
-                    size_bytes: size_bytes
-                        .and_then(|v| if v >= 0 { Some(v as u64) } else { Some(0) }),
+                    size_bytes: size_bytes.map(|v| if v >= 0 { v as u64 } else { 0 }),
                 }
             })
             .collect();

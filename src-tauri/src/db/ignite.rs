@@ -13,6 +13,12 @@ impl IgniteConnection {
     }
 }
 
+impl Default for IgniteConnection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl DatabaseConnection for IgniteConnection {
     async fn connect(&mut self, _config: &ConnectionConfig) -> Result<()> {
