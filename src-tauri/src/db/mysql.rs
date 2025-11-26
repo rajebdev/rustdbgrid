@@ -94,43 +94,71 @@ impl DatabaseConnection for MySQLConnection {
             let mut row_map = HashMap::new();
             for (i, col) in columns.iter().enumerate() {
                 let col_info = &row.columns()[i];
-                let type_name = col_info.type_info().name();
+                let type_name_raw = col_info.type_info().name();
+                let type_name = type_name_raw.to_uppercase();
 
-                // Try to get value as different types in order of specificity
-                let value = if type_name == "DATETIME" || type_name == "TIMESTAMP" {
-                    // Handle DATETIME and TIMESTAMP -> format: YYYY-MM-DD HH:mm:ss
-                    if let Ok(v) = row.try_get::<NaiveDateTime, _>(i) {
-                        serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string())
-                    } else {
-                        serde_json::Value::Null
+                // Debug log untuk melihat tipe data
+                println!(
+                    "🔍 Column: {}, Type (raw): '{}', Type (upper): '{}'",
+                    col, type_name_raw, type_name
+                );
+
+                // Get value based on column type
+                let value = match type_name.as_str() {
+                    "DATETIME" | "TIMESTAMP" => {
+                        // Handle DATETIME and TIMESTAMP -> format: YYYY-MM-DD HH:mm:ss
+                        row.try_get::<NaiveDateTime, _>(i)
+                            .map(|v| serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string()))
+                            .unwrap_or(serde_json::Value::Null)
                     }
-                } else if type_name == "DATE" {
-                    // Handle DATE -> format: YYYY-MM-DD
-                    if let Ok(v) = row.try_get::<NaiveDate, _>(i) {
-                        serde_json::json!(v.format("%Y-%m-%d").to_string())
-                    } else {
-                        serde_json::Value::Null
+                    "DATE" => {
+                        // Handle DATE -> format: YYYY-MM-DD
+                        row.try_get::<NaiveDate, _>(i)
+                            .map(|v| serde_json::json!(v.format("%Y-%m-%d").to_string()))
+                            .unwrap_or(serde_json::Value::Null)
                     }
-                } else if type_name == "TIME" {
-                    // Handle TIME -> format: HH:mm:ss
-                    if let Ok(v) = row.try_get::<NaiveTime, _>(i) {
-                        serde_json::json!(v.format("%H:%M:%S").to_string())
-                    } else {
-                        serde_json::Value::Null
+                    "TIME" => {
+                        // Handle TIME -> format: HH:mm:ss
+                        row.try_get::<NaiveTime, _>(i)
+                            .map(|v| serde_json::json!(v.format("%H:%M:%S").to_string()))
+                            .unwrap_or(serde_json::Value::Null)
                     }
-                } else if let Ok(v) = row.try_get::<i64, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<f64, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<bool, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<String, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<Vec<u8>, _>(i) {
-                    // Handle binary data
-                    serde_json::json!(format!("[BLOB {} bytes]", v.len()))
-                } else {
-                    serde_json::Value::Null
+                    "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "BIGINT" => row
+                        .try_get::<i64, _>(i)
+                        .map(|v| serde_json::json!(v))
+                        .unwrap_or(serde_json::Value::Null),
+                    "FLOAT" | "DOUBLE" | "DECIMAL" => row
+                        .try_get::<f64, _>(i)
+                        .map(|v| serde_json::json!(v))
+                        .unwrap_or(serde_json::Value::Null),
+                    "BOOLEAN" | "BOOL" => row
+                        .try_get::<bool, _>(i)
+                        .map(|v| serde_json::json!(v))
+                        .unwrap_or(serde_json::Value::Null),
+                    "VARCHAR" | "CHAR" | "TEXT" | "TINYTEXT" | "MEDIUMTEXT" | "LONGTEXT"
+                    | "ENUM" | "SET" => {
+                        // Handle string types explicitly
+                        row.try_get::<String, _>(i)
+                            .map(|v| serde_json::json!(v))
+                            .unwrap_or(serde_json::Value::Null)
+                    }
+                    "BLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BINARY" | "VARBINARY" => {
+                        // Handle binary data
+                        row.try_get::<Vec<u8>, _>(i)
+                            .map(|v| serde_json::json!(format!("[BLOB {} bytes]", v.len())))
+                            .unwrap_or(serde_json::Value::Null)
+                    }
+                    _ => {
+                        // Default fallback: try string first, then binary
+                        row.try_get::<String, _>(i)
+                            .map(|v| serde_json::json!(v))
+                            .or_else(|_| {
+                                row.try_get::<Vec<u8>, _>(i).map(|v| {
+                                    serde_json::json!(format!("[BINARY {} bytes]", v.len()))
+                                })
+                            })
+                            .unwrap_or(serde_json::Value::Null)
+                    }
                 };
                 row_map.insert(col.clone(), value);
             }
