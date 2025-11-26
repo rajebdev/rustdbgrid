@@ -10,6 +10,7 @@
 
   const dispatch = createEventDispatcher();
   import ConnectionModal from "./ConnectionModal.svelte";
+  import ConnectionContextMenu from "./ConnectionContextMenu.svelte";
 
   export let onToggleSidebar = null;
 
@@ -25,9 +26,16 @@
   let searchQuery = "";
   let loadingConnections = {}; // Track loading state per connection
   let loadingDatabases = {}; // Track loading state per database
+  let connectedConnections = {}; // Track connection status
+  let contextMenu = null; // { x, y, connection }
 
   onMount(async () => {
     await loadConnections();
+    // Close context menu when clicking anywhere
+    document.addEventListener("click", closeContextMenu);
+    return () => {
+      document.removeEventListener("click", closeContextMenu);
+    };
   });
 
   async function loadConnections() {
@@ -49,6 +57,8 @@
       try {
         databases = await getDatabases(conn);
         expandedConnections[conn.id] = { databases };
+        connectedConnections[conn.id] = true; // Mark as connected
+        connectedConnections = { ...connectedConnections };
       } catch (error) {
         console.error("Failed to load databases:", error);
       } finally {
@@ -196,6 +206,103 @@
       onToggleSidebar();
     }
   }
+
+  function handleConnectionContextMenu(event, conn) {
+    event.preventDefault();
+    event.stopPropagation();
+    contextMenu = {
+      x: event.clientX,
+      y: event.clientY,
+      connection: conn,
+    };
+  }
+
+  function closeContextMenu() {
+    contextMenu = null;
+  }
+
+  function handleEditConnection(conn) {
+    editingConnection = conn;
+    showModal = true;
+    closeContextMenu();
+  }
+
+  async function handleDeleteConnection(conn) {
+    if (confirm(`Are you sure you want to delete connection "${conn.name}"?`)) {
+      // TODO: Implement delete connection
+      console.log("Delete connection:", conn);
+      closeContextMenu();
+    }
+  }
+
+  async function handleRefreshConnection(conn) {
+    // Refresh the connection - keep connected status
+    if (connectedConnections[conn.id]) {
+      delete expandedConnections[conn.id];
+      expandedConnections = { ...expandedConnections };
+      await toggleConnection(conn);
+    }
+    closeContextMenu();
+  }
+
+  async function handleConnectConnection(conn) {
+    // Connect or activate the connection
+    activeConnection.set(conn);
+    loadingConnections[conn.id] = true;
+    loadingConnections = { ...loadingConnections };
+    try {
+      databases = await getDatabases(conn);
+      expandedConnections[conn.id] = { databases };
+      connectedConnections[conn.id] = true;
+      connectedConnections = { ...connectedConnections };
+    } catch (error) {
+      console.error("Failed to connect:", error);
+    } finally {
+      loadingConnections[conn.id] = false;
+      loadingConnections = { ...loadingConnections };
+    }
+    closeContextMenu();
+  }
+
+  function handleDisconnectConnection(conn) {
+    // Disconnect - remove from connected list and collapse
+    delete connectedConnections[conn.id];
+    connectedConnections = { ...connectedConnections };
+    delete expandedConnections[conn.id];
+    expandedConnections = { ...expandedConnections };
+    closeContextMenu();
+  }
+
+  function handleCopyConnection(conn) {
+    // Copy connection details to clipboard
+    const text = `${conn.name} (${conn.host}:${conn.port})`;
+    navigator.clipboard.writeText(text);
+    closeContextMenu();
+  }
+
+  function handleContextMenuAction(event) {
+    const { type, detail } = event;
+    switch (type) {
+      case "edit":
+        handleEditConnection(detail);
+        break;
+      case "delete":
+        handleDeleteConnection(detail);
+        break;
+      case "refresh":
+        handleRefreshConnection(detail);
+        break;
+      case "connect":
+        handleConnectConnection(detail);
+        break;
+      case "disconnect":
+        handleDisconnectConnection(detail);
+        break;
+      case "copy":
+        handleCopyConnection(detail);
+        break;
+    }
+  }
 </script>
 
 <div class="d-flex flex-column h-100 bg-body-tertiary text-dark">
@@ -263,25 +370,33 @@
             class="tree-label"
             class:active={$activeConnection?.id === conn.id}
             on:click={() => toggleConnection(conn)}
+            on:contextmenu={(e) => handleConnectionContextMenu(e, conn)}
           >
-            {#if conn.db_type === "MySQL"}
-              <i class="si si-mysql tree-icon"></i>
-            {:else if conn.db_type === "PostgreSQL"}
-              <i class="si si-postgresql tree-icon"></i>
-            {:else if conn.db_type === "MongoDB"}
-              <i class="si si-mongodb tree-icon"></i>
-            {:else if conn.db_type === "Redis"}
-              <i class="si si-redis tree-icon"></i>
-            {:else}
-              <i class="fas fa-server tree-icon"></i>
-            {/if}
+            <div class="connection-icon-wrapper">
+              {#if conn.db_type === "MySQL"}
+                <i class="si si-mysql tree-icon connection-icon"></i>
+              {:else if conn.db_type === "PostgreSQL"}
+                <i class="si si-postgresql tree-icon connection-icon"></i>
+              {:else if conn.db_type === "MongoDB"}
+                <i class="si si-mongodb tree-icon connection-icon"></i>
+              {:else if conn.db_type === "Redis"}
+                <i class="si si-redis tree-icon connection-icon"></i>
+              {:else}
+                <i class="fas fa-server tree-icon connection-icon"></i>
+              {/if}
+              {#if connectedConnections[conn.id]}
+                <i class="fas fa-check-circle connection-status-badge"></i>
+              {/if}
+            </div>
             <span class="tree-text">
               {conn.name}
             </span>
             <span class="connection-details">
               <i>{conn.host}:{conn.port}</i>
             </span>
-            <span class="tree-badge">{conn.db_type}</span>
+            <span class="tree-badge">
+              <!-- { conn.db_type } -->
+            </span>
           </button>
         </div>
 
@@ -679,6 +794,22 @@
   </div>
 </div>
 
+<!-- Context Menu -->
+{#if contextMenu}
+  <ConnectionContextMenu
+    x={contextMenu.x}
+    y={contextMenu.y}
+    connection={contextMenu.connection}
+    isConnected={connectedConnections[contextMenu.connection?.id] || false}
+    on:edit={handleContextMenuAction}
+    on:delete={handleContextMenuAction}
+    on:refresh={handleContextMenuAction}
+    on:connect={handleContextMenuAction}
+    on:disconnect={handleContextMenuAction}
+    on:copy={handleContextMenuAction}
+  />
+{/if}
+
 {#if showModal}
   <ConnectionModal
     connection={editingConnection}
@@ -754,6 +885,27 @@
     text-align: center;
     flex-shrink: 0;
     color: #6c757d;
+  }
+
+  .connection-icon {
+    font-size: 16px !important;
+    width: 20px !important;
+  }
+
+  .connection-icon-wrapper {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .connection-status-badge {
+    position: absolute;
+    bottom: -2px;
+    left: -2px;
+    font-size: 8px;
+    color: #198754;
+    background: white;
+    border-radius: 50%;
   }
 
   .tree-label.active .tree-icon {

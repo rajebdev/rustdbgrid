@@ -24,12 +24,12 @@
   let activeTab = null;
 
   // Sidebar resize functionality
-  let sidebarWidth = 275;
+  let sidebarWidth = 320;
   let minSidebarWidth = 200;
   let maxSidebarWidth = 600;
   let isResizing = false;
   let isWindowMaximized = false;
-  let normalSidebarWidth = 275; // Store normal width when not maximized
+  let normalSidebarWidth = 320; // Store normal width when not maximized
 
   // SQL Editor resize functionality
   let editorHeight = 300;
