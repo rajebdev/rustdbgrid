@@ -11,6 +11,8 @@
   import { activeConnection } from "./stores/connections";
   import { tabDataStore } from "./stores/tabData";
   import { getTableData } from "./utils/tauri";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { listen } from "@tauri-apps/api/event";
 
   let showSidebar = true;
   let showModal = false;
@@ -26,10 +28,40 @@
   let minSidebarWidth = 200;
   let maxSidebarWidth = 600;
   let isResizing = false;
+  let isWindowMaximized = false;
+  let normalSidebarWidth = 275; // Store normal width when not maximized
 
   $: currentTabData = activeTab ? $tabDataStore[activeTab.id] : null;
 
   onMount(async () => {
+    // Listen for window maximize/unmaximize events
+    const appWindow = getCurrentWindow();
+
+    // Check initial state
+    isWindowMaximized = await appWindow.isMaximized();
+    if (isWindowMaximized) {
+      normalSidebarWidth = sidebarWidth;
+      sidebarWidth = 320;
+    }
+
+    // Listen for window resize events
+    const unlisten = await listen("tauri://resize", async () => {
+      const maximized = await appWindow.isMaximized();
+
+      if (maximized !== isWindowMaximized) {
+        isWindowMaximized = maximized;
+
+        if (maximized) {
+          // Store current width before maximizing
+          normalSidebarWidth = sidebarWidth;
+          sidebarWidth = 320;
+        } else {
+          // Restore previous width when unmaximizing
+          sidebarWidth = normalSidebarWidth;
+        }
+      }
+    });
+
     // Simulate initialization steps
     const steps = [
       { message: "Loading configuration", duration: 300 },
@@ -52,6 +84,11 @@
     // Hide splash screen with fade out
     await new Promise((resolve) => setTimeout(resolve, 300));
     showSplash = false;
+
+    // Cleanup listener on component destroy
+    return () => {
+      unlisten();
+    };
   });
 
   function handleMenuAction(event) {
@@ -188,6 +225,10 @@
     const newWidth = event.clientX;
     if (newWidth >= minSidebarWidth && newWidth <= maxSidebarWidth) {
       sidebarWidth = newWidth;
+      // Update normalSidebarWidth only when not maximized
+      if (!isWindowMaximized) {
+        normalSidebarWidth = newWidth;
+      }
     }
   }
 
