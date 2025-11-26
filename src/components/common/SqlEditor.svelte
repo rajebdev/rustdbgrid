@@ -9,14 +9,14 @@
     activeConnection,
     connections,
     selectedDatabase,
-  } from "../stores/connections";
-  import { tabDataStore } from "../stores/tabData";
+  } from "../../stores/connections";
+  import { tabDataStore } from "../../stores/tabData";
   import {
     executeQuery,
     getDatabases,
     getTables,
     getTableSchema,
-  } from "../utils/tauri";
+  } from "../../utils/tauri";
 
   export let tabId;
 
@@ -379,6 +379,62 @@
     if (selectedConn) {
       loadDatabases();
     }
+
+    // Listen for custom events from menu bar
+    const handleExecuteQuery = (event) => {
+      if (event.detail.tabId === tabId) {
+        runQuery();
+      }
+    };
+
+    const handleExecuteScript = (event) => {
+      if (event.detail.tabId === tabId) {
+        runQuery(); // For now, execute script is the same as execute
+      }
+    };
+
+    const handleUndo = (event) => {
+      if (event.detail.tabId === tabId && editorView) {
+        import("@codemirror/commands").then(({ undo }) => {
+          undo(editorView);
+        });
+      }
+    };
+
+    const handleRedo = (event) => {
+      if (event.detail.tabId === tabId && editorView) {
+        import("@codemirror/commands").then(({ redo }) => {
+          redo(editorView);
+        });
+      }
+    };
+
+    const handlePaste = async (event) => {
+      if (event.detail.tabId === tabId && editorView && event.detail.text) {
+        const selection = editorView.state.selection.main;
+        editorView.dispatch({
+          changes: {
+            from: selection.from,
+            to: selection.to,
+            insert: event.detail.text,
+          },
+        });
+      }
+    };
+
+    document.addEventListener("execute-query", handleExecuteQuery);
+    document.addEventListener("execute-script", handleExecuteScript);
+    document.addEventListener("editor-undo", handleUndo);
+    document.addEventListener("editor-redo", handleRedo);
+    document.addEventListener("editor-paste", handlePaste);
+
+    return () => {
+      document.removeEventListener("execute-query", handleExecuteQuery);
+      document.removeEventListener("execute-script", handleExecuteScript);
+      document.removeEventListener("editor-undo", handleUndo);
+      document.removeEventListener("editor-redo", handleRedo);
+      document.removeEventListener("editor-paste", handlePaste);
+    };
   });
 
   onDestroy(() => {

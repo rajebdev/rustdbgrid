@@ -5,7 +5,7 @@
     activeConnection,
     selectedDatabase,
     selectedTable,
-  } from "../stores/connections";
+  } from "../../../stores/connections";
   import {
     getConnections,
     getDatabases,
@@ -16,16 +16,14 @@
     disconnectFromDatabase,
     isDatabaseConnected,
     getConnectedDatabases,
-  } from "../utils/tauri";
+  } from "../../../utils/tauri";
 
   const dispatch = createEventDispatcher();
-  import ConnectionModal from "./ConnectionModal.svelte";
-  import ConnectionContextMenu from "./ConnectionContextMenu.svelte";
-  import TableContextMenu from "./TableContextMenu.svelte";
-  import DatabaseContextMenu from "./DatabaseContextMenu.svelte";
-  import SchemaContextMenu from "./SchemaContextMenu.svelte";
-
-  export let onToggleSidebar = null;
+  import ConnectionModal from "../../modals/ConnectionModal.svelte";
+  import ConnectionContextMenu from "../../context-menus/ConnectionContextMenu.svelte";
+  import TableContextMenu from "../../context-menus/TableContextMenu.svelte";
+  import DatabaseContextMenu from "../../context-menus/DatabaseContextMenu.svelte";
+  import SchemaContextMenu from "../../context-menus/SchemaContextMenu.svelte";
 
   let databases = [];
   let tables = [];
@@ -245,12 +243,6 @@
   $: filteredConnections = $connections.filter((conn) =>
     conn.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  function handleToggleSidebar() {
-    if (onToggleSidebar) {
-      onToggleSidebar();
-    }
-  }
 
   function handleConnectionContextMenu(event, conn) {
     event.preventDefault();
@@ -725,14 +717,6 @@
         <i class="fas fa-network-wired me-2"></i>
         Connections
       </h6>
-      <button
-        class="btn btn-sm btn-link text-secondary p-0"
-        on:click={handleToggleSidebar}
-        title="Hide Sidebar"
-        style="width: 20px; height: 20px; font-size: 12px;"
-      >
-        <i class="fas fa-chevron-left"></i>
-      </button>
     </div>
     <div class="d-flex gap-2">
       <input

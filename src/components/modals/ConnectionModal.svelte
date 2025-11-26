@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
-  import { testConnection, saveConnection } from "../utils/tauri";
-  import { isSaving } from "../stores/connections";
+  import { testConnection, saveConnection } from "../../utils/tauri";
+  import { isSaving } from "../../stores/connections";
 
   export let connection = null;
 

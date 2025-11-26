@@ -1,12 +1,12 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { tabDataStore } from "../stores/tabData";
-  import { activeConnection } from "../stores/connections";
+  import { tabDataStore } from "../../stores/tabData";
+  import { activeConnection } from "../../stores/connections";
   import {
     getFilterValues,
     executeQueryWithFilters,
     executeQuery,
-  } from "../utils/tauri";
+  } from "../../utils/tauri";
 
   export let data = null;
   export let tabId = null;

@@ -5,9 +5,9 @@
     selectedDatabase,
     selectedTable,
     isSaving,
-  } from "../stores/connections";
-  import { tabDataStore } from "../stores/tabData";
-  import { getStorageInfo } from "../utils/tauri";
+  } from "../../stores/connections";
+  import { tabDataStore } from "../../stores/tabData";
+  import { getStorageInfo } from "../../utils/tauri";
 
   export let activeTabId = null;
 

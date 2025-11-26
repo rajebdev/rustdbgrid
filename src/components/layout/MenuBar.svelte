@@ -37,12 +37,14 @@
             on:click={() => handleAction("newQuery")}
           >
             <i class="fas fa-file"></i> New SQL Script
+            <span class="shortcut">Ctrl+N</span>
           </button>
           <button
             class="dropdown-item"
             on:click={() => handleAction("openFile")}
           >
             <i class="fas fa-folder-open"></i> Open File...
+            <span class="shortcut">Ctrl+O</span>
           </button>
           <div class="dropdown-divider"></div>
           <button
@@ -50,9 +52,11 @@
             on:click={() => handleAction("saveQuery")}
           >
             <i class="fas fa-save"></i> Save
+            <span class="shortcut">Ctrl+S</span>
           </button>
           <button class="dropdown-item" on:click={() => handleAction("saveAs")}>
             <i class="fas fa-save"></i> Save As...
+            <span class="shortcut">Ctrl+Shift+S</span>
           </button>
           <div class="dropdown-divider"></div>
           <button class="dropdown-item" on:click={() => handleAction("export")}>
@@ -76,16 +80,20 @@
         <div class="dropdown-menu show">
           <button class="dropdown-item" on:click={() => handleAction("undo")}>
             <i class="fas fa-undo"></i> Undo
+            <span class="shortcut">Ctrl+Z</span>
           </button>
           <button class="dropdown-item" on:click={() => handleAction("redo")}>
             <i class="fas fa-redo"></i> Redo
+            <span class="shortcut">Ctrl+Y</span>
           </button>
           <div class="dropdown-divider"></div>
           <button class="dropdown-item" on:click={() => handleAction("copy")}>
             <i class="fas fa-copy"></i> Copy
+            <span class="shortcut">Ctrl+C</span>
           </button>
           <button class="dropdown-item" on:click={() => handleAction("paste")}>
             <i class="fas fa-paste"></i> Paste
+            <span class="shortcut">Ctrl+V</span>
           </button>
         </div>
       {/if}
@@ -105,6 +113,7 @@
             on:click={() => handleAction("toggleSidebar")}
           >
             <i class="fas fa-sidebar"></i> Toggle Sidebar
+            <span class="shortcut">Ctrl+B</span>
           </button>
           <button
             class="dropdown-item"
@@ -137,6 +146,7 @@
             on:click={() => handleAction("newConnection")}
           >
             <i class="fas fa-plus-circle"></i> New Connection
+            <span class="shortcut">Ctrl+Shift+C</span>
           </button>
           <button
             class="dropdown-item"
@@ -176,76 +186,6 @@
       {/if}
     </div>
   </div>
-
-  <div class="toolbar-section">
-    <button
-      class="toolbar-btn"
-      title="New Connection"
-      on:click={() => handleAction("newConnection")}
-    >
-      <i class="fas fa-plus"></i>
-    </button>
-    <div class="toolbar-divider"></div>
-    <button
-      class="toolbar-btn"
-      title="New SQL Script"
-      on:click={() => handleAction("newQuery")}
-    >
-      <i class="fas fa-file-code"></i>
-    </button>
-    <button
-      class="toolbar-btn"
-      title="Save"
-      on:click={() => handleAction("saveQuery")}
-    >
-      <i class="fas fa-save"></i>
-    </button>
-    <div class="toolbar-divider"></div>
-    <button
-      class="toolbar-btn"
-      title="Execute SQL"
-      on:click={() => handleAction("execute")}
-    >
-      <i class="fas fa-play" style="color: #4caf50;"></i>
-    </button>
-    <button
-      class="toolbar-btn"
-      title="Execute Script"
-      on:click={() => handleAction("executeScript")}
-    >
-      <i class="fas fa-play-circle" style="color: #4caf50;"></i>
-    </button>
-    <button
-      class="toolbar-btn"
-      title="Stop"
-      on:click={() => handleAction("stop")}
-    >
-      <i class="fas fa-stop" style="color: #f44336;"></i>
-    </button>
-    <div class="toolbar-divider"></div>
-    <button
-      class="toolbar-btn"
-      title="Commit"
-      on:click={() => handleAction("commit")}
-    >
-      <i class="fas fa-check"></i>
-    </button>
-    <button
-      class="toolbar-btn"
-      title="Rollback"
-      on:click={() => handleAction("rollback")}
-    >
-      <i class="fas fa-undo"></i>
-    </button>
-    <div class="toolbar-divider"></div>
-    <button
-      class="toolbar-btn"
-      title="Refresh"
-      on:click={() => handleAction("refresh")}
-    >
-      <i class="fas fa-sync-alt"></i>
-    </button>
-  </div>
 </div>
 
 <style>
@@ -264,16 +204,8 @@
   .menu-section {
     display: flex;
     gap: 0;
-    flex: 0;
-    padding: 0 4px;
-  }
-
-  .toolbar-section {
-    display: flex;
-    align-items: center;
-    gap: 2px;
     flex: 1;
-    padding: 0 8px;
+    padding: 0 4px;
   }
 
   .menu-item {
@@ -293,38 +225,6 @@
 
   .menu-button:hover {
     background: var(--hover-bg);
-  }
-
-  .toolbar-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    padding: 4px 8px;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.15s;
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    height: 24px;
-  }
-
-  .toolbar-btn:hover {
-    background: var(--hover-bg);
-    color: var(--text-primary);
-  }
-
-  .toolbar-btn:active {
-    background: var(--border-color);
-  }
-
-  .toolbar-divider {
-    width: 1px;
-    height: 20px;
-    background: var(--border-color);
-    margin: 0 4px;
   }
 
   .dropdown-menu {
@@ -368,5 +268,13 @@
     height: 1px;
     background: var(--border-light);
     margin: 4px 0;
+  }
+
+  .shortcut {
+    margin-left: auto;
+    padding-left: 20px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: "Consolas", "Monaco", monospace;
   }
 </style>
