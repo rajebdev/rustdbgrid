@@ -111,14 +111,6 @@
   }
 
   async function reloadDataWithFilters() {
-    // Only reload if we have filters or sorting applied
-    const hasFilters = Object.keys(columnFilters).length > 0;
-    const hasSorting = sortColumn !== null;
-
-    if (!hasFilters && !hasSorting) {
-      return; // Use original data
-    }
-
     // Validate executedQuery is not empty
     if (!executedQuery || executedQuery.trim() === "") {
       console.log("⚠️ Cannot reload - executedQuery is empty");
@@ -130,11 +122,15 @@
       return;
     }
 
+    // Check if we have filters or sorting applied
+    const hasFilters = Object.keys(columnFilters).length > 0;
+    const hasSorting = sortColumn !== null;
+
     // Clear current data and show loading state
     const previousData = displayData;
     displayData = null; // Clear data immediately
     isLoadingData = true; // Set loading state
-    isFiltered = true; // Mark as filtered
+    isFiltered = hasFilters || hasSorting; // Mark as filtered only if we have filters or sorting
     currentOffset = 0; // Reset offset
     hasMoreData = true; // Reset hasMoreData
 

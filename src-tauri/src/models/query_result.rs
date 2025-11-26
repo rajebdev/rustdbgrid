@@ -2,12 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ColumnMetadata {
-    pub name: String,
-    pub data_type: String, // e.g., "INT", "VARCHAR", "DATETIME", etc.
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct QueryResult {
     pub columns: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
