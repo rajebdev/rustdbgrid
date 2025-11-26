@@ -27,9 +27,10 @@ impl ConnectionPool {
         let connection_id = config.id.clone();
         let connection_name = config.name.clone();
 
-        println!(
+        log::info!(
             "🔌 [CONNECTION POOL] Connecting to '{}' (ID: {})...",
-            connection_name, connection_id
+            connection_name,
+            connection_id
         );
 
         // Create new connection
@@ -37,18 +38,20 @@ impl ConnectionPool {
 
         // Connect to database
         conn.connect(&config).await.map_err(|e| {
-            println!(
+            log::error!(
                 "❌ [CONNECTION POOL] Failed to connect to '{}': {}",
-                connection_name, e
+                connection_name,
+                e
             );
             format!("Failed to connect: {}", e)
         })?;
 
         // Test connection
         conn.test_connection().await.map_err(|e| {
-            println!(
+            log::error!(
                 "❌ [CONNECTION POOL] Connection test failed for '{}': {}",
-                connection_name, e
+                connection_name,
+                e
             );
             format!("Connection test failed: {}", e)
         })?;
@@ -62,7 +65,7 @@ impl ConnectionPool {
         let mut connections = self.connections.lock().await;
         connections.insert(connection_id.clone(), pooled);
 
-        println!(
+        log::info!(
             "✅ [CONNECTION POOL] Successfully connected to '{}'. Total connections: {}",
             connection_name,
             connections.len()
@@ -72,7 +75,7 @@ impl ConnectionPool {
     }
     /// Disconnect and remove from pool
     pub async fn disconnect(&self, connection_id: &str) -> Result<(), String> {
-        println!(
+        log::info!(
             "🔌 [CONNECTION POOL] Disconnecting from '{}' ...",
             connection_id
         );
@@ -84,16 +87,17 @@ impl ConnectionPool {
             drop(connections); // Release lock before async operation
 
             pooled.connection.disconnect().await.map_err(|e| {
-                println!(
+                log::error!(
                     "❌ [CONNECTION POOL] Failed to disconnect from '{}': {}",
-                    connection_id, e
+                    connection_id,
+                    e
                 );
                 format!("Failed to disconnect: {}", e)
             })?;
 
-            println!("✅ [CONNECTION POOL] Successfully disconnected from '{}'. Remaining connections: {}", connection_id, remaining);
+            log::info!("✅ [CONNECTION POOL] Successfully disconnected from '{}'. Remaining connections: {}", connection_id, remaining);
         } else {
-            println!(
+            log::warn!(
                 "⚠️  [CONNECTION POOL] Connection '{}' not found in pool",
                 connection_id
             );
@@ -124,7 +128,7 @@ impl ConnectionPool {
             &mut Box<dyn DatabaseConnection>,
         ) -> futures::future::BoxFuture<'_, Result<T, anyhow::Error>>,
     {
-        println!(
+        log::info!(
             "🔄 [CONNECTION POOL] Using connection '{}' from pool...",
             connection_id
         );
@@ -133,7 +137,7 @@ impl ConnectionPool {
         let mut pooled = {
             let mut connections = self.connections.lock().await;
             connections.remove(connection_id).ok_or_else(|| {
-                println!(
+                log::error!(
                     "❌ [CONNECTION POOL] Connection '{}' not found in pool",
                     connection_id
                 );
@@ -152,13 +156,14 @@ impl ConnectionPool {
         }
 
         match &result {
-            Ok(_) => println!(
+            Ok(_) => log::info!(
                 "✅ [CONNECTION POOL] Operation completed successfully with '{}'",
                 connection_id
             ),
-            Err(e) => println!(
+            Err(e) => log::error!(
                 "❌ [CONNECTION POOL] Operation failed with '{}': {}",
-                connection_id, e
+                connection_id,
+                e
             ),
         }
 
