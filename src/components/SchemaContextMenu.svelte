@@ -71,9 +71,9 @@
       <kbd>F3</kbd>
     </button>
 
-    <button class="context-menu-item context-menu-item-with-arrow">
+    <button class="context-menu-item context-menu-item-with-arrow" disabled>
       <i class="fas fa-plus"></i>
-      <span>Create</span>
+      <span>Create (TODO)</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
   </div>
@@ -90,9 +90,9 @@
       <kbd>F4</kbd>
     </button>
 
-    <button class="context-menu-item context-menu-item-with-arrow">
+    <button class="context-menu-item context-menu-item-with-arrow" disabled>
       <i class="fas fa-filter"></i>
-      <span>Filter</span>
+      <span>Filter (TODO)</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
 
@@ -109,9 +109,9 @@
   <div class="context-menu-divider"></div>
 
   <div class="context-menu-section">
-    <button class="context-menu-item context-menu-item-with-arrow">
+    <button class="context-menu-item context-menu-item-with-arrow" disabled>
       <i class="fas fa-code-compare"></i>
-      <span>Compare/Migrate</span>
+      <span>Compare/Migrate (TODO)</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
 
@@ -123,9 +123,9 @@
       <span>Import Data</span>
     </button>
 
-    <button class="context-menu-item context-menu-item-with-arrow">
+    <button class="context-menu-item context-menu-item-with-arrow" disabled>
       <i class="fas fa-wrench"></i>
-      <span>Tools</span>
+      <span>Tools (TODO)</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
 

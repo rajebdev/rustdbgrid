@@ -110,9 +110,9 @@
     <span class="shortcut">F4</span>
   </button>
 
-  <button class="menu-item has-submenu">
+  <button class="menu-item has-submenu" disabled>
     <i class="fas fa-plus"></i>
-    <span>Create</span>
+    <span>Create (TODO)</span>
     <i class="fas fa-chevron-right submenu-arrow"></i>
   </button>
 
@@ -122,21 +122,21 @@
     <span class="shortcut">F4</span>
   </button>
 
-  <button class="menu-item has-submenu">
+  <button class="menu-item has-submenu" disabled>
     <i class="fas fa-filter"></i>
-    <span>Filter</span>
+    <span>Filter (TODO)</span>
     <i class="fas fa-chevron-right submenu-arrow"></i>
   </button>
 
-  <button class="menu-item has-submenu">
+  <button class="menu-item has-submenu" disabled>
     <i class="fas fa-code-compare"></i>
-    <span>Compare/Migrate</span>
+    <span>Compare/Migrate (TODO)</span>
     <i class="fas fa-chevron-right submenu-arrow"></i>
   </button>
 
-  <button class="menu-item has-submenu">
+  <button class="menu-item has-submenu" disabled>
     <i class="fas fa-wrench"></i>
-    <span>Tools</span>
+    <span>Tools (TODO)</span>
     <i class="fas fa-chevron-right submenu-arrow"></i>
   </button>
 

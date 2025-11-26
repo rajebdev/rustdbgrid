@@ -87,12 +87,12 @@
   <div class="context-menu-section">
     <button class="context-menu-item" disabled>
       <i class="fas fa-code"></i>
-      <span>SQL Editor</span>
+      <span>SQL Editor (TODO)</span>
       <kbd>F3</kbd>
     </button>
     <button class="context-menu-item context-menu-item-with-arrow" disabled>
       <i class="fas fa-plus"></i>
-      <span>Create</span>
+      <span>Create (TODO)</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
   </div>
@@ -107,12 +107,12 @@
     </button>
     <button class="context-menu-item context-menu-item-with-arrow" disabled>
       <i class="fas fa-eye"></i>
-      <span>Connection view</span>
+      <span>Connection view (TODO)</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
     <button class="context-menu-item" disabled>
       <i class="fas fa-folder-open"></i>
-      <span>Browse from here</span>
+      <span>Browse from here (TODO)</span>
     </button>
   </div>
 
@@ -150,12 +150,12 @@
   <div class="context-menu-section">
     <button class="context-menu-item context-menu-item-with-arrow" disabled>
       <i class="fas fa-exchange-alt"></i>
-      <span>Compare/Migrate</span>
+      <span>Compare/Migrate (TODO)</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
     <button class="context-menu-item context-menu-item-with-arrow" disabled>
       <i class="fas fa-tools"></i>
-      <span>Tools</span>
+      <span>Tools (TODO)</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
   </div>
@@ -170,12 +170,12 @@
     </button>
     <button class="context-menu-item" disabled>
       <i class="fas fa-paste"></i>
-      <span>Paste</span>
+      <span>Paste (TODO)</span>
       <kbd>Ctrl+V</kbd>
     </button>
     <button class="context-menu-item" disabled>
       <i class="fas fa-clone"></i>
-      <span>Copy Advanced Info</span>
+      <span>Copy Advanced Info (TODO)</span>
       <kbd>Ctrl+Shift+C</kbd>
     </button>
   </div>

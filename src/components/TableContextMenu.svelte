@@ -77,10 +77,11 @@
   <li class="dropdown-submenu">
     <button
       class="dropdown-item d-flex align-items-center justify-content-between"
+      disabled
     >
       <span>
         <i class="fas fa-filter me-2"></i>
-        Filter
+        Filter (TODO)
       </span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
@@ -110,10 +111,11 @@
   <li class="dropdown-submenu">
     <button
       class="dropdown-item d-flex align-items-center justify-content-between"
+      disabled
     >
       <span>
         <i class="fas fa-exchange-alt me-2"></i>
-        Compare/Migrate
+        Compare/Migrate (TODO)
       </span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
@@ -137,10 +139,11 @@
   <li class="dropdown-submenu">
     <button
       class="dropdown-item d-flex align-items-center justify-content-between"
+      disabled
     >
       <span>
         <i class="fas fa-tools me-2"></i>
-        Tools
+        Tools (TODO)
       </span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
@@ -150,10 +153,11 @@
   <li class="dropdown-submenu">
     <button
       class="dropdown-item d-flex align-items-center justify-content-between"
+      disabled
     >
       <span>
         <i class="fas fa-code me-2"></i>
-        Generate SQL
+        Generate SQL (TODO)
       </span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
