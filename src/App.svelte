@@ -162,10 +162,16 @@
     console.log("Opening table tab:", { table, database, connection });
 
     // Cek apakah tab untuk tabel ini sudah ada
+    const tableFullName =
+      connection.db_type === "PostgreSQL" && table.schema
+        ? `${table.schema}.${table.name}`
+        : table.name;
+
     const existingTab = tabs.find(
       (t) =>
         t.type === "table" &&
         t.tableInfo?.name === table.name &&
+        t.tableInfo?.schema === table.schema &&
         t.tableInfo?.database === database.name
     );
 
@@ -176,13 +182,19 @@
     }
 
     // Buat tab baru untuk tabel
+    const displayName =
+      connection.db_type === "PostgreSQL" && table.schema
+        ? `${table.schema}.${table.name}`
+        : table.name;
+
     const newTab = {
       id: Date.now(),
-      title: table.name,
+      title: displayName,
       type: "table",
       modified: false,
       tableInfo: {
         name: table.name,
+        schema: table.schema,
         database: database.name,
         connection: connection,
       },
@@ -194,17 +206,30 @@
     // Load data tabel
     try {
       console.log("Loading table data...");
+
+      // Untuk PostgreSQL, gunakan format schema.table
+      let tableIdentifier = table.name;
+      if (connection.db_type === "PostgreSQL" && table.schema) {
+        tableIdentifier = `${table.schema}.${table.name}`;
+      }
+
       const tableData = await getTableData(
         connection,
         database.name,
-        table.name,
+        tableIdentifier,
         200,
         0
       );
       console.log("Table data loaded:", tableData);
 
       // Set query result and the query used
-      const tableQuery = `SELECT * FROM ${database.name}.${table.name} LIMIT 200`;
+      let tableQuery;
+      if (connection.db_type === "PostgreSQL" && table.schema) {
+        tableQuery = `SELECT * FROM "${table.schema}"."${table.name}" LIMIT 200`;
+      } else {
+        tableQuery = `SELECT * FROM ${table.name} LIMIT 200`;
+      }
+
       tabDataStore.setQueryResult(newTab.id, tableData);
       tabDataStore.setExecutedQuery(newTab.id, tableQuery);
 

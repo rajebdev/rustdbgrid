@@ -22,9 +22,96 @@
   let testing = false;
   let saving = false;
   let testResult = null;
+  let connectionString = "";
+  let showConnectionString = false;
 
   if (connection) {
     formData = { ...connection };
+  }
+
+  function parseConnectionString() {
+    try {
+      const str = connectionString.trim();
+
+      if (formData.db_type === "MySQL") {
+        // JDBC: jdbc:mysql://host:port/database or mysql://user:password@host:port/database
+        let match = str.match(
+          /^jdbc:mysql:\/\/([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
+        );
+        if (match) {
+          formData.host = match[1];
+          formData.port = match[2] ? parseInt(match[2]) : 3306;
+          if (match[3]) formData.database = match[3];
+        } else {
+          match = str.match(
+            /^mysql:\/\/(?:([^:]+):([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
+          );
+          if (match) {
+            if (match[1]) formData.username = decodeURIComponent(match[1]);
+            if (match[2]) formData.password = decodeURIComponent(match[2]);
+            formData.host = match[3];
+            formData.port = match[4] ? parseInt(match[4]) : 3306;
+            if (match[5]) formData.database = match[5];
+          }
+        }
+      } else if (formData.db_type === "PostgreSQL") {
+        // JDBC: jdbc:postgresql://host:port/database or postgresql://user:password@host:port/database
+        let match = str.match(
+          /^jdbc:postgresql:\/\/([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
+        );
+        if (match) {
+          formData.host = match[1];
+          formData.port = match[2] ? parseInt(match[2]) : 5432;
+          if (match[3]) formData.database = match[3];
+        } else {
+          match = str.match(
+            /^postgres(?:ql)?:\/\/(?:([^:]+):([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
+          );
+          if (match) {
+            if (match[1]) formData.username = decodeURIComponent(match[1]);
+            if (match[2]) formData.password = decodeURIComponent(match[2]);
+            formData.host = match[3];
+            formData.port = match[4] ? parseInt(match[4]) : 5432;
+            if (match[5]) formData.database = match[5];
+          }
+        }
+      } else if (formData.db_type === "MongoDB") {
+        // mongodb://user:password@host:port/database or mongodb+srv://...
+        const match = str.match(
+          /^mongodb(?:\+srv)?:\/\/(?:([^:]+):([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
+        );
+        if (match) {
+          if (match[1]) formData.username = decodeURIComponent(match[1]);
+          if (match[2]) formData.password = decodeURIComponent(match[2]);
+          formData.host = match[3];
+          formData.port = match[4] ? parseInt(match[4]) : 27017;
+          if (match[5]) formData.database = match[5];
+        }
+      } else if (formData.db_type === "Redis") {
+        // redis://[:password@]host:port[/database]
+        const match = str.match(
+          /^redis:\/\/(?::([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/(\d+))?/
+        );
+        if (match) {
+          if (match[1]) formData.password = decodeURIComponent(match[1]);
+          formData.host = match[2];
+          formData.port = match[3] ? parseInt(match[3]) : 6379;
+          if (match[4]) formData.database = match[4];
+        }
+      }
+
+      connectionString = "";
+      showConnectionString = false;
+      testResult = {
+        success: true,
+        message: "Connection string parsed successfully!",
+      };
+    } catch (error) {
+      testResult = {
+        success: false,
+        message: "Failed to parse connection string: " + error,
+      };
+    }
   }
 
   $: {
@@ -92,6 +179,53 @@
               bind:value={formData.name}
               required
             />
+          </div>
+
+          <div class="mb-3">
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-primary w-100"
+              on:click={() => (showConnectionString = !showConnectionString)}
+            >
+              <i class="fas fa-link"></i>
+              {showConnectionString ? "Hide" : "Paste"} Connection String
+            </button>
+
+            {#if showConnectionString}
+              <div class="mt-2">
+                <textarea
+                  class="form-control"
+                  rows="3"
+                  placeholder="Paste your connection string here (e.g., mongodb://user:pass@host:port/db)"
+                  bind:value={connectionString}
+                ></textarea>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary mt-2"
+                  on:click={parseConnectionString}
+                  disabled={!connectionString.trim()}
+                >
+                  <i class="fas fa-check"></i>
+                  Parse Connection String
+                </button>
+                <small class="form-text text-muted d-block mt-1">
+                  Supported formats:
+                  {#if formData.db_type === "MySQL"}
+                    mysql://user:password@host:port/database or
+                    jdbc:mysql://host:port/database
+                  {:else if formData.db_type === "PostgreSQL"}
+                    postgresql://user:password@host:port/database or
+                    jdbc:postgresql://host:port/database
+                  {:else if formData.db_type === "MongoDB"}
+                    mongodb://user:password@host:port/database
+                  {:else if formData.db_type === "Redis"}
+                    redis://:password@host:port/database
+                  {:else}
+                    Connection string format varies by database type
+                  {/if}
+                </small>
+              </div>
+            {/if}
           </div>
 
           <div class="mb-3">
