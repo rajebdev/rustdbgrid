@@ -269,7 +269,7 @@ impl DatabaseConnection for MongoDBConnection {
 
                 field_types
                     .entry(key.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(type_name.to_string());
             }
         }
