@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
 // Store untuk menyimpan data per tab
-// Format: { [tabId]: { queryResult, queryText, executedQuery, filters, sortColumn, sortDirection, scrollPosition } }
+// Format: { [tabId]: { queryResult, queryText, executedQuery, filters, sortColumn, sortDirection, scrollPosition, viewMode } }
 const createTabDataStore = () => {
   const { subscribe, set, update } = writable({});
 
@@ -75,6 +75,17 @@ const createTabDataStore = () => {
       }));
     },
 
+    // Set view mode untuk tab tertentu (grid atau json)
+    setViewMode: (tabId, viewMode) => {
+      update((store) => ({
+        ...store,
+        [tabId]: {
+          ...store[tabId],
+          viewMode,
+        },
+      }));
+    },
+
     // Get data untuk tab tertentu
     getTabData: (tabId) => {
       let data = null;
@@ -87,6 +98,7 @@ const createTabDataStore = () => {
           sortColumn: null,
           sortDirection: "asc",
           scrollPosition: 0,
+          viewMode: "grid",
         };
       })();
       return data;

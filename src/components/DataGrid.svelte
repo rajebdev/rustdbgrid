@@ -31,6 +31,12 @@
   let finalQuery = ""; // Store the final executed query with filters
   let currentTabId = null; // Track current tab to prevent unnecessary restores
   let isRestoringScroll = false; // Flag to prevent restore during user scroll
+  let viewMode = "grid"; // View mode: "grid" or "json"
+
+  // Set default view mode based on database type
+  $: if (connection && !$tabDataStore[tabId]?.viewMode) {
+    viewMode = connection.db_type === "MongoDB" ? "json" : "grid";
+  }
 
   // Load saved state when tab changes (only when tabId actually changes)
   $: if (tabId && tabId !== currentTabId) {
@@ -41,6 +47,9 @@
       columnFilters = savedState.filters || {};
       sortColumn = savedState.sortColumn || null;
       sortDirection = savedState.sortDirection || "asc";
+      viewMode =
+        savedState.viewMode ||
+        (connection?.db_type === "MongoDB" ? "json" : "grid");
 
       // Restore scroll position after a short delay, only once per tab change
       if (tableWrapper && savedState.scrollPosition) {
@@ -587,6 +596,23 @@
 
   // Display rows directly - filtering and sorting should be done on server-side
   $: displayRows = displayData?.rows || [];
+
+  function toggleViewMode() {
+    viewMode = viewMode === "grid" ? "json" : "grid";
+    if (tabId) {
+      tabDataStore.setViewMode(tabId, viewMode);
+    }
+  }
+
+  // Function to stringify JSON with consistent key order based on column order
+  function stringifyRowWithOrder(row, columns) {
+    const orderedRow = {};
+    // Add keys in the order they appear in columns array
+    columns.forEach((column) => {
+      orderedRow[column] = row[column];
+    });
+    return JSON.stringify(orderedRow, null, 2);
+  }
 </script>
 
 <div class="data-grid-container h-100 d-flex flex-column">
@@ -614,110 +640,167 @@
         <i class="fas fa-clock"></i>
         {displayData.execution_time}ms
       </span>
-      {#if Object.keys(columnFilters).length > 0}
+
+      <!-- View Mode Toggle -->
+      <div class="btn-group ms-auto" role="group">
         <button
-          class="btn btn-sm btn-danger ms-auto"
-          on:click={clearAllFilters}
+          type="button"
+          class="btn btn-sm {viewMode === 'grid'
+            ? 'btn-primary'
+            : 'btn-outline-primary'}"
+          on:click={() => viewMode === "json" && toggleViewMode()}
+          title="Grid View"
         >
+          <i class="fas fa-table"></i> Grid
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm {viewMode === 'json'
+            ? 'btn-primary'
+            : 'btn-outline-primary'}"
+          on:click={() => viewMode === "grid" && toggleViewMode()}
+          title="JSON View"
+        >
+          <i class="fas fa-code"></i> JSON
+        </button>
+      </div>
+
+      {#if Object.keys(columnFilters).length > 0}
+        <button class="btn btn-sm btn-danger" on:click={clearAllFilters}>
           <i class="fas fa-times"></i> Clear filters
         </button>
       {/if}
     </div>
 
-    <div
-      class="table-container flex-grow-1"
-      bind:this={tableWrapper}
-      on:scroll={handleScroll}
-    >
-      <table
-        class="table table-sm table-bordered data-table mb-0"
-        style="table-layout: auto;"
+    {#if viewMode === "grid"}
+      <div
+        class="table-container flex-grow-1"
+        bind:this={tableWrapper}
+        on:scroll={handleScroll}
       >
-        <thead
-          style="background-color: #e7f1ff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);"
+        <table
+          class="table table-sm table-bordered data-table mb-0"
+          style="table-layout: auto;"
         >
-          <tr>
-            {#each displayData.columns as column}
-              {@const isNumeric = isNumericColumn(column)}
-              <th>
-                <div class="column-header">
-                  <button
-                    class="sort-button"
-                    on:click={() => handleSort(column)}
-                  >
-                    <span class="column-name">{column}</span>
-                    {#if sortColumn === column}
-                      <i
-                        class="fas fa-sort-{sortDirection === 'asc'
-                          ? 'up'
-                          : 'down'} sort-icon"
-                      ></i>
-                    {:else}
-                      <i class="fas fa-sort sort-icon inactive"></i>
-                    {/if}
-                  </button>
-                  <button
-                    class="filter-icon-button"
-                    class:active={columnFilters[column]}
-                    on:click={(e) => openFilterModal(column, e)}
-                    title="Filter column"
-                  >
-                    <i class="fas fa-filter"></i>
-                  </button>
-                </div>
-                <div class="p-1">
-                  <input
-                    type="text"
-                    class="form-control form-control-sm"
-                    placeholder="Type and press Enter..."
-                    on:keydown={(e) => handleFilterKeydown(column, e)}
-                    value={Array.isArray(columnFilters[column])
-                      ? `${columnFilters[column].length} selected`
-                      : columnFilters[column] || ""}
-                    readonly={Array.isArray(columnFilters[column])}
-                    title="Type text and press Enter to filter"
-                  />
-                </div>
-              </th>
-            {/each}
-          </tr>
-        </thead>
-        <tbody>
-          {#each displayRows as row, index}
+          <thead
+            style="background-color: #e7f1ff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);"
+          >
             <tr>
               {#each displayData.columns as column}
-                <td
-                  class="{row[column] === null || row[column] === undefined
-                    ? 'null-value fst-italic'
-                    : ''} {isNumericColumn(column)
-                    ? 'text-end font-monospace'
-                    : ''}"
-                  title={formatValue(row[column])}
-                >
-                  {formatValue(row[column])}
-                </td>
+                {@const isNumeric = isNumericColumn(column)}
+                <th>
+                  <div class="column-header">
+                    <button
+                      class="sort-button"
+                      on:click={() => handleSort(column)}
+                    >
+                      <span class="column-name">{column}</span>
+                      {#if sortColumn === column}
+                        <i
+                          class="fas fa-sort-{sortDirection === 'asc'
+                            ? 'up'
+                            : 'down'} sort-icon"
+                        ></i>
+                      {:else}
+                        <i class="fas fa-sort sort-icon inactive"></i>
+                      {/if}
+                    </button>
+                    <button
+                      class="filter-icon-button"
+                      class:active={columnFilters[column]}
+                      on:click={(e) => openFilterModal(column, e)}
+                      title="Filter column"
+                    >
+                      <i class="fas fa-filter"></i>
+                    </button>
+                  </div>
+                  <div class="p-1">
+                    <input
+                      type="text"
+                      class="form-control form-control-sm"
+                      placeholder="Type and press Enter..."
+                      on:keydown={(e) => handleFilterKeydown(column, e)}
+                      value={Array.isArray(columnFilters[column])
+                        ? `${columnFilters[column].length} selected`
+                        : columnFilters[column] || ""}
+                      readonly={Array.isArray(columnFilters[column])}
+                      title="Type text and press Enter to filter"
+                    />
+                  </div>
+                </th>
               {/each}
             </tr>
+          </thead>
+          <tbody>
+            {#each displayRows as row, index}
+              <tr>
+                {#each displayData.columns as column}
+                  <td
+                    class="{row[column] === null || row[column] === undefined
+                      ? 'null-value fst-italic'
+                      : ''} {isNumericColumn(column)
+                      ? 'text-end font-monospace'
+                      : ''}"
+                    title={formatValue(row[column])}
+                  >
+                    {formatValue(row[column])}
+                  </td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+
+        {#if isLoadingMore}
+          <div class="text-center py-3 bg-light">
+            <i class="fas fa-spinner fa-spin text-primary"></i>
+            <span class="ms-2 text-muted">Loading more data...</span>
+          </div>
+        {/if}
+
+        {#if !hasMoreData && displayRows.length > 0}
+          <div class="text-center py-3 text-muted small bg-light">
+            <i class="fas fa-check-circle"></i>
+            <span class="ms-2"
+              >All data loaded ({displayRows.length.toLocaleString()} rows)</span
+            >
+          </div>
+        {/if}
+      </div>
+    {:else}
+      <!-- JSON View -->
+      <div class="json-container flex-grow-1 p-3" bind:this={tableWrapper}>
+        <div class="json-list">
+          {#each displayRows as row, index}
+            <div class="json-item">
+              <div class="json-item-header">
+                <span class="json-item-number">#{index + 1}</span>
+              </div>
+              <pre class="json-content">{stringifyRowWithOrder(
+                  row,
+                  displayData.columns
+                )}</pre>
+            </div>
           {/each}
-        </tbody>
-      </table>
-
-      {#if isLoadingMore}
-        <div class="text-center py-3 bg-light">
-          <i class="fas fa-spinner fa-spin text-primary"></i>
-          <span class="ms-2 text-muted">Loading more data...</span>
         </div>
-      {/if}
 
-      {#if !hasMoreData && displayRows.length > 0}
-        <div class="text-center py-3 text-muted small bg-light">
-          <i class="fas fa-check-circle"></i>
-          <span class="ms-2"
-            >All data loaded ({displayRows.length.toLocaleString()} rows)</span
-          >
-        </div>
-      {/if}
-    </div>
+        {#if isLoadingMore}
+          <div class="text-center py-3 bg-light">
+            <i class="fas fa-spinner fa-spin text-primary"></i>
+            <span class="ms-2 text-muted">Loading more data...</span>
+          </div>
+        {/if}
+
+        {#if !hasMoreData && displayRows.length > 0}
+          <div class="text-center py-3 text-muted small bg-light">
+            <i class="fas fa-check-circle"></i>
+            <span class="ms-2"
+              >All data loaded ({displayRows.length.toLocaleString()} rows)</span
+            >
+          </div>
+        {/if}
+      </div>
+    {/if}
   {:else if displayData}
     <div
       class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary"
@@ -1021,5 +1104,74 @@
   /* Prevent layout shift during scroll */
   .data-table tbody {
     display: table-row-group;
+  }
+
+  /* JSON View Styles */
+  .json-container {
+    position: relative;
+    overflow: auto;
+    height: 100%;
+    background-color: #f8f9fa;
+  }
+
+  .json-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .json-item {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .json-item-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .json-item-number {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    font-family: monospace;
+  }
+
+  .json-content {
+    margin: 0;
+    padding: 1rem;
+    background-color: #ffffff;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    color: #2d3748;
+    border: none;
+  }
+
+  .json-content::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .json-content::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+
+  .json-content::-webkit-scrollbar-thumb {
+    background: #c0c0c0;
+    border-radius: 4px;
+  }
+
+  .json-content::-webkit-scrollbar-thumb:hover {
+    background: #a0a0a0;
   }
 </style>
