@@ -208,9 +208,12 @@
       console.log("Loading table data...");
 
       // Untuk PostgreSQL, gunakan format schema.table
+      // Untuk MySQL, gunakan format database.table untuk cross-database support
       let tableIdentifier = table.name;
       if (connection.db_type === "PostgreSQL" && table.schema) {
         tableIdentifier = `${table.schema}.${table.name}`;
+      } else if (connection.db_type === "MySQL") {
+        tableIdentifier = `${database.name}.${table.name}`;
       }
 
       const tableData = await getTableData(
@@ -226,6 +229,9 @@
       let tableQuery;
       if (connection.db_type === "PostgreSQL" && table.schema) {
         tableQuery = `SELECT * FROM "${table.schema}"."${table.name}" LIMIT 200`;
+      } else if (connection.db_type === "MySQL") {
+        // For MySQL, include database.table for cross-database support
+        tableQuery = `SELECT * FROM ${database.name}.${table.name} LIMIT 200`;
       } else {
         tableQuery = `SELECT * FROM ${table.name} LIMIT 200`;
       }

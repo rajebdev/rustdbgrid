@@ -2,7 +2,11 @@
   import { onMount, onDestroy } from "svelte";
   import { tabDataStore } from "../stores/tabData";
   import { activeConnection } from "../stores/connections";
-  import { getFilterValues, executeQueryWithFilters } from "../utils/tauri";
+  import {
+    getFilterValues,
+    executeQueryWithFilters,
+    executeQuery,
+  } from "../utils/tauri";
 
   export let data = null;
   export let tabId = null;
@@ -32,6 +36,19 @@
   let currentTabId = null; // Track current tab to prevent unnecessary restores
   let isRestoringScroll = false; // Flag to prevent restore during user scroll
   let viewMode = "grid"; // View mode: "grid" or "json"
+
+  // Inline editing state
+  let editingCell = null; // { rowIndex, column }
+  let editingValue = "";
+  let originalValue = "";
+  let editedRows = new Map(); // Map<rowIndex, Map<column, newValue>>
+  let originalRowData = new Map(); // Map<rowIndex, originalRowObject> - backup for cancel
+  let showSqlPreview = false;
+  let previewSql = "";
+  let pendingUpdates = [];
+
+  // Reactive variable to track if there are edits
+  $: hasUnsavedEdits = editedRows.size > 0;
 
   // Set default view mode based on database type
   $: if (connection && !$tabDataStore[tabId]?.viewMode) {
@@ -597,10 +614,265 @@
   // Display rows directly - filtering and sorting should be done on server-side
   $: displayRows = displayData?.rows || [];
 
+  // Auto-focus action for inline editing
+  function focusInput(node) {
+    node.focus();
+    node.select();
+  }
+
   function toggleViewMode() {
     viewMode = viewMode === "grid" ? "json" : "grid";
     if (tabId) {
       tabDataStore.setViewMode(tabId, viewMode);
+    }
+  }
+
+  // Inline editing functions
+  function startEdit(rowIndex, column, currentValue) {
+    editingCell = { rowIndex, column };
+    editingValue =
+      currentValue === null || currentValue === undefined
+        ? ""
+        : String(currentValue);
+    originalValue = currentValue;
+  }
+
+  function cancelEdit() {
+    editingCell = null;
+    editingValue = "";
+    originalValue = "";
+  }
+
+  function finishEdit() {
+    console.log("🔧 finishEdit() called", {
+      editingCell,
+      editingValue,
+      originalValue,
+    });
+
+    if (!editingCell) {
+      console.log("⚠️ No editing cell, returning");
+      return;
+    }
+
+    const { rowIndex, column } = editingCell;
+
+    // Check if value actually changed
+    if (
+      editingValue === originalValue ||
+      (editingValue === "" &&
+        (originalValue === null || originalValue === undefined))
+    ) {
+      console.log("⚠️ Value not changed, canceling edit");
+      cancelEdit();
+      return;
+    }
+
+    console.log("✅ Value changed, storing edit", {
+      rowIndex,
+      column,
+      editingValue,
+    });
+
+    // Backup original row data if this is the first edit on this row
+    if (!originalRowData.has(rowIndex)) {
+      originalRowData.set(rowIndex, { ...displayData.rows[rowIndex] });
+    }
+
+    // Store the edit in editedRows Map
+    if (!editedRows.has(rowIndex)) {
+      editedRows.set(rowIndex, new Map());
+    }
+    editedRows.get(rowIndex).set(column, editingValue);
+
+    console.log(
+      "📝 editedRows before reactivity:",
+      editedRows.size,
+      Array.from(editedRows.entries())
+    );
+
+    // Update display
+    displayData.rows[rowIndex][column] = editingValue;
+    displayData = { ...displayData };
+
+    // Trigger reactivity by creating new Map
+    editedRows = new Map(editedRows);
+
+    console.log(
+      "✨ editedRows after reactivity:",
+      editedRows.size,
+      Array.from(editedRows.entries())
+    );
+    console.log("🔍 hasEdits():", hasEdits());
+
+    cancelEdit();
+  }
+
+  function hasEdits() {
+    return editedRows.size > 0;
+  }
+
+  function cancelAllEdits() {
+    console.log("🔄 Canceling all edits, restoring original data...");
+
+    // Restore original values from backup
+    originalRowData.forEach((originalRow, rowIndex) => {
+      console.log(`  Restoring row ${rowIndex}:`, originalRow);
+      displayData.rows[rowIndex] = { ...originalRow };
+    });
+
+    // Force reactivity
+    displayData = { ...displayData };
+
+    // Clear all edits and backups
+    editedRows.clear();
+    editedRows = new Map();
+    originalRowData.clear();
+    originalRowData = new Map();
+
+    console.log("✅ All edits canceled, data restored");
+
+    cancelEdit();
+  }
+
+  function generateUpdateSql() {
+    if (!displayData || !displayData.rows || !executedQuery) {
+      return [];
+    }
+
+    const updates = [];
+
+    // Extract table name from query - support table.schema notation
+    // Match: FROM `schema`.`table`, FROM schema.table, FROM `table`, FROM table
+    let tableMatch = executedQuery.match(/FROM\s+`?(\w+)`?\.`?(\w+)`?/i);
+    let tableName = "";
+
+    if (tableMatch) {
+      // Has schema.table format
+      tableName = `\`${tableMatch[1]}\`.\`${tableMatch[2]}\``;
+      console.log("📋 Extracted table name (with schema):", tableName);
+    } else {
+      // Try simple table name
+      tableMatch = executedQuery.match(/FROM\s+`?(\w+)`?/i);
+      tableName = tableMatch ? `\`${tableMatch[1]}\`` : "`table`";
+      console.log("📋 Extracted table name (simple):", tableName);
+    }
+
+    console.log("📊 Available column_types:", displayData.column_types);
+
+    editedRows.forEach((changes, rowIndex) => {
+      const row = displayData.rows[rowIndex];
+      if (!row) return;
+
+      const setClauses = [];
+      const whereClauses = [];
+
+      // Build SET clause
+      changes.forEach((newValue, column) => {
+        const sqlValue =
+          newValue === "" ? "NULL" : `'${newValue.replace(/'/g, "''")}'`;
+        setClauses.push(`\`${column}\` = ${sqlValue}`);
+      });
+
+      // Build WHERE clause - use all columns that weren't edited as identifiers
+      displayData.columns.forEach((column) => {
+        if (
+          !changes.has(column) &&
+          row[column] !== null &&
+          row[column] !== undefined
+        ) {
+          const value = row[column];
+          const columnType =
+            displayData.column_types?.[column]?.toUpperCase() || "";
+          let sqlValue;
+
+          // Check column type from metadata
+          if (
+            columnType.includes("INT") ||
+            columnType.includes("DECIMAL") ||
+            columnType.includes("NUMERIC") ||
+            columnType.includes("FLOAT") ||
+            columnType.includes("DOUBLE") ||
+            columnType.includes("REAL")
+          ) {
+            // Numeric types - no quotes
+            sqlValue = value;
+            console.log(`  ${column}: ${value} (${columnType}, no quotes)`);
+          } else if (
+            columnType.includes("BOOL") ||
+            columnType.includes("BIT")
+          ) {
+            // Boolean - convert to 1/0
+            sqlValue = value ? 1 : 0;
+            console.log(`  ${column}: ${value} (${columnType} -> ${sqlValue})`);
+          } else if (
+            columnType.includes("DATE") ||
+            columnType.includes("TIME") ||
+            columnType.includes("TIMESTAMP")
+          ) {
+            // Date/Time types - quote them
+            sqlValue = `'${String(value).replace(/'/g, "''")}'`;
+            console.log(`  ${column}: "${value}" (${columnType}, quoted)`);
+          } else {
+            // String types (VARCHAR, TEXT, CHAR, etc.) - quote them
+            sqlValue = `'${String(value).replace(/'/g, "''")}'`;
+            console.log(`  ${column}: "${value}" (${columnType}, quoted)`);
+          }
+
+          whereClauses.push(`\`${column}\` = ${sqlValue}`);
+        }
+      });
+
+      if (setClauses.length > 0 && whereClauses.length > 0) {
+        const sql = `UPDATE ${tableName} SET ${setClauses.join(", ")} WHERE ${whereClauses.join(" AND ")};`;
+        console.log("✅ Generated SQL:", sql);
+        updates.push({
+          sql,
+          rowIndex,
+        });
+      }
+    });
+
+    return updates;
+  }
+
+  function showPreview() {
+    pendingUpdates = generateUpdateSql();
+    if (pendingUpdates.length > 0) {
+      previewSql = pendingUpdates.map((u) => u.sql).join("\n");
+      showSqlPreview = true;
+    }
+  }
+
+  function closeSqlPreview() {
+    showSqlPreview = false;
+    previewSql = "";
+    pendingUpdates = [];
+  }
+
+  async function executeUpdates() {
+    if (pendingUpdates.length === 0 || !connection) return;
+
+    try {
+      // Execute each update
+      for (const update of pendingUpdates) {
+        await executeQuery(connection, update.sql);
+      }
+
+      // Clear edited rows after successful update
+      editedRows.clear();
+      editedRows = new Map();
+
+      // Reload data
+      await reloadDataWithFilters();
+
+      closeSqlPreview();
+
+      // Show success message (you can add a toast/notification here)
+      alert("Updates executed successfully!");
+    } catch (error) {
+      console.error("Failed to execute updates:", error);
+      alert(`Failed to execute updates: ${error}`);
     }
   }
 
@@ -733,17 +1005,40 @@
           </thead>
           <tbody>
             {#each displayRows as row, index}
-              <tr>
+              <tr class={editedRows.has(index) ? "edited-row" : ""}>
                 {#each displayData.columns as column}
+                  {@const isEdited =
+                    editedRows.has(index) && editedRows.get(index).has(column)}
                   <td
                     class="{row[column] === null || row[column] === undefined
                       ? 'null-value fst-italic'
                       : ''} {isNumericColumn(column)
                       ? 'text-end font-monospace'
-                      : ''}"
+                      : ''} {editingCell?.rowIndex === index &&
+                    editingCell?.column === column
+                      ? 'editing'
+                      : ''} {isEdited ? 'edited-cell' : ''}"
                     title={formatValue(row[column])}
+                    on:dblclick={() => startEdit(index, column, row[column])}
                   >
-                    {formatValue(row[column])}
+                    {#if editingCell?.rowIndex === index && editingCell?.column === column}
+                      <input
+                        type="text"
+                        class="form-control form-control-sm"
+                        bind:value={editingValue}
+                        on:keydown={(e) => {
+                          if (e.key === "Enter") {
+                            finishEdit();
+                          } else if (e.key === "Escape") {
+                            cancelEdit();
+                          }
+                        }}
+                        on:blur={finishEdit}
+                        use:focusInput
+                      />
+                    {:else}
+                      {formatValue(row[column])}
+                    {/if}
                   </td>
                 {/each}
               </tr>
@@ -823,6 +1118,33 @@
     </div>
   {/if}
 
+  <!-- Sticky footer untuk Save/Cancel buttons -->
+  {#if hasUnsavedEdits}
+    <div
+      class="sticky-bottom bg-warning border-top shadow-sm"
+      style="position: sticky; bottom: 0; z-index: 11;"
+    >
+      <div class="d-flex align-items-center justify-content-between gap-2 p-2">
+        <div class="d-flex align-items-center gap-2">
+          <i class="fas fa-exclamation-triangle text-danger"></i>
+          <span class="fw-semibold text-danger">
+            You have unsaved changes ({editedRows.size} row{editedRows.size > 1
+              ? "s"
+              : ""} modified)
+          </span>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-success" on:click={showPreview}>
+            <i class="fas fa-save"></i> Save Changes
+          </button>
+          <button class="btn btn-sm btn-secondary" on:click={cancelAllEdits}>
+            <i class="fas fa-times"></i> Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- Sticky footer untuk menampilkan final query -->
   {#if finalQuery || executedQuery}
     <div
@@ -847,6 +1169,71 @@
     </div>
   {/if}
 </div>
+
+<!-- SQL Preview Modal -->
+{#if showSqlPreview}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="modal-backdrop show" on:click={closeSqlPreview}></div>
+  <div class="modal d-block" tabindex="-1">
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div
+      class="modal-dialog modal-lg modal-dialog-centered"
+      on:click|stopPropagation
+    >
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title">
+            <i class="fas fa-code"></i> Preview SQL Update
+          </h5>
+          <button
+            type="button"
+            class="btn-close btn-close-white"
+            on:click={closeSqlPreview}
+            aria-label="Close"
+          ></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i>
+            <strong>{pendingUpdates.length}</strong> update(s) will be executed:
+          </div>
+
+          <pre
+            class="bg-dark text-light p-3 rounded"
+            style="max-height: 400px; overflow-y: auto;"><code
+              >{previewSql}</code
+            ></pre>
+
+          <div class="alert alert-warning mt-3">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Warning:</strong> This action cannot be undone. Please review
+            the SQL carefully before executing.
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            on:click={closeSqlPreview}
+          >
+            <i class="fas fa-times"></i> Cancel
+          </button>
+          <button
+            type="button"
+            class="btn btn-success"
+            on:click={executeUpdates}
+          >
+            <i class="fas fa-play"></i> Execute
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if showFilterModal && filterModalColumn}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -1090,6 +1477,51 @@
   .data-table tbody td {
     height: 32px;
     line-height: 1.2;
+  }
+
+  /* Inline editing styles */
+  .data-table tbody td {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .data-table tbody td:hover {
+    background-color: #f8f9fa;
+  }
+
+  .data-table tbody td.editing {
+    padding: 2px;
+    background-color: #fff3cd;
+  }
+
+  .data-table tbody td.editing input {
+    width: 100%;
+    height: 100%;
+    border: 2px solid #ffc107;
+    padding: 0.25rem;
+  }
+
+  .data-table tbody tr.edited-row {
+    background-color: #f8d7da;
+  }
+
+  .data-table tbody tr.edited-row:hover {
+    background-color: #f1aeb5;
+  }
+
+  .data-table tbody tr.edited-row td {
+    color: #842029;
+  }
+
+  .data-table tbody td.edited-cell {
+    background-color: #f8d7da;
+    color: #842029;
+    border: 2px solid #dc3545;
+    font-weight: 500;
+  }
+
+  .data-table tbody td.edited-cell:hover {
+    background-color: #f1aeb5;
   }
 
   /* Disable all animations and transitions */

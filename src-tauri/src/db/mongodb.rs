@@ -190,6 +190,7 @@ impl DatabaseConnection for MongoDBConnection {
 
         Ok(QueryResult {
             columns,
+            column_types: None,
             rows,
             rows_affected: None,
             execution_time,
@@ -362,6 +363,7 @@ impl DatabaseConnection for MongoDBConnection {
 
         Ok(QueryResult {
             columns,
+            column_types: None,
             rows,
             rows_affected: None,
             execution_time,

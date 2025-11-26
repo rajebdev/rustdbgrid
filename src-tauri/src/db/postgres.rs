@@ -66,6 +66,7 @@ impl DatabaseConnection for PostgresConnection {
         if rows.is_empty() {
             return Ok(QueryResult {
                 columns: vec![],
+                column_types: None,
                 rows: vec![],
                 rows_affected: None,
                 execution_time,
@@ -130,6 +131,7 @@ impl DatabaseConnection for PostgresConnection {
 
         Ok(QueryResult {
             columns,
+            column_types: None,
             rows: result_rows,
             rows_affected: None,
             execution_time,

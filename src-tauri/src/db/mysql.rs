@@ -66,6 +66,7 @@ impl DatabaseConnection for MySQLConnection {
         if rows.is_empty() {
             return Ok(QueryResult {
                 columns: vec![],
+                column_types: None,
                 rows: vec![],
                 rows_affected: None,
                 execution_time,
@@ -78,6 +79,15 @@ impl DatabaseConnection for MySQLConnection {
             .iter()
             .map(|c| SqlxColumn::name(c).to_string())
             .collect();
+
+        // Extract column types
+        let mut column_types = HashMap::new();
+        for col in rows[0].columns() {
+            let col_name = SqlxColumn::name(col).to_string();
+            let type_name = col.type_info().name().to_uppercase();
+            column_types.insert(col_name, type_name);
+        }
+
         let mut result_rows = Vec::new();
 
         for row in rows {
@@ -129,6 +139,7 @@ impl DatabaseConnection for MySQLConnection {
 
         Ok(QueryResult {
             columns,
+            column_types: Some(column_types),
             rows: result_rows,
             rows_affected: None,
             execution_time,
@@ -221,10 +232,17 @@ impl DatabaseConnection for MySQLConnection {
         limit: u32,
         offset: u32,
     ) -> Result<QueryResult> {
-        let query = format!(
-            "SELECT * FROM `{}`.`{}` LIMIT {} OFFSET {}",
-            database, table, limit, offset
-        );
+        // Check if table already includes database prefix (e.g., apps_config.jns_config)
+        let query = if table.contains('.') {
+            // Table already has database prefix, use it directly
+            format!("SELECT * FROM {} LIMIT {} OFFSET {}", table, limit, offset)
+        } else {
+            // Table is simple name, add database prefix
+            format!(
+                "SELECT * FROM `{}`.`{}` LIMIT {} OFFSET {}",
+                database, table, limit, offset
+            )
+        };
         self.execute_query(&query).await
     }
 }

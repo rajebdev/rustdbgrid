@@ -58,6 +58,7 @@ pub async fn execute_query_with_filters(
     }
 
     // Extract table name from simple SELECT queries to avoid subquery
+    // Preserve database.table format for cross-database queries
     let cleaned_query = base_query.trim().to_uppercase();
 
     let table_name = if cleaned_query.starts_with("SELECT") && cleaned_query.contains("FROM") {
@@ -73,6 +74,7 @@ pub async fn execute_query_with_filters(
                 }
             }
 
+            // Extract and preserve database.table format (e.g., apps_config.jns_config)
             let table = after_from[..table_end].trim().to_string();
             println!("  📋 Extracted table name: {}", table);
             table
@@ -211,6 +213,7 @@ pub async fn get_filter_values(
 
     // Extract table name from simple SELECT queries
     // Pattern: SELECT * FROM table_name [LIMIT ...]
+    // Preserve database.table format for cross-database queries (e.g., apps_config.jns_config)
     let cleaned_query = query.trim().to_uppercase();
 
     let table_name = if cleaned_query.starts_with("SELECT") && cleaned_query.contains("FROM") {

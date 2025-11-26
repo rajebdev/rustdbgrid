@@ -2,8 +2,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct ColumnMetadata {
+    pub name: String,
+    pub data_type: String, // e.g., "INT", "VARCHAR", "DATETIME", etc.
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct QueryResult {
     pub columns: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column_types: Option<HashMap<String, String>>, // Map<column_name, data_type>
     pub rows: Vec<HashMap<String, serde_json::Value>>,
     pub rows_affected: Option<u64>,
     pub execution_time: u128,
