@@ -5,8 +5,9 @@
 
   export let x = 0;
   export let y = 0;
+  export let schema = null;
+  export let database = null;
   export let connection = null;
-  export let isConnected = false;
 
   const dispatch = createEventDispatcher();
 
@@ -45,32 +46,8 @@
     }
   });
 
-  function handleEdit() {
-    dispatch("edit", connection);
-  }
-
-  function handleDelete() {
-    dispatch("delete", connection);
-  }
-
-  function handleRefresh() {
-    dispatch("refresh", connection);
-  }
-
-  function handleConnect() {
-    dispatch("connect", connection);
-  }
-
-  function handleDisconnect() {
-    dispatch("disconnect", connection);
-  }
-
-  function handleCopy() {
-    dispatch("copy", connection);
-  }
-
-  function handleRename() {
-    dispatch("rename", connection);
+  function handleAction(type) {
+    dispatch(type, { schema, database, connection });
   }
 </script>
 
@@ -85,12 +62,16 @@
   in:fly={{ y: -10, duration: 200, easing: quintOut }}
 >
   <div class="context-menu-section">
-    <button class="context-menu-item" disabled>
-      <i class="fas fa-code"></i>
+    <button
+      class="context-menu-item"
+      on:click={() => handleAction("sqlEditor")}
+    >
+      <i class="fas fa-terminal"></i>
       <span>SQL Editor</span>
       <kbd>F3</kbd>
     </button>
-    <button class="context-menu-item context-menu-item-with-arrow" disabled>
+
+    <button class="context-menu-item context-menu-item-with-arrow">
       <i class="fas fa-plus"></i>
       <span>Create</span>
       <i class="fas fa-chevron-right ms-auto"></i>
@@ -100,62 +81,60 @@
   <div class="context-menu-divider"></div>
 
   <div class="context-menu-section">
-    <button class="context-menu-item" on:click={handleEdit}>
-      <i class="fas fa-edit"></i>
-      <span>Edit Connection</span>
+    <button
+      class="context-menu-item"
+      on:click={() => handleAction("viewSchema")}
+    >
+      <i class="fas fa-eye"></i>
+      <span>View Schema</span>
       <kbd>F4</kbd>
     </button>
-    <button class="context-menu-item context-menu-item-with-arrow" disabled>
-      <i class="fas fa-eye"></i>
-      <span>Connection view</span>
+
+    <button class="context-menu-item context-menu-item-with-arrow">
+      <i class="fas fa-filter"></i>
+      <span>Filter</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
-    <button class="context-menu-item" disabled>
-      <i class="fas fa-folder-open"></i>
-      <span>Browse from here</span>
+
+    <button
+      class="context-menu-item"
+      on:click={() => handleAction("viewDiagram")}
+    >
+      <i class="fas fa-project-diagram"></i>
+      <span>View Diagram</span>
+      <kbd>Ctrl+Shift+Enter</kbd>
     </button>
   </div>
 
   <div class="context-menu-divider"></div>
 
   <div class="context-menu-section">
-    <button
-      class="context-menu-item"
-      on:click={handleConnect}
-      disabled={isConnected}
-    >
-      <i class="fas fa-plug"></i>
-      <span>Connect</span>
-    </button>
-    <button
-      class="context-menu-item"
-      on:click={handleRefresh}
-      disabled={!isConnected}
-    >
-      <i class="fas fa-sync"></i>
-      <span>Invalidate/Reconnect</span>
-    </button>
-    <button
-      class="context-menu-item"
-      on:click={handleDisconnect}
-      disabled={!isConnected}
-    >
-      <i class="fas fa-unlink"></i>
-      <span>Disconnect</span>
-    </button>
-  </div>
-
-  <div class="context-menu-divider"></div>
-
-  <div class="context-menu-section">
-    <button class="context-menu-item context-menu-item-with-arrow" disabled>
-      <i class="fas fa-exchange-alt"></i>
+    <button class="context-menu-item context-menu-item-with-arrow">
+      <i class="fas fa-code-compare"></i>
       <span>Compare/Migrate</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
-    <button class="context-menu-item context-menu-item-with-arrow" disabled>
-      <i class="fas fa-tools"></i>
+
+    <button
+      class="context-menu-item"
+      on:click={() => handleAction("importData")}
+    >
+      <i class="fas fa-file-import"></i>
+      <span>Import Data</span>
+    </button>
+
+    <button class="context-menu-item context-menu-item-with-arrow">
+      <i class="fas fa-wrench"></i>
       <span>Tools</span>
+      <i class="fas fa-chevron-right ms-auto"></i>
+    </button>
+
+    <button
+      class="context-menu-item"
+      on:click={() => handleAction("generateSql")}
+    >
+      <i class="fas fa-code"></i>
+      <span>Generate SQL</span>
       <i class="fas fa-chevron-right ms-auto"></i>
     </button>
   </div>
@@ -163,18 +142,23 @@
   <div class="context-menu-divider"></div>
 
   <div class="context-menu-section">
-    <button class="context-menu-item" on:click={handleCopy}>
+    <button class="context-menu-item" on:click={() => handleAction("copy")}>
       <i class="fas fa-copy"></i>
       <span>Copy</span>
       <kbd>Ctrl+C</kbd>
     </button>
-    <button class="context-menu-item" disabled>
+
+    <button class="context-menu-item" on:click={() => handleAction("paste")}>
       <i class="fas fa-paste"></i>
       <span>Paste</span>
       <kbd>Ctrl+V</kbd>
     </button>
-    <button class="context-menu-item" disabled>
-      <i class="fas fa-clone"></i>
+
+    <button
+      class="context-menu-item"
+      on:click={() => handleAction("copyAdvancedInfo")}
+    >
+      <i class="fas fa-info-circle"></i>
       <span>Copy Advanced Info</span>
       <kbd>Ctrl+Shift+C</kbd>
     </button>
@@ -183,13 +167,17 @@
   <div class="context-menu-divider"></div>
 
   <div class="context-menu-section">
-    <button class="context-menu-item text-danger" on:click={handleDelete}>
+    <button
+      class="context-menu-item text-danger"
+      on:click={() => handleAction("delete")}
+    >
       <i class="fas fa-trash"></i>
       <span>Delete</span>
       <kbd>Delete</kbd>
     </button>
-    <button class="context-menu-item" on:click={handleRename}>
-      <i class="fas fa-pen"></i>
+
+    <button class="context-menu-item" on:click={() => handleAction("rename")}>
+      <i class="fas fa-edit"></i>
       <span>Rename</span>
       <kbd>F2</kbd>
     </button>
@@ -198,8 +186,8 @@
   <div class="context-menu-divider"></div>
 
   <div class="context-menu-section">
-    <button class="context-menu-item" on:click={handleRefresh}>
-      <i class="fas fa-redo"></i>
+    <button class="context-menu-item" on:click={() => handleAction("refresh")}>
+      <i class="fas fa-sync"></i>
       <span>Refresh</span>
       <kbd>F5</kbd>
     </button>

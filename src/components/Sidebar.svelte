@@ -11,6 +11,7 @@
     getDatabases,
     getTables,
     deleteConnection,
+    saveConnection,
     connectToDatabase,
     disconnectFromDatabase,
     isDatabaseConnected,
@@ -20,6 +21,9 @@
   const dispatch = createEventDispatcher();
   import ConnectionModal from "./ConnectionModal.svelte";
   import ConnectionContextMenu from "./ConnectionContextMenu.svelte";
+  import TableContextMenu from "./TableContextMenu.svelte";
+  import DatabaseContextMenu from "./DatabaseContextMenu.svelte";
+  import SchemaContextMenu from "./SchemaContextMenu.svelte";
 
   export let onToggleSidebar = null;
 
@@ -37,6 +41,15 @@
   let loadingDatabases = {}; // Track loading state per database
   let connectedConnections = {}; // Track connection status
   let contextMenu = null; // { x, y, connection }
+  let tableContextMenu = null; // { x, y, table, connection, database }
+  let databaseContextMenu = null; // { x, y, database, connection }
+  let schemaContextMenu = null; // { x, y, schema, database, connection }
+
+  // Track active (right-clicked) items
+  let activeContextConnection = null;
+  let activeContextDatabase = null;
+  let activeContextSchema = null;
+  let activeContextTable = null;
 
   onMount(async () => {
     await loadConnections();
@@ -44,8 +57,14 @@
     await syncConnectedStatus();
     // Close context menu when clicking anywhere
     document.addEventListener("click", closeContextMenu);
+    document.addEventListener("click", closeTableContextMenu);
+    document.addEventListener("click", closeDatabaseContextMenu);
+    document.addEventListener("click", closeSchemaContextMenu);
     return () => {
       document.removeEventListener("click", closeContextMenu);
+      document.removeEventListener("click", closeTableContextMenu);
+      document.removeEventListener("click", closeDatabaseContextMenu);
+      document.removeEventListener("click", closeSchemaContextMenu);
     };
   });
 
@@ -236,6 +255,16 @@
   function handleConnectionContextMenu(event, conn) {
     event.preventDefault();
     event.stopPropagation();
+    // Close all other context menus
+    tableContextMenu = null;
+    databaseContextMenu = null;
+    schemaContextMenu = null;
+    // Set active item
+    activeContextConnection = conn.id;
+    activeContextDatabase = null;
+    activeContextSchema = null;
+    activeContextTable = null;
+    // Show context menu
     contextMenu = {
       x: event.clientX,
       y: event.clientY,
@@ -245,6 +274,7 @@
 
   function closeContextMenu() {
     contextMenu = null;
+    activeContextConnection = null;
   }
 
   function handleEditConnection(conn) {
@@ -334,6 +364,27 @@
     closeContextMenu();
   }
 
+  async function handleRenameConnection(conn) {
+    // Rename connection
+    const newName = prompt(`Rename connection "${conn.name}" to:`, conn.name);
+    if (newName && newName !== conn.name) {
+      try {
+        // Update connection with new name
+        const updatedConn = { ...conn, name: newName };
+        await saveConnection(updatedConn);
+        // Reload connections list
+        await loadConnections();
+        closeContextMenu();
+      } catch (error) {
+        console.error("Failed to rename connection:", error);
+        alert(`Failed to rename connection: ${error}`);
+        closeContextMenu();
+      }
+    } else {
+      closeContextMenu();
+    }
+  }
+
   function handleContextMenuAction(event) {
     const { type, detail } = event;
     switch (type) {
@@ -355,7 +406,312 @@
       case "copy":
         handleCopyConnection(detail);
         break;
+      case "rename":
+        handleRenameConnection(detail);
+        break;
     }
+  }
+
+  function handleTableContextMenu(event, table, conn, db) {
+    event.preventDefault();
+    event.stopPropagation();
+    // Close all other context menus
+    contextMenu = null;
+    databaseContextMenu = null;
+    schemaContextMenu = null;
+    // Set active item
+    activeContextConnection = null;
+    activeContextDatabase = null;
+    activeContextSchema = null;
+    activeContextTable = `${conn.id}-${db.name}-${table.schema || "public"}-${table.name}`;
+    // Show context menu
+    tableContextMenu = {
+      x: event.clientX,
+      y: event.clientY,
+      table: table,
+      connection: conn,
+      database: db,
+    };
+  }
+
+  function closeTableContextMenu() {
+    tableContextMenu = null;
+    activeContextTable = null;
+  }
+
+  function handleDatabaseContextMenu(event, db, conn) {
+    event.preventDefault();
+    event.stopPropagation();
+    // Close all other context menus
+    contextMenu = null;
+    tableContextMenu = null;
+    schemaContextMenu = null;
+    // Set active item
+    activeContextConnection = null;
+    activeContextDatabase = `${conn.id}-${db.name}`;
+    activeContextSchema = null;
+    activeContextTable = null;
+    // Show context menu
+    databaseContextMenu = {
+      x: event.clientX,
+      y: event.clientY,
+      database: db,
+      connection: conn,
+    };
+  }
+
+  function closeDatabaseContextMenu() {
+    databaseContextMenu = null;
+    activeContextDatabase = null;
+  }
+
+  function handleSchemaContextMenu(event, schemaName, db, conn) {
+    event.preventDefault();
+    event.stopPropagation();
+    // Close all other context menus
+    contextMenu = null;
+    tableContextMenu = null;
+    databaseContextMenu = null;
+    // Set active item
+    activeContextConnection = null;
+    activeContextDatabase = null;
+    activeContextSchema = `${conn.id}-${db.name}-${schemaName}`;
+    activeContextTable = null;
+    // Show context menu
+    schemaContextMenu = {
+      x: event.clientX,
+      y: event.clientY,
+      schema: schemaName,
+      database: db,
+      connection: conn,
+    };
+  }
+
+  function closeSchemaContextMenu() {
+    schemaContextMenu = null;
+    activeContextSchema = null;
+  }
+
+  function handleSchemaAction(event) {
+    const { type, detail } = event;
+    const { schema, database, connection } = detail;
+
+    switch (type) {
+      case "sqlEditor":
+        // Open SQL editor for this schema
+        console.log("SQL Editor for schema:", schema);
+        dispatch("openSqlEditor", { schema, database, connection });
+        break;
+      case "viewSchema":
+        // View schema properties
+        console.log("View Schema:", schema);
+        // TODO: Implement view schema
+        break;
+      case "viewDiagram":
+        // View schema diagram
+        console.log("View Diagram for schema:", schema);
+        // TODO: Implement view diagram
+        break;
+      case "importData":
+        // Import data to schema
+        console.log("Import Data to schema:", schema);
+        // TODO: Implement import data
+        break;
+      case "generateSql":
+        // Generate SQL for schema
+        console.log("Generate SQL for schema:", schema);
+        // TODO: Implement generate SQL
+        break;
+      case "copy":
+        // Copy schema name
+        navigator.clipboard.writeText(schema);
+        break;
+      case "paste":
+        // Paste action
+        console.log("Paste in schema:", schema);
+        // TODO: Implement paste
+        break;
+      case "copyAdvancedInfo":
+        // Copy detailed schema info
+        const info = `Schema: ${schema}\nDatabase: ${database.name}\nConnection: ${connection.name}\nHost: ${connection.host}:${connection.port}`;
+        navigator.clipboard.writeText(info);
+        break;
+      case "delete":
+        // Delete schema
+        if (
+          confirm(
+            `Are you sure you want to delete schema "${schema}"? This action cannot be undone!`
+          )
+        ) {
+          console.log("Delete Schema:", schema);
+          // TODO: Implement delete schema
+        }
+        break;
+      case "rename":
+        // Rename schema
+        const newName = prompt(`Rename schema "${schema}" to:`, schema);
+        if (newName && newName !== schema) {
+          console.log("Rename Schema:", schema, "to", newName);
+          // TODO: Implement rename schema
+        }
+        break;
+      case "refresh":
+        // Refresh schema (reload tables)
+        const key = `${connection.id}-${database.name}-${schema}`;
+        delete expandedSchemas[key];
+        expandedSchemas = { ...expandedSchemas };
+        toggleSchema(connection.id, database.name, schema);
+        break;
+    }
+    closeSchemaContextMenu();
+  }
+
+  function handleDatabaseAction(event) {
+    const { type, detail } = event;
+    const { database, connection } = detail;
+
+    switch (type) {
+      case "sqlEditor":
+        // Open SQL editor for this database
+        console.log("SQL Editor for database:", database.name);
+        dispatch("openSqlEditor", { database, connection });
+        break;
+      case "create":
+        // Create new object in database
+        console.log("Create in database:", database.name);
+        // TODO: Implement create menu
+        break;
+      case "viewDatabase":
+        // View database properties
+        console.log("View Database:", database.name);
+        // TODO: Implement view database
+        break;
+      case "filter":
+        // Filter database objects
+        console.log("Filter database:", database.name);
+        // TODO: Implement filter
+        break;
+      case "compareMigrate":
+        // Compare/migrate database
+        console.log("Compare/Migrate:", database.name);
+        // TODO: Implement compare/migrate
+        break;
+      case "tools":
+        // Database tools
+        console.log("Tools for database:", database.name);
+        // TODO: Implement tools menu
+        break;
+      case "copy":
+        // Copy database name
+        navigator.clipboard.writeText(database.name);
+        break;
+      case "paste":
+        // Paste action
+        console.log("Paste in database:", database.name);
+        // TODO: Implement paste
+        break;
+      case "copyAdvancedInfo":
+        // Copy detailed database info
+        const info = `Database: ${database.name}\nConnection: ${connection.name}\nHost: ${connection.host}:${connection.port}`;
+        navigator.clipboard.writeText(info);
+        break;
+      case "delete":
+        // Delete database
+        if (
+          confirm(
+            `Are you sure you want to delete database "${database.name}"? This action cannot be undone!`
+          )
+        ) {
+          console.log("Delete Database:", database.name);
+          // TODO: Implement delete database
+        }
+        break;
+      case "rename":
+        // Rename database
+        const newName = prompt(
+          `Rename database "${database.name}" to:`,
+          database.name
+        );
+        if (newName && newName !== database.name) {
+          console.log("Rename Database:", database.name, "to", newName);
+          // TODO: Implement rename database
+        }
+        break;
+      case "refresh":
+        // Refresh database (reload tables)
+        const key = `${connection.id}-${database.name}`;
+        delete expandedDatabases[key];
+        expandedDatabases = { ...expandedDatabases };
+        toggleDatabase(connection.id, database);
+        break;
+    }
+    closeDatabaseContextMenu();
+  }
+
+  function handleTableAction(event) {
+    const { type, detail } = event;
+    const { table, connection, database } = detail;
+
+    switch (type) {
+      case "viewTable":
+        // Open table structure view
+        console.log("View Table:", table.name);
+        // TODO: Implement view table structure
+        break;
+      case "viewDiagram":
+        // Open ER diagram
+        console.log("View Diagram:", table.name);
+        // TODO: Implement view diagram
+        break;
+      case "viewData":
+        // Open table data view - same as double click
+        handleTableDoubleClick(table, connection, database);
+        break;
+      case "exportData":
+        // Export table data
+        console.log("Export Data:", table.name);
+        // TODO: Implement export data
+        break;
+      case "importData":
+        // Import data to table
+        console.log("Import Data:", table.name);
+        // TODO: Implement import data
+        break;
+      case "readInConsole":
+        // Generate SELECT query in SQL console
+        console.log("Read in Console:", table.name);
+        // TODO: Implement read in SQL console
+        break;
+      case "copy":
+        // Copy table name
+        navigator.clipboard.writeText(table.name);
+        break;
+      case "copyAdvancedInfo":
+        // Copy detailed table info
+        const info = `Table: ${table.name}\nDatabase: ${database.name}\nConnection: ${connection.name}`;
+        navigator.clipboard.writeText(info);
+        break;
+      case "delete":
+        // Delete table
+        if (confirm(`Are you sure you want to delete table "${table.name}"?`)) {
+          console.log("Delete Table:", table.name);
+          // TODO: Implement delete table
+        }
+        break;
+      case "rename":
+        // Rename table
+        const newName = prompt(`Rename table "${table.name}" to:`, table.name);
+        if (newName && newName !== table.name) {
+          console.log("Rename Table:", table.name, "to", newName);
+          // TODO: Implement rename table
+        }
+        break;
+      case "refresh":
+        // Refresh table list
+        toggleDatabase(connection.id, database);
+        break;
+    }
+    closeTableContextMenu();
   }
 </script>
 
@@ -422,7 +778,8 @@
           </button>
           <button
             class="tree-label"
-            class:active={$activeConnection?.id === conn.id}
+            class:active={$activeConnection?.id === conn.id ||
+              activeContextConnection === conn.id}
             on:click={() => toggleConnection(conn)}
             on:contextmenu={(e) => handleConnectionContextMenu(e, conn)}
           >
@@ -478,8 +835,11 @@
                   </button>
                   <button
                     class="tree-label"
-                    class:active={$selectedDatabase?.name === db.name}
+                    class:active={$selectedDatabase?.name === db.name ||
+                      activeContextDatabase === `${conn.id}-${db.name}`}
                     on:click={() => toggleDatabase(conn.id, db)}
+                    on:contextmenu={(e) =>
+                      handleDatabaseContextMenu(e, db, conn)}
                   >
                     <i class="fas fa-database tree-icon"></i>
                     <span class="tree-text">{db.name}</span>
@@ -553,11 +913,20 @@
                                   </button>
                                   <button
                                     class="tree-section-header"
+                                    class:active={activeContextSchema ===
+                                      `${conn.id}-${db.name}-${schemaName}`}
                                     on:click={() =>
                                       toggleSchema(
                                         conn.id,
                                         db.name,
                                         schemaName
+                                      )}
+                                    on:contextmenu={(e) =>
+                                      handleSchemaContextMenu(
+                                        e,
+                                        schemaName,
+                                        db,
+                                        conn
                                       )}
                                   >
                                     <i class="fas fa-folder"></i>
@@ -612,7 +981,9 @@
                                                 <tr
                                                   class="table-item-row"
                                                   class:table-active={$selectedTable?.name ===
-                                                    table.name}
+                                                    table.name ||
+                                                    activeContextTable ===
+                                                      `${conn.id}-${db.name}-${schemaName}-${table.name}`}
                                                   style="cursor: pointer; line-height: 1.5;"
                                                 >
                                                   <td
@@ -639,6 +1010,17 @@
                                                         )}
                                                       on:dblclick={() =>
                                                         handleTableDoubleClick(
+                                                          table,
+                                                          expandedDatabases[
+                                                            `${conn.id}-${db.name}`
+                                                          ].connection,
+                                                          expandedDatabases[
+                                                            `${conn.id}-${db.name}`
+                                                          ].database
+                                                        )}
+                                                      on:contextmenu={(e) =>
+                                                        handleTableContextMenu(
+                                                          e,
                                                           table,
                                                           expandedDatabases[
                                                             `${conn.id}-${db.name}`
@@ -736,7 +1118,9 @@
                                   <tr
                                     class="table-item-row"
                                     class:table-active={$selectedTable?.name ===
-                                      table.name}
+                                      table.name ||
+                                      activeContextTable ===
+                                        `${conn.id}-${db.name}-${table.schema || "public"}-${table.name}`}
                                     style="cursor: pointer; line-height: 1.5;"
                                   >
                                     <td
@@ -760,6 +1144,17 @@
                                           selectTable(table, conn.id, db.name)}
                                         on:dblclick={() =>
                                           handleTableDoubleClick(
+                                            table,
+                                            expandedDatabases[
+                                              `${conn.id}-${db.name}`
+                                            ].connection,
+                                            expandedDatabases[
+                                              `${conn.id}-${db.name}`
+                                            ].database
+                                          )}
+                                        on:contextmenu={(e) =>
+                                          handleTableContextMenu(
+                                            e,
                                             table,
                                             expandedDatabases[
                                               `${conn.id}-${db.name}`
@@ -850,18 +1245,91 @@
 
 <!-- Context Menu -->
 {#if contextMenu}
-  <ConnectionContextMenu
-    x={contextMenu.x}
-    y={contextMenu.y}
-    connection={contextMenu.connection}
-    isConnected={connectedConnections[contextMenu.connection?.id] || false}
-    on:edit={handleContextMenuAction}
-    on:delete={handleContextMenuAction}
-    on:refresh={handleContextMenuAction}
-    on:connect={handleContextMenuAction}
-    on:disconnect={handleContextMenuAction}
-    on:copy={handleContextMenuAction}
-  />
+  {#key contextMenu.connection?.id}
+    <ConnectionContextMenu
+      x={contextMenu.x}
+      y={contextMenu.y}
+      connection={contextMenu.connection}
+      isConnected={connectedConnections[contextMenu.connection?.id] || false}
+      on:edit={handleContextMenuAction}
+      on:delete={handleContextMenuAction}
+      on:refresh={handleContextMenuAction}
+      on:connect={handleContextMenuAction}
+      on:disconnect={handleContextMenuAction}
+      on:copy={handleContextMenuAction}
+      on:rename={handleContextMenuAction}
+    />
+  {/key}
+{/if}
+
+<!-- Table Context Menu -->
+{#if tableContextMenu}
+  {#key `${tableContextMenu.connection?.id}-${tableContextMenu.database?.name}-${tableContextMenu.table?.name}`}
+    <TableContextMenu
+      x={tableContextMenu.x}
+      y={tableContextMenu.y}
+      table={tableContextMenu.table}
+      connection={tableContextMenu.connection}
+      database={tableContextMenu.database}
+      on:viewTable={handleTableAction}
+      on:viewDiagram={handleTableAction}
+      on:viewData={handleTableAction}
+      on:exportData={handleTableAction}
+      on:importData={handleTableAction}
+      on:readInConsole={handleTableAction}
+      on:copy={handleTableAction}
+      on:copyAdvancedInfo={handleTableAction}
+      on:delete={handleTableAction}
+      on:rename={handleTableAction}
+      on:refresh={handleTableAction}
+    />
+  {/key}
+{/if}
+
+{#if databaseContextMenu}
+  {#key `${databaseContextMenu.connection?.id}-${databaseContextMenu.database?.name}`}
+    <DatabaseContextMenu
+      x={databaseContextMenu.x}
+      y={databaseContextMenu.y}
+      database={databaseContextMenu.database}
+      connection={databaseContextMenu.connection}
+      on:sqlEditor={handleDatabaseAction}
+      on:create={handleDatabaseAction}
+      on:viewDatabase={handleDatabaseAction}
+      on:filter={handleDatabaseAction}
+      on:compareMigrate={handleDatabaseAction}
+      on:tools={handleDatabaseAction}
+      on:copy={handleDatabaseAction}
+      on:paste={handleDatabaseAction}
+      on:copyAdvancedInfo={handleDatabaseAction}
+      on:delete={handleDatabaseAction}
+      on:rename={handleDatabaseAction}
+      on:refresh={handleDatabaseAction}
+    />
+  {/key}
+{/if}
+
+{#if schemaContextMenu}
+  {#key `${schemaContextMenu.connection?.id}-${schemaContextMenu.database?.name}-${schemaContextMenu.schema}`}
+    <SchemaContextMenu
+      x={schemaContextMenu.x}
+      y={schemaContextMenu.y}
+      schema={schemaContextMenu.schema}
+      database={schemaContextMenu.database}
+      connection={schemaContextMenu.connection}
+      on:sqlEditor={handleSchemaAction}
+      on:viewSchema={handleSchemaAction}
+      on:viewDiagram={handleSchemaAction}
+      on:importData={handleSchemaAction}
+      on:generateSql={handleSchemaAction}
+      on:copy={handleSchemaAction}
+      on:paste={handleSchemaAction}
+      on:copyAdvancedInfo={handleSchemaAction}
+      on:delete={handleSchemaAction}
+      on:rename={handleSchemaAction}
+      on:refresh={handleSchemaAction}
+    />
+  {/key}
 {/if}
 
 {#if showModal}
@@ -1017,10 +1485,16 @@
     border: none;
     text-align: left;
     cursor: pointer;
+    border-radius: 3px;
   }
 
   .tree-section-header:hover {
     background: #e9ecef;
+  }
+
+  .tree-section-header.active {
+    background: #cfe2ff;
+    color: #0d6efd;
   }
 
   .tree-section-header i {
