@@ -8,18 +8,12 @@
   export let tabId = null;
   export let executedQuery = "";
 
-  // Debug props
-  $: {
-    console.log("📊 DataGrid Props Updated:");
-    console.log("  - tabId:", tabId);
-    console.log(
-      "  - executedQuery:",
-      executedQuery ? `"${executedQuery.substring(0, 50)}..."` : "EMPTY/NULL"
-    );
-    console.log("  - data rows:", data?.rows?.length || 0);
-    console.log("  - activeConnection:", $activeConnection ? "EXISTS" : "NULL");
-  }
-
+  let displayData = null; // Internal state for display (can be filtered or original)
+  let isFiltered = false; // Track if current data is filtered
+  let totalRows = 0; // Total rows in database (from COUNT query)
+  let currentOffset = 0; // Track current offset for pagination
+  let isLoadingMore = false; // Track if loading more data
+  let hasMoreData = true; // Track if there's more data to load
   let columnFilters = {};
   let sortColumn = null;
   let sortDirection = "asc";
@@ -33,20 +27,39 @@
   let loadingFilterValues = false;
   let isLoadingData = false;
   let finalQuery = ""; // Store the final executed query with filters
+  let currentTabId = null; // Track current tab to prevent unnecessary restores
+  let isRestoringScroll = false; // Flag to prevent restore during user scroll
 
-  // Load saved state when tab changes
-  $: if (tabId && $tabDataStore[tabId]) {
-    const savedState = $tabDataStore[tabId];
-    columnFilters = savedState.filters || {};
-    sortColumn = savedState.sortColumn || null;
-    sortDirection = savedState.sortDirection || "asc";
+  // Load saved state when tab changes (only when tabId actually changes)
+  $: if (tabId && tabId !== currentTabId) {
+    currentTabId = tabId;
 
-    // Restore scroll position after a short delay
-    if (tableWrapper && savedState.scrollPosition) {
-      setTimeout(() => {
-        tableWrapper.scrollTop = savedState.scrollPosition || 0;
-      }, 50);
+    if ($tabDataStore[tabId]) {
+      const savedState = $tabDataStore[tabId];
+      columnFilters = savedState.filters || {};
+      sortColumn = savedState.sortColumn || null;
+      sortDirection = savedState.sortDirection || "asc";
+
+      // Restore scroll position after a short delay, only once per tab change
+      if (tableWrapper && savedState.scrollPosition) {
+        isRestoringScroll = true;
+        setTimeout(() => {
+          if (tableWrapper) {
+            tableWrapper.scrollTop = savedState.scrollPosition || 0;
+            lastScrollTop = savedState.scrollPosition || 0;
+          }
+          isRestoringScroll = false;
+        }, 100);
+      }
     }
+  }
+
+  // Update displayData when original data changes (only if not filtered)
+  $: if (data && !isFiltered) {
+    displayData = data;
+    totalRows = data?.total_count || data?.rows?.length || 0;
+    currentOffset = 200; // Reset offset when new data loaded
+    hasMoreData = data?.rows?.length === 200; // Check if we got full batch
   }
 
   // Clear cache when executedQuery changes
@@ -55,6 +68,8 @@
     columnFilters = {};
     sortColumn = null;
     sortDirection = "asc";
+    currentOffset = 0;
+    hasMoreData = true;
   }
 
   async function reloadDataWithFilters() {
@@ -77,7 +92,17 @@
       return;
     }
 
-    isLoadingData = true;
+    // Clear current data and show loading state
+    const previousData = displayData;
+    displayData = null; // Clear data immediately
+    isLoadingData = true; // Set loading state
+    isFiltered = true; // Mark as filtered
+    currentOffset = 0; // Reset offset
+    hasMoreData = true; // Reset hasMoreData
+
+    // Force UI update with a small delay
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     try {
       console.log("🔄 Reloading with filters:", {
         executedQuery: executedQuery.substring(0, 100),
@@ -108,8 +133,11 @@
         200 // Default limit 200 rows
       );
 
-      // Update data with filtered results
-      data = result;
+      // Update displayData with filtered results
+      displayData = result;
+      totalRows = result?.total_count || result?.rows?.length || 0;
+      currentOffset = result?.rows?.length || 0;
+      hasMoreData = result?.rows?.length === 200;
 
       // Store the final query from backend
       if (result.final_query) {
@@ -117,18 +145,137 @@
       }
     } catch (error) {
       console.error("❌ Failed to reload data with filters:", error);
+      // Restore previous data on error
+      displayData = previousData;
+      isFiltered = false;
     } finally {
       isLoadingData = false;
     }
   }
 
-  // Save scroll position when scrolling
-  function handleScroll() {
-    if (tabId && tableWrapper) {
-      tabDataStore.setScrollPosition(tabId, tableWrapper.scrollTop);
+  async function loadMoreData() {
+    if (isLoadingMore || !hasMoreData || !executedQuery || !$activeConnection) {
+      return;
+    }
+
+    isLoadingMore = true;
+
+    try {
+      console.log("📥 Loading more data, offset:", currentOffset);
+
+      // Convert columnFilters to the format expected by backend
+      const filters = {};
+      for (const [col, value] of Object.entries(columnFilters)) {
+        if (Array.isArray(value) && value.length > 0) {
+          filters[col] = value;
+        } else if (typeof value === "string" && value.trim() !== "") {
+          filters[col] = value;
+        }
+      }
+
+      // Build query with LIMIT and OFFSET
+      let loadMoreQuery = executedQuery;
+
+      // Remove existing LIMIT if present (case insensitive)
+      loadMoreQuery = loadMoreQuery.replace(/\s+LIMIT\s+\d+/gi, "");
+
+      // Add new LIMIT and OFFSET
+      loadMoreQuery += ` LIMIT 200 OFFSET ${currentOffset}`;
+
+      const result = await executeQueryWithFilters(
+        $activeConnection,
+        loadMoreQuery,
+        Object.keys(filters).length > 0 ? filters : null,
+        sortColumn,
+        sortColumn ? sortDirection.toUpperCase() : null,
+        200
+      );
+
+      if (result && result.rows && result.rows.length > 0) {
+        // Append new rows to existing data
+        displayData = {
+          ...displayData,
+          rows: [...(displayData?.rows || []), ...result.rows],
+          execution_time: result.execution_time,
+        };
+
+        currentOffset += result.rows.length;
+        hasMoreData = result.rows.length === 200; // If less than 200, no more data
+
+        console.log(
+          "✅ Loaded",
+          result.rows.length,
+          "more rows. Total:",
+          displayData.rows.length
+        );
+      } else {
+        hasMoreData = false;
+        console.log("✅ No more data to load");
+      }
+    } catch (error) {
+      console.error("❌ Failed to load more data:", error);
+      hasMoreData = false;
+    } finally {
+      isLoadingMore = false;
     }
   }
 
+  // Save scroll position when scrolling with throttle
+  let scrollTimeout;
+  let lastScrollTop = 0;
+  let lastLoadTriggeredAt = 0; // Track last time load was triggered
+
+  function handleScroll() {
+    if (!tableWrapper || isRestoringScroll) return;
+
+    const currentScrollTop = tableWrapper.scrollTop;
+
+    // Check if scrolled near bottom (within 200px)
+    const scrollHeight = tableWrapper.scrollHeight;
+    const clientHeight = tableWrapper.clientHeight;
+    const distanceFromBottom = scrollHeight - (currentScrollTop + clientHeight);
+    const scrolledToBottom = distanceFromBottom < 200;
+
+    // Only trigger load if:
+    // 1. Scrolled to bottom
+    // 2. Has more data
+    // 3. Not currently loading
+    // 4. Scrolling down (not up)
+    // 5. Haven't triggered load recently (within 1 second)
+    const now = Date.now();
+    const isScrollingDown = currentScrollTop > lastScrollTop;
+    const canTriggerLoad = now - lastLoadTriggeredAt > 1000;
+
+    if (
+      scrolledToBottom &&
+      hasMoreData &&
+      !isLoadingMore &&
+      isScrollingDown &&
+      canTriggerLoad
+    ) {
+      lastLoadTriggeredAt = now;
+      loadMoreData();
+    }
+
+    // Only update if scroll changed significantly (more than 5px)
+    if (Math.abs(currentScrollTop - lastScrollTop) < 5) {
+      return;
+    }
+
+    lastScrollTop = currentScrollTop;
+
+    // Clear previous timeout
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+
+    // Throttle scroll save to prevent excessive updates
+    scrollTimeout = setTimeout(() => {
+      if (tabId && tableWrapper) {
+        tabDataStore.setScrollPosition(tabId, tableWrapper.scrollTop);
+      }
+    }, 150);
+  }
   function formatValue(value) {
     if (value === null || value === undefined) {
       return "NULL";
@@ -390,6 +537,10 @@
     selectedFilterValues = {};
     sortColumn = null;
     sortDirection = "asc";
+    isFiltered = false; // Clear filtered flag
+    displayData = data; // Restore original data
+    currentOffset = 200; // Reset offset
+    hasMoreData = data?.rows?.length === 200;
 
     // Reset final query
     finalQuery = "";
@@ -418,7 +569,7 @@
   }
 
   // Display rows directly - filtering and sorting should be done on server-side
-  $: displayRows = data?.rows || [];
+  $: displayRows = displayData?.rows || [];
 </script>
 
 <div class="data-grid-container h-100 d-flex flex-column">
@@ -429,17 +580,22 @@
       <i class="fas fa-spinner fa-spin fa-3x mb-3"></i>
       <p class="fs-5">Loading filtered data...</p>
     </div>
-  {:else if data && data.rows.length > 0}
+  {:else if displayData && displayData.rows.length > 0}
     <div class="d-flex align-items-center gap-2 p-2 bg-light border-bottom">
       <span class="badge bg-primary">
-        <i class="fas fa-table"></i> Rows: {displayRows.length}
+        <i class="fas fa-table"></i>
+        {#if totalRows > displayRows.length}
+          Rows: {displayRows.length.toLocaleString()} of {totalRows.toLocaleString()}
+        {:else}
+          Rows: {displayRows.length.toLocaleString()}
+        {/if}
       </span>
       <span class="badge bg-info">
-        <i class="fas fa-columns"></i> Columns: {data.columns.length}
+        <i class="fas fa-columns"></i> Columns: {displayData.columns.length}
       </span>
       <span class="badge bg-secondary">
         <i class="fas fa-clock"></i>
-        {data.execution_time}ms
+        {displayData.execution_time}ms
       </span>
       {#if Object.keys(columnFilters).length > 0}
         <button
@@ -452,18 +608,20 @@
     </div>
 
     <div
-      class="table-wrapper flex-grow-1 overflow-auto"
+      class="table-container flex-grow-1"
       bind:this={tableWrapper}
       on:scroll={handleScroll}
     >
       <table
-        class="table table-sm table-hover table-bordered data-table mb-0"
+        class="table table-sm table-bordered data-table mb-0"
         style="table-layout: auto;"
       >
-        <thead class="sticky-top" style="background-color: #e7f1ff;">
+        <thead
+          style="background-color: #e7f1ff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);"
+        >
           <tr>
             <th class="text-center" style="width: 50px;">#</th>
-            {#each data.columns as column}
+            {#each displayData.columns as column}
               {@const isNumeric = isNumericColumn(column)}
               <th class:text-end={isNumeric}>
                 <div
@@ -518,7 +676,7 @@
           {#each displayRows as row, index}
             <tr>
               <td class="text-center text-muted fw-medium">{index + 1}</td>
-              {#each data.columns as column}
+              {#each displayData.columns as column}
                 <td
                   class="{row[column] === null || row[column] === undefined
                     ? 'null-value fst-italic'
@@ -534,15 +692,33 @@
           {/each}
         </tbody>
       </table>
+
+      {#if isLoadingMore}
+        <div class="text-center py-3 bg-light">
+          <i class="fas fa-spinner fa-spin text-primary"></i>
+          <span class="ms-2 text-muted">Loading more data...</span>
+        </div>
+      {/if}
+
+      {#if !hasMoreData && displayRows.length > 0}
+        <div class="text-center py-3 text-muted small bg-light">
+          <i class="fas fa-check-circle"></i>
+          <span class="ms-2"
+            >All data loaded ({displayRows.length.toLocaleString()} rows)</span
+          >
+        </div>
+      {/if}
     </div>
-  {:else if data}
+  {:else if displayData}
     <div
       class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary"
     >
       <i class="fas fa-info-circle fa-3x mb-3 opacity-50"></i>
       <p class="fs-5">Query executed successfully</p>
-      {#if data.rows_affected !== null}
-        <span class="badge bg-success">{data.rows_affected} rows affected</span>
+      {#if displayData.rows_affected !== null}
+        <span class="badge bg-success"
+          >{displayData.rows_affected} rows affected</span
+        >
       {/if}
     </div>
   {:else}
@@ -705,21 +881,21 @@
 
 <style>
   /* Custom scrollbar styling */
-  .table-wrapper::-webkit-scrollbar {
+  .table-container::-webkit-scrollbar {
     width: 12px;
     height: 12px;
   }
 
-  .table-wrapper::-webkit-scrollbar-track {
+  .table-container::-webkit-scrollbar-track {
     background: #f8f9fa;
   }
 
-  .table-wrapper::-webkit-scrollbar-thumb {
+  .table-container::-webkit-scrollbar-thumb {
     background: #c0c0c0;
     border-radius: 6px;
   }
 
-  .table-wrapper::-webkit-scrollbar-thumb:hover {
+  .table-container::-webkit-scrollbar-thumb:hover {
     background: #a0a0a0;
   }
 
@@ -789,9 +965,25 @@
     font-weight: 600;
   }
 
-  /* Table wrapper */
-  .table-wrapper {
+  /* Table container */
+  .table-container {
     position: relative;
+    overflow: auto;
+    height: 100%;
+  }
+
+  /* Optimize table rendering */
+  .data-table {
+    border-collapse: collapse;
+    table-layout: auto;
+    margin: 0;
+    width: auto;
+    min-width: 100%;
+  }
+
+  .data-table thead th {
+    position: relative;
+    background-color: #e7f1ff;
   }
 
   /* Ensure table cells truncate properly */
@@ -800,5 +992,33 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    padding: 0.5rem;
+    border: 1px solid #dee2e6;
+    max-width: 500px;
+    min-width: 100px;
+  }
+
+  /* Fixed row height to prevent layout shifts */
+  .data-table tbody tr {
+    height: 32px;
+  }
+
+  .data-table tbody td {
+    height: 32px;
+    line-height: 1.2;
+  }
+
+  /* Disable all animations and transitions */
+  .data-table,
+  .data-table *,
+  .table-container,
+  .table-container * {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  /* Prevent layout shift during scroll */
+  .data-table tbody {
+    display: table-row-group;
   }
 </style>

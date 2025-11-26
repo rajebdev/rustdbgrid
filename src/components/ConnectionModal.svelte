@@ -71,24 +71,32 @@
           <i class="fas fa-plug"></i>
           {connection ? "Edit Connection" : "New Connection"}
         </h5>
-        <button type="button" class="btn-close" on:click={handleClose}></button>
+        <button type="button" title="" class="btn-close" on:click={handleClose}
+        ></button>
       </div>
 
       <div class="modal-body">
         <form on:submit|preventDefault={handleSave}>
           <div class="mb-3">
-            <label class="form-label">Connection Name</label>
+            <label class="form-label" for="connectionName"
+              >Connection Name</label
+            >
             <input
               type="text"
               class="form-control"
+              id="connectionName"
               bind:value={formData.name}
               required
             />
           </div>
 
           <div class="mb-3">
-            <label class="form-label">Database Type</label>
-            <select class="form-select" bind:value={formData.db_type}>
+            <label class="form-label" for="dbType">Database Type</label>
+            <select
+              class="form-select"
+              id="dbType"
+              bind:value={formData.db_type}
+            >
               <option value="MySQL">MySQL</option>
               <option value="PostgreSQL">PostgreSQL</option>
               <option value="MongoDB">MongoDB</option>
@@ -99,19 +107,21 @@
 
           <div class="row">
             <div class="col-md-8 mb-3">
-              <label class="form-label">Host</label>
+              <label class="form-label" for="host">Host</label>
               <input
                 type="text"
                 class="form-control"
+                id="host"
                 bind:value={formData.host}
                 required
               />
             </div>
             <div class="col-md-4 mb-3">
-              <label class="form-label">Port</label>
+              <label class="form-label" for="port">Port</label>
               <input
                 type="number"
                 class="form-control"
+                id="port"
                 bind:value={formData.port}
                 required
               />
@@ -120,28 +130,31 @@
 
           <div class="row">
             <div class="col-md-6 mb-3">
-              <label class="form-label">Username</label>
+              <label class="form-label" for="username">Username</label>
               <input
                 type="text"
                 class="form-control"
+                id="username"
                 bind:value={formData.username}
               />
             </div>
             <div class="col-md-6 mb-3">
-              <label class="form-label">Password</label>
+              <label class="form-label" for="password">Password</label>
               <input
                 type="password"
                 class="form-control"
+                id="password"
                 bind:value={formData.password}
               />
             </div>
           </div>
 
           <div class="mb-3">
-            <label class="form-label">Database (optional)</label>
+            <label class="form-label" for="database">Database (optional)</label>
             <input
               type="text"
               class="form-control"
+              id="database"
               bind:value={formData.database}
             />
           </div>

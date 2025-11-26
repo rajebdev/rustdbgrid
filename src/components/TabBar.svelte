@@ -31,15 +31,10 @@
 
 <div
   class="d-flex bg-body-secondary border-bottom"
-  style="height: 32px; overflow: hidden; user-select: none;"
+  style="height: 32px; overflow: hidden; user-select: none; flex-shrink: 0; position: relative; z-index: 5;"
 >
   {#if tabs.length === 0}
-    <div
-      class="d-flex align-items-center px-3 text-muted"
-      style="font-size: 12px;"
-    >
-      <span>No tabs open</span>
-    </div>
+    <!-- Empty state, no message -->
   {:else}
     <div
       class="d-flex flex-grow-1 overflow-auto align-items-end"
@@ -50,7 +45,7 @@
           class="d-flex align-items-center gap-2 px-3 border-end position-relative {activeTab?.id ===
           tab.id
             ? 'bg-body border-top border-2 border-primary'
-            : 'bg-body-tertiary'}"
+            : ''}"
           style="min-width: 120px; max-width: 200px; height: {activeTab?.id ===
           tab.id
             ? '32px'

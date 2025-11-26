@@ -25,6 +25,8 @@
   let expandedTables = {};
   let searchQuery = "";
   let storageInfo = null;
+  let loadingConnections = {}; // Track loading state per connection
+  let loadingDatabases = {}; // Track loading state per database
 
   onMount(async () => {
     await loadConnections();
@@ -53,11 +55,16 @@
 
     if (!isExpanded) {
       activeConnection.set(conn);
+      loadingConnections[conn.id] = true;
+      loadingConnections = { ...loadingConnections };
       try {
         databases = await getDatabases(conn);
         expandedConnections[conn.id] = { databases };
       } catch (error) {
         console.error("Failed to load databases:", error);
+      } finally {
+        loadingConnections[conn.id] = false;
+        loadingConnections = { ...loadingConnections };
       }
     } else {
       delete expandedConnections[conn.id];
@@ -71,11 +78,16 @@
 
     if (!isExpanded) {
       selectedDatabase.set(db);
+      loadingDatabases[key] = true;
+      loadingDatabases = { ...loadingDatabases };
       try {
         const dbTables = await getTables($activeConnection, db.name);
         expandedDatabases[key] = { tables: dbTables };
       } catch (error) {
         console.error("Failed to load tables:", error);
+      } finally {
+        loadingDatabases[key] = false;
+        loadingDatabases = { ...loadingDatabases };
       }
     } else {
       delete expandedDatabases[key];
@@ -183,11 +195,15 @@
             on:click={() => toggleConnection(conn)}
             aria-label="Toggle connection"
           >
-            <i
-              class="fas fa-chevron-{expandedConnections[conn.id]
-                ? 'down'
-                : 'right'}"
-            ></i>
+            {#if loadingConnections[conn.id]}
+              <i class="fas fa-spinner fa-spin"></i>
+            {:else}
+              <i
+                class="fas fa-chevron-{expandedConnections[conn.id]
+                  ? 'down'
+                  : 'right'}"
+              ></i>
+            {/if}
           </button>
           <button
             class="tree-label"
@@ -210,13 +226,17 @@
                     on:click={() => toggleDatabase(conn.id, db)}
                     aria-label="Toggle database"
                   >
-                    <i
-                      class="fas fa-chevron-{expandedDatabases[
-                        `${conn.id}-${db.name}`
-                      ]
-                        ? 'down'
-                        : 'right'}"
-                    ></i>
+                    {#if loadingDatabases[`${conn.id}-${db.name}`]}
+                      <i class="fas fa-spinner fa-spin"></i>
+                    {:else}
+                      <i
+                        class="fas fa-chevron-{expandedDatabases[
+                          `${conn.id}-${db.name}`
+                        ]
+                          ? 'down'
+                          : 'right'}"
+                      ></i>
+                    {/if}
                   </button>
                   <button
                     class="tree-label"
@@ -292,8 +312,9 @@
                                         class="fas fa-table text-secondary me-1"
                                         style="font-size: 11px;"
                                       ></i>
-                                      <span class="text-truncate"
-                                        >{table.name}</span
+                                      <span
+                                        class="text-truncate"
+                                        title={table.name}>{table.name}</span
                                       >
                                     </button>
                                   </td>
@@ -533,6 +554,21 @@
 
   .tables-section-node {
     padding-left: 8px;
+  }
+
+  /* Loading spinner animation */
+  .fa-spinner {
+    color: #0d6efd;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* Custom styles for table item active state */

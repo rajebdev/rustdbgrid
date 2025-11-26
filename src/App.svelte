@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from "svelte";
   import MenuBar from "./components/MenuBar.svelte";
   import TabBar from "./components/TabBar.svelte";
   import Sidebar from "./components/Sidebar.svelte";
@@ -6,23 +7,46 @@
   import DataGrid from "./components/DataGrid.svelte";
   import StatusBar from "./components/StatusBar.svelte";
   import ConnectionModal from "./components/ConnectionModal.svelte";
+  import SplashScreen from "./components/SplashScreen.svelte";
   import { activeConnection } from "./stores/connections";
   import { tabDataStore } from "./stores/tabData";
   import { getTableData } from "./utils/tauri";
 
   let showSidebar = true;
   let showModal = false;
+  let showSplash = true;
+  let loadingProgress = 0;
+  let loadingMessage = "Initializing application";
 
   let tabs = [];
   let activeTab = null;
 
   $: currentTabData = activeTab ? $tabDataStore[activeTab.id] : null;
 
-  // Debug log
-  $: if (activeTab) {
-    console.log("Active tab changed:", activeTab);
-    console.log("Current tab data:", currentTabData);
-  }
+  onMount(async () => {
+    // Simulate initialization steps
+    const steps = [
+      { message: "Loading configuration", duration: 300 },
+      { message: "Initializing database drivers", duration: 400 },
+      { message: "Loading saved connections", duration: 300 },
+      { message: "Preparing workspace", duration: 200 },
+      { message: "Ready", duration: 100 },
+    ];
+
+    let currentProgress = 0;
+    const progressStep = 100 / steps.length;
+
+    for (let i = 0; i < steps.length; i++) {
+      loadingMessage = steps[i].message;
+      await new Promise((resolve) => setTimeout(resolve, steps[i].duration));
+      currentProgress += progressStep;
+      loadingProgress = currentProgress;
+    }
+
+    // Hide splash screen with fade out
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    showSplash = false;
+  });
 
   function handleMenuAction(event) {
     const action = event.type;
@@ -148,6 +172,12 @@
   }
 </script>
 
+<SplashScreen
+  bind:show={showSplash}
+  progress={loadingProgress}
+  message={loadingMessage}
+/>
+
 <div class="d-flex flex-column vh-100 overflow-hidden bg-body">
   <MenuBar
     on:newQuery={handleMenuAction}
@@ -178,17 +208,23 @@
     {/if}
 
     <div
-      class="d-flex flex-column flex-grow-1 overflow-hidden bg-body-secondary"
+      class="d-flex flex-column flex-grow-1"
+      style="min-height: 0; overflow: hidden;"
     >
-      <TabBar
-        {tabs}
-        {activeTab}
-        on:select={handleTabSelect}
-        on:close={handleTabClose}
-        on:new={handleNewTab}
-      />
+      <div style="flex-shrink: 0; position: sticky; top: 0; z-index: 100;">
+        <TabBar
+          {tabs}
+          {activeTab}
+          on:select={handleTabSelect}
+          on:close={handleTabClose}
+          on:new={handleNewTab}
+        />
+      </div>
 
-      <div class="flex-grow-1 overflow-hidden d-flex flex-column">
+      <div
+        class="flex-grow-1 d-flex flex-column"
+        style="overflow: hidden; min-height: 0;"
+      >
         {#if activeTab}
           {#if activeTab.type === "query"}
             <div class="d-flex flex-column h-100">
@@ -236,19 +272,106 @@
           {/if}
         {:else}
           <div
-            class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary gap-4 bg-body-tertiary"
+            class="d-flex flex-column align-items-center justify-content-center h-100 bg-body-tertiary p-4"
+            style="gap: 2rem;"
           >
-            <i
-              class="fas fa-file-code opacity-25 text-muted"
-              style="font-size: 72px;"
-            ></i>
-            <p class="fs-5 m-0 text-dark">No tab selected</p>
-            <button
-              class="btn btn-primary d-flex align-items-center gap-2"
-              on:click={addNewQueryTab}
-            >
-              <i class="fas fa-plus"></i> New Query
-            </button>
+            <!-- Logo besar -->
+            <div class="text-center">
+              <i
+                class="fas fa-database text-primary"
+                style="font-size: 120px; opacity: 0.9;"
+              ></i>
+              <h2 class="mt-3 fw-bold text-dark">RustDBGrid</h2>
+              <p class="text-muted">Universal Database Management Tool</p>
+            </div>
+
+            <!-- Start section -->
+            <div class="welcome-section">
+              <h5 class="text-muted mb-3">
+                <i class="fas fa-play-circle me-2"></i>Start
+              </h5>
+              <div class="d-flex flex-column gap-2">
+                <button
+                  class="welcome-button btn btn-link text-start d-flex align-items-center gap-3 text-decoration-none px-3 py-2"
+                  on:click={addNewQueryTab}
+                >
+                  <i
+                    class="fas fa-file-code text-primary"
+                    style="font-size: 20px;"
+                  ></i>
+                  <div class="flex-grow-1">
+                    <div class="text-dark fw-medium">New Query</div>
+                    <small class="text-muted">Create a new SQL query tab</small>
+                  </div>
+                  <kbd class="kbd-shortcut">Ctrl+N</kbd>
+                </button>
+
+                <button
+                  class="welcome-button btn btn-link text-start d-flex align-items-center gap-3 text-decoration-none px-3 py-2"
+                  on:click={() => (showModal = true)}
+                >
+                  <i class="fas fa-plug text-success" style="font-size: 20px;"
+                  ></i>
+                  <div class="flex-grow-1">
+                    <div class="text-dark fw-medium">New Connection</div>
+                    <small class="text-muted">Connect to a database</small>
+                  </div>
+                  <kbd class="kbd-shortcut">Ctrl+Shift+C</kbd>
+                </button>
+
+                <button
+                  class="welcome-button btn btn-link text-start d-flex align-items-center gap-3 text-decoration-none px-3 py-2"
+                  on:click={() => (showSidebar = !showSidebar)}
+                >
+                  <i class="fas fa-sidebar text-info" style="font-size: 20px;"
+                  ></i>
+                  <div class="flex-grow-1">
+                    <div class="text-dark fw-medium">Toggle Sidebar</div>
+                    <small class="text-muted">Show/hide database explorer</small
+                    >
+                  </div>
+                  <kbd class="kbd-shortcut">Ctrl+B</kbd>
+                </button>
+              </div>
+            </div>
+
+            <!-- Help section -->
+            <div class="welcome-section">
+              <h5 class="text-muted mb-3">
+                <i class="fas fa-question-circle me-2"></i>Help
+              </h5>
+              <div class="d-flex flex-column gap-2">
+                <a
+                  href="#"
+                  class="welcome-button btn btn-link text-start d-flex align-items-center gap-3 text-decoration-none px-3 py-2"
+                >
+                  <i class="fas fa-book text-warning" style="font-size: 20px;"
+                  ></i>
+                  <div class="flex-grow-1">
+                    <div class="text-dark fw-medium">Documentation</div>
+                    <small class="text-muted">Learn how to use RustDBGrid</small
+                    >
+                  </div>
+                </a>
+
+                <a
+                  href="#"
+                  class="welcome-button btn btn-link text-start d-flex align-items-center gap-3 text-decoration-none px-3 py-2"
+                >
+                  <i
+                    class="fas fa-keyboard text-secondary"
+                    style="font-size: 20px;"
+                  ></i>
+                  <div class="flex-grow-1">
+                    <div class="text-dark fw-medium">Keyboard Shortcuts</div>
+                    <small class="text-muted"
+                      >View all available shortcuts</small
+                    >
+                  </div>
+                  <kbd class="kbd-shortcut">Ctrl+K Ctrl+S</kbd>
+                </a>
+              </div>
+            </div>
           </div>
         {/if}
       </div>
@@ -263,8 +386,32 @@
 </div>
 
 <style>
-  /* Hover effect for resizer */
-  .bg-body-tertiary:hover {
-    background-color: #0d6efd !important;
+  .welcome-section {
+    width: 100%;
+    max-width: 600px;
+  }
+
+  .welcome-button {
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    background-color: transparent;
+    border: 1px solid transparent;
+  }
+
+  .welcome-button:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.1);
+    transform: translateX(4px);
+  }
+
+  .kbd-shortcut {
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-family: "Consolas", "Monaco", monospace;
+    color: #666;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   }
 </style>
