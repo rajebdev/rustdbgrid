@@ -82,8 +82,22 @@ impl DatabaseConnection for MySQLConnection {
         for row in rows {
             let mut row_map = HashMap::new();
             for (i, col) in columns.iter().enumerate() {
-                let value: Option<String> = row.try_get(i).ok();
-                row_map.insert(col.clone(), serde_json::json!(value));
+                // Try to get value as different types in order of specificity
+                let value = if let Ok(v) = row.try_get::<i64, _>(i) {
+                    serde_json::json!(v)
+                } else if let Ok(v) = row.try_get::<f64, _>(i) {
+                    serde_json::json!(v)
+                } else if let Ok(v) = row.try_get::<bool, _>(i) {
+                    serde_json::json!(v)
+                } else if let Ok(v) = row.try_get::<String, _>(i) {
+                    serde_json::json!(v)
+                } else if let Ok(v) = row.try_get::<Vec<u8>, _>(i) {
+                    // Handle binary data
+                    serde_json::json!(format!("[BLOB {} bytes]", v.len()))
+                } else {
+                    serde_json::Value::Null
+                };
+                row_map.insert(col.clone(), value);
             }
             result_rows.push(row_map);
         }

@@ -14,6 +14,7 @@
   let currentOffset = 0; // Track current offset for pagination
   let isLoadingMore = false; // Track if loading more data
   let hasMoreData = true; // Track if there's more data to load
+  let lastLoadedQueryId = null; // Track which query the data belongs to
   let columnFilters = {};
   let sortColumn = null;
   let sortDirection = "asc";
@@ -54,12 +55,21 @@
     }
   }
 
-  // Update displayData when original data changes (only if not filtered)
-  $: if (data && !isFiltered) {
-    displayData = data;
-    totalRows = data?.total_count || data?.rows?.length || 0;
-    currentOffset = 200; // Reset offset when new data loaded
-    hasMoreData = data?.rows?.length === 200; // Check if we got full batch
+  // Update displayData when original data changes (only if not filtered and not loading more)
+  $: if (data && !isFiltered && !isLoadingMore) {
+    const queryId =
+      executedQuery +
+      JSON.stringify(columnFilters) +
+      sortColumn +
+      sortDirection;
+    // Only reset if this is a new query (not a load more operation)
+    if (queryId !== lastLoadedQueryId) {
+      displayData = data;
+      totalRows = data?.total_count || data?.rows?.length || 0;
+      currentOffset = data?.rows?.length || 0; // Set offset to current row count
+      hasMoreData = data?.rows?.length === 200; // Check if we got full batch
+      lastLoadedQueryId = queryId;
+    }
   }
 
   // Clear cache when executedQuery changes
@@ -70,6 +80,7 @@
     sortDirection = "asc";
     currentOffset = 0;
     hasMoreData = true;
+    lastLoadedQueryId = null; // Reset query ID tracking
   }
 
   async function reloadDataWithFilters() {
@@ -138,6 +149,8 @@
       totalRows = result?.total_count || result?.rows?.length || 0;
       currentOffset = result?.rows?.length || 0;
       hasMoreData = result?.rows?.length === 200;
+      lastLoadedQueryId =
+        executedQuery + JSON.stringify(filters) + sortColumn + sortDirection;
 
       // Store the final query from backend
       if (result.final_query) {
@@ -193,20 +206,26 @@
 
       if (result && result.rows && result.rows.length > 0) {
         // Append new rows to existing data
+        const newRows = [...(displayData?.rows || []), ...result.rows];
         displayData = {
           ...displayData,
-          rows: [...(displayData?.rows || []), ...result.rows],
+          rows: newRows,
           execution_time: result.execution_time,
         };
 
-        currentOffset += result.rows.length;
+        currentOffset = newRows.length; // Set offset to total row count
         hasMoreData = result.rows.length === 200; // If less than 200, no more data
+
+        // Update final query to show current LIMIT/OFFSET
+        finalQuery = loadMoreQuery;
 
         console.log(
           "✅ Loaded",
           result.rows.length,
           "more rows. Total:",
-          displayData.rows.length
+          newRows.length,
+          "| Next offset:",
+          currentOffset
         );
       } else {
         hasMoreData = false;
@@ -620,7 +639,6 @@
           style="background-color: #e7f1ff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);"
         >
           <tr>
-            <th class="text-center" style="width: 50px;">#</th>
             {#each displayData.columns as column}
               {@const isNumeric = isNumericColumn(column)}
               <th class:text-end={isNumeric}>
@@ -675,7 +693,6 @@
         <tbody>
           {#each displayRows as row, index}
             <tr>
-              <td class="text-center text-muted fw-medium">{index + 1}</td>
               {#each displayData.columns as column}
                 <td
                   class="{row[column] === null || row[column] === undefined
