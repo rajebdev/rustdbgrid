@@ -1,4 +1,4 @@
-import { writable, get } from 'svelte/store';
+import { writable, get } from "svelte/store";
 
 /**
  * Tab Management Store and Logic
@@ -10,12 +10,12 @@ function createTabStore() {
   return {
     subscribe: tabs.subscribe,
     activeTab,
-    
+
     /**
      * Add a new query tab
      */
     addQueryTab: () => {
-      tabs.update(currentTabs => {
+      tabs.update((currentTabs) => {
         const newTab = {
           id: Date.now(),
           title: `Query ${currentTabs.length + 1}`,
@@ -31,7 +31,7 @@ function createTabStore() {
      * Add a new table tab
      */
     addTableTab: (table, database, connection) => {
-      tabs.update(currentTabs => {
+      tabs.update((currentTabs) => {
         // Check if tab already exists
         const existingTab = currentTabs.find(
           (t) =>
@@ -75,11 +75,11 @@ function createTabStore() {
      */
     closeTab: (tabToClose) => {
       let tabIndex = -1;
-      
-      tabs.update(currentTabs => {
+
+      tabs.update((currentTabs) => {
         tabIndex = currentTabs.findIndex((t) => t.id === tabToClose.id);
         const newTabs = currentTabs.filter((t) => t.id !== tabToClose.id);
-        
+
         // Update active tab if needed
         const currentActive = get(activeTab);
         if (currentActive?.id === tabToClose.id) {
@@ -113,7 +113,9 @@ function createTabStore() {
       const currentActive = get(activeTab);
 
       if (currentTabs.length > 1 && currentActive) {
-        const currentIndex = currentTabs.findIndex((t) => t.id === currentActive.id);
+        const currentIndex = currentTabs.findIndex(
+          (t) => t.id === currentActive.id
+        );
         const nextIndex = (currentIndex + 1) % currentTabs.length;
         activeTab.set(currentTabs[nextIndex]);
       }
@@ -127,8 +129,11 @@ function createTabStore() {
       const currentActive = get(activeTab);
 
       if (currentTabs.length > 1 && currentActive) {
-        const currentIndex = currentTabs.findIndex((t) => t.id === currentActive.id);
-        const prevIndex = (currentIndex - 1 + currentTabs.length) % currentTabs.length;
+        const currentIndex = currentTabs.findIndex(
+          (t) => t.id === currentActive.id
+        );
+        const prevIndex =
+          (currentIndex - 1 + currentTabs.length) % currentTabs.length;
         activeTab.set(currentTabs[prevIndex]);
       }
     },
@@ -137,7 +142,7 @@ function createTabStore() {
      * Update tabs array (for reactivity)
      */
     updateTabs: () => {
-      tabs.update(currentTabs => [...currentTabs]);
+      tabs.update((currentTabs) => [...currentTabs]);
     },
 
     /**

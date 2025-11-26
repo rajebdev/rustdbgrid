@@ -1,4 +1,54 @@
-import { fileService, showMessage, showError } from '../services/fileService';
+import { fileService, showMessage, showError } from "../services/fileService";
+import { get } from "svelte/store";
+
+/**
+ * Handle opening table tab
+ */
+export async function handleOpenTableTab(
+  event,
+  tabStore,
+  tabDataStore,
+  getTableData
+) {
+  const { table, database, connection } = event.detail;
+
+  tabStore.addTableTab(table, database, connection);
+
+  const newTab = get(tabStore.activeTab);
+  if (!newTab) return;
+
+  try {
+    let tableIdentifier = table.name;
+    if (connection.db_type === "PostgreSQL" && table.schema) {
+      tableIdentifier = `${table.schema}.${table.name}`;
+    } else if (connection.db_type === "MySQL") {
+      tableIdentifier = `${database.name}.${table.name}`;
+    }
+
+    const tableData = await getTableData(
+      connection,
+      database.name,
+      tableIdentifier,
+      200,
+      0
+    );
+
+    let tableQuery;
+    if (connection.db_type === "PostgreSQL" && table.schema) {
+      tableQuery = `SELECT * FROM "${table.schema}"."${table.name}" LIMIT 200`;
+    } else if (connection.db_type === "MySQL") {
+      tableQuery = `SELECT * FROM ${database.name}.${table.name} LIMIT 200`;
+    } else {
+      tableQuery = `SELECT * FROM ${table.name} LIMIT 200`;
+    }
+
+    tabDataStore.setQueryResult(newTab.id, tableData);
+    tabDataStore.setExecutedQuery(newTab.id, tableQuery);
+  } catch (error) {
+    console.error("Failed to load table data:", error);
+    await showError(`Failed to load table data: ${error.message || error}`);
+  }
+}
 
 /**
  * Menu Action Handlers
@@ -23,7 +73,7 @@ export function createMenuHandlers(context) {
     async handleOpenFile() {
       try {
         const file = await fileService.openFile();
-        
+
         if (file) {
           const newTab = {
             id: Date.now(),
@@ -82,8 +132,11 @@ export function createMenuHandlers(context) {
       }
 
       try {
-        const result = await fileService.saveQueryAs(activeTab.title, tabData.queryText);
-        
+        const result = await fileService.saveQueryAs(
+          activeTab.title,
+          tabData.queryText
+        );
+
         if (result) {
           activeTab.filePath = result.path;
           activeTab.modified = false;
@@ -202,7 +255,9 @@ export function createMenuHandlers(context) {
     // Database Menu Handlers
     async handleConnect() {
       if (!activeConnection) {
-        await showError("No connection selected. Please create a connection first.");
+        await showError(
+          "No connection selected. Please create a connection first."
+        );
         context.setShowModal(true);
       } else {
         await showMessage("Already connected to: " + activeConnection.name);
@@ -316,8 +371,11 @@ export function createMenuHandlers(context) {
         try {
           const tableInfo = activeTab.tableInfo;
           let tableIdentifier = tableInfo.name;
-          
-          if (tableInfo.connection.db_type === "PostgreSQL" && tableInfo.schema) {
+
+          if (
+            tableInfo.connection.db_type === "PostgreSQL" &&
+            tableInfo.schema
+          ) {
             tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
           } else if (tableInfo.connection.db_type === "MySQL") {
             tableIdentifier = `${tableInfo.database}.${tableInfo.name}`;
@@ -358,7 +416,9 @@ export function createMenuHandlers(context) {
         await open("https://github.com/yourusername/rustdbgrid#readme");
       } catch (error) {
         console.error("Failed to open documentation:", error);
-        await showMessage("Documentation: https://github.com/yourusername/rustdbgrid");
+        await showMessage(
+          "Documentation: https://github.com/yourusername/rustdbgrid"
+        );
       }
     },
 

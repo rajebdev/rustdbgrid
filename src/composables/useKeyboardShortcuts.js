@@ -1,4 +1,4 @@
-import { onMount } from 'svelte';
+import { onMount } from "svelte";
 
 /**
  * Setup keyboard shortcuts for the application
