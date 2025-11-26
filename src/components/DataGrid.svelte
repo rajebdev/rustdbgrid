@@ -7,6 +7,7 @@
   export let data = null;
   export let tabId = null;
   export let executedQuery = "";
+  export let connection = null;
 
   let displayData = null; // Internal state for display (can be filtered or original)
   let isFiltered = false; // Track if current data is filtered
@@ -98,7 +99,7 @@
       return;
     }
 
-    if (!$activeConnection) {
+    if (!connection) {
       console.log("⚠️ Cannot reload - no active connection");
       return;
     }
@@ -136,7 +137,7 @@
       console.log("📦 Filters to send:", filters);
 
       const result = await executeQueryWithFilters(
-        $activeConnection,
+        connection,
         executedQuery,
         Object.keys(filters).length > 0 ? filters : null,
         sortColumn,
@@ -167,7 +168,7 @@
   }
 
   async function loadMoreData() {
-    if (isLoadingMore || !hasMoreData || !executedQuery || !$activeConnection) {
+    if (isLoadingMore || !hasMoreData || !executedQuery || !connection) {
       return;
     }
 
@@ -196,7 +197,7 @@
       loadMoreQuery += ` LIMIT 200 OFFSET ${currentOffset}`;
 
       const result = await executeQueryWithFilters(
-        $activeConnection,
+        connection,
         loadMoreQuery,
         Object.keys(filters).length > 0 ? filters : null,
         sortColumn,
@@ -431,7 +432,7 @@
 
     console.log("🔍 Opening filter modal for column:", column);
     console.log("📝 executedQuery:", executedQuery);
-    console.log("🔌 activeConnection:", $activeConnection);
+    console.log("🔌 connection:", connection);
 
     showFilterModal = true;
 
@@ -449,16 +450,13 @@
     }
 
     // Check if we have query and connection
-    if (!executedQuery || executedQuery.trim() === "" || !$activeConnection) {
+    if (!executedQuery || executedQuery.trim() === "" || !connection) {
       console.log("⚠️ Skipping server-side filter:");
       console.log(
         "  - executedQuery:",
         executedQuery ? `"${executedQuery.substring(0, 50)}..."` : "EMPTY"
       );
-      console.log(
-        "  - activeConnection:",
-        $activeConnection ? "EXISTS" : "NULL"
-      );
+      console.log("  - connection:", connection ? "EXISTS" : "NULL");
       // Fallback to client-side filtering
       filterValuesCache[cacheKey] = getDistinctValues(column);
       filterValuesCache = { ...filterValuesCache };
@@ -477,7 +475,7 @@
 
     try {
       const result = await getFilterValues(
-        $activeConnection,
+        connection,
         executedQuery,
         column,
         search,
@@ -552,9 +550,8 @@
     sortColumn = null;
     sortDirection = "asc";
     isFiltered = false; // Clear filtered flag
-    displayData = data; // Restore original data
-    currentOffset = 200; // Reset offset
-    hasMoreData = data?.rows?.length === 200;
+    currentOffset = 0; // Reset offset
+    hasMoreData = true;
 
     // Reset final query
     finalQuery = "";
@@ -564,8 +561,14 @@
       tabDataStore.setSortState(tabId, null, "asc");
     }
 
-    // Trigger server-side reload (will load original data without filters)
-    reloadDataWithFilters();
+    // Restore original data by resetting to the base data
+    displayData = data;
+    totalRows = data?.total_count || data?.rows?.length || 0;
+    currentOffset = data?.rows?.length || 0;
+    hasMoreData = data?.rows?.length === 200;
+
+    // Update the query ID to match the clean state
+    lastLoadedQueryId = executedQuery + JSON.stringify({}) + null + "asc";
   }
 
   // Watch for search query changes and load from server
@@ -573,7 +576,7 @@
   $: if (showFilterModal && filterModalColumn) {
     clearTimeout(searchDebounceTimeout);
     searchDebounceTimeout = setTimeout(() => {
-      if (executedQuery && $activeConnection) {
+      if (executedQuery && connection) {
         loadFilterValuesFromServer(
           filterModalColumn,
           filterSearchQuery || null

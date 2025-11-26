@@ -64,12 +64,22 @@
     const isExpanded = expandedDatabases[key];
 
     if (!isExpanded) {
+      // Find and set the correct connection for this database
+      const conn = $connections.find((c) => c.id === connId);
+      if (conn) {
+        activeConnection.set(conn);
+      }
+
       selectedDatabase.set(db);
       loadingDatabases[key] = true;
       loadingDatabases = { ...loadingDatabases };
       try {
         const dbTables = await getTables($activeConnection, db.name);
-        expandedDatabases[key] = { tables: dbTables };
+        expandedDatabases[key] = {
+          tables: dbTables,
+          connection: conn,
+          database: db,
+        };
       } catch (error) {
         console.error("Failed to load tables:", error);
       } finally {
@@ -96,12 +106,12 @@
     selectedTable.set(table);
   }
 
-  function handleTableDoubleClick(table) {
+  function handleTableDoubleClick(table, connection, database) {
     // Dispatch event untuk membuka tab baru dengan data tabel
     dispatch("openTableTab", {
       table,
-      database: $selectedDatabase,
-      connection: $activeConnection,
+      database: database,
+      connection: connection,
     });
   }
 
@@ -308,7 +318,15 @@
                                       style="font-size: 12px; display: inline-block; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
                                       on:click={() => selectTable(table)}
                                       on:dblclick={() =>
-                                        handleTableDoubleClick(table)}
+                                        handleTableDoubleClick(
+                                          table,
+                                          expandedDatabases[
+                                            `${conn.id}-${db.name}`
+                                          ].connection,
+                                          expandedDatabases[
+                                            `${conn.id}-${db.name}`
+                                          ].database
+                                        )}
                                     >
                                       <i
                                         class="fas fa-table text-secondary me-1"

@@ -373,6 +373,7 @@
                     data={currentTabData.queryResult}
                     tabId={activeTab.id}
                     executedQuery={currentTabData?.executedQuery || ""}
+                    connection={$activeConnection}
                   />
                 </div>
               {/if}
@@ -384,6 +385,8 @@
                   data={currentTabData.queryResult}
                   tabId={activeTab.id}
                   executedQuery={currentTabData?.executedQuery || ""}
+                  connection={activeTab.tableInfo?.connection ||
+                    $activeConnection}
                 />
               {:else}
                 <div
