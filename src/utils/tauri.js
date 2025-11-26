@@ -16,6 +16,22 @@ export async function deleteConnection(id) {
   return await invoke("delete_connection", { id });
 }
 
+export async function connectToDatabase(config) {
+  return await invoke("connect_to_database", { config });
+}
+
+export async function disconnectFromDatabase(connectionId) {
+  return await invoke("disconnect_from_database", { connectionId });
+}
+
+export async function isDatabaseConnected(connectionId) {
+  return await invoke("is_database_connected", { connectionId });
+}
+
+export async function getConnectedDatabases() {
+  return await invoke("get_connected_databases");
+}
+
 export async function executeQuery(config, query) {
   return await invoke("execute_query", { config, query });
 }

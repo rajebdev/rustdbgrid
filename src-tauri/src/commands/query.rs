@@ -1,19 +1,31 @@
+use crate::commands::connection::ConnectionStore;
 use crate::models::connection::*;
 use crate::models::query_result::*;
+use futures::FutureExt;
 use std::collections::HashMap;
+use tauri::State;
 
 #[tauri::command]
-pub async fn execute_query(config: ConnectionConfig, query: String) -> Result<QueryResult, String> {
-    let mut conn = crate::db::traits::create_connection(&config.db_type);
+pub async fn execute_query(
+    config: ConnectionConfig,
+    query: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<QueryResult, String> {
+    let connection_id = config.id.clone();
 
-    conn.connect(&config).await.map_err(|e| e.to_string())?;
-    let result = conn
-        .execute_query(&query)
+    // Check if already connected, if not connect first
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    // Use connection from pool
+    let query_clone = query.clone();
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.execute_query(&query_clone).await }.boxed()
+        })
         .await
-        .map_err(|e| e.to_string())?;
-    conn.disconnect().await.map_err(|e| e.to_string())?;
-
-    Ok(result)
 }
 
 #[tauri::command]
@@ -24,6 +36,7 @@ pub async fn execute_query_with_filters(
     sort_column: Option<String>,
     sort_direction: Option<String>,
     limit: Option<usize>,
+    state: State<'_, ConnectionStore>,
 ) -> Result<QueryResult, String> {
     println!("🔍 [RUST] execute_query_with_filters called");
     println!(
@@ -37,9 +50,12 @@ pub async fn execute_query_with_filters(
     );
     println!("  📏 limit: {:?}", limit);
 
-    let mut conn = crate::db::traits::create_connection(&config.db_type);
+    let connection_id = config.id.clone();
 
-    conn.connect(&config).await.map_err(|e| e.to_string())?;
+    // Check if already connected, if not connect first
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
 
     // Extract table name from simple SELECT queries to avoid subquery
     let cleaned_query = base_query.trim().to_uppercase();
@@ -158,15 +174,16 @@ pub async fn execute_query_with_filters(
 
     println!("📤 [RUST] Final query: {}", query);
 
-    let mut result = conn
-        .execute_query(&query)
-        .await
-        .map_err(|e| e.to_string())?;
+    let query_clone = query.clone();
+    let mut result = state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.execute_query(&query_clone).await }.boxed()
+        })
+        .await?;
 
     // Add the final query to result for display
     result.final_query = Some(query);
-
-    conn.disconnect().await.map_err(|e| e.to_string())?;
 
     Ok(result)
 }
@@ -178,15 +195,19 @@ pub async fn get_filter_values(
     column: String,
     search_query: Option<String>,
     _limit: Option<usize>, // Intentionally unused - we want all distinct values
+    state: State<'_, ConnectionStore>,
 ) -> Result<FilterValuesResult, String> {
     println!("🔍 [RUST] get_filter_values called");
     println!("  📝 Original query: {}", &query);
     println!("  📊 Column: {}", &column);
     println!("  🔎 Search query: {:?}", search_query);
 
-    let mut conn = crate::db::traits::create_connection(&config.db_type);
+    let connection_id = config.id.clone();
 
-    conn.connect(&config).await.map_err(|e| e.to_string())?;
+    // Check if already connected, if not connect first
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
 
     // Extract table name from simple SELECT queries
     // Pattern: SELECT * FROM table_name [LIMIT ...]
@@ -252,10 +273,13 @@ pub async fn get_filter_values(
 
     println!("  📤 Filter query: {}", filter_query);
 
-    let result = conn
-        .execute_query(&filter_query)
-        .await
-        .map_err(|e| e.to_string())?;
+    let query_clone = filter_query.clone();
+    let result = state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.execute_query(&query_clone).await }.boxed()
+        })
+        .await?;
 
     // Extract distinct values
     let mut values = Vec::new();
@@ -273,8 +297,6 @@ pub async fn get_filter_values(
     }
 
     let total_count = values.len();
-
-    conn.disconnect().await.map_err(|e| e.to_string())?;
 
     Ok(FilterValuesResult {
         values,

@@ -6,7 +6,16 @@
     selectedDatabase,
     selectedTable,
   } from "../stores/connections";
-  import { getConnections, getDatabases, getTables } from "../utils/tauri";
+  import {
+    getConnections,
+    getDatabases,
+    getTables,
+    deleteConnection,
+    connectToDatabase,
+    disconnectFromDatabase,
+    isDatabaseConnected,
+    getConnectedDatabases,
+  } from "../utils/tauri";
 
   const dispatch = createEventDispatcher();
   import ConnectionModal from "./ConnectionModal.svelte";
@@ -31,12 +40,27 @@
 
   onMount(async () => {
     await loadConnections();
+    // Load connected databases from backend
+    await syncConnectedStatus();
     // Close context menu when clicking anywhere
     document.addEventListener("click", closeContextMenu);
     return () => {
       document.removeEventListener("click", closeContextMenu);
     };
   });
+
+  async function syncConnectedStatus() {
+    try {
+      const connectedIds = await getConnectedDatabases();
+      const newConnectedConnections = {};
+      for (const id of connectedIds) {
+        newConnectedConnections[id] = true;
+      }
+      connectedConnections = newConnectedConnections;
+    } catch (error) {
+      console.error("Failed to sync connected status:", error);
+    }
+  }
 
   async function loadConnections() {
     try {
@@ -55,6 +79,8 @@
       loadingConnections[conn.id] = true;
       loadingConnections = { ...loadingConnections };
       try {
+        // Connect to database via backend
+        await connectToDatabase(conn);
         databases = await getDatabases(conn);
         expandedConnections[conn.id] = { databases };
         connectedConnections[conn.id] = true; // Mark as connected
@@ -229,8 +255,26 @@
 
   async function handleDeleteConnection(conn) {
     if (confirm(`Are you sure you want to delete connection "${conn.name}"?`)) {
-      // TODO: Implement delete connection
-      console.log("Delete connection:", conn);
+      try {
+        await deleteConnection(conn.id);
+        // Remove from connected connections if exists
+        if (connectedConnections[conn.id]) {
+          delete connectedConnections[conn.id];
+          connectedConnections = { ...connectedConnections };
+        }
+        // Remove from expanded connections if exists
+        if (expandedConnections[conn.id]) {
+          delete expandedConnections[conn.id];
+          expandedConnections = { ...expandedConnections };
+        }
+        // Reload connections list
+        await loadConnections();
+        closeContextMenu();
+      } catch (error) {
+        console.error("Failed to delete connection:", error);
+        alert(`Failed to delete connection: ${error}`);
+      }
+    } else {
       closeContextMenu();
     }
   }
@@ -240,6 +284,8 @@
     if (connectedConnections[conn.id]) {
       delete expandedConnections[conn.id];
       expandedConnections = { ...expandedConnections };
+      // Reconnect
+      await disconnectFromDatabase(conn.id);
       await toggleConnection(conn);
     }
     closeContextMenu();
@@ -251,12 +297,14 @@
     loadingConnections[conn.id] = true;
     loadingConnections = { ...loadingConnections };
     try {
+      await connectToDatabase(conn);
       databases = await getDatabases(conn);
       expandedConnections[conn.id] = { databases };
       connectedConnections[conn.id] = true;
       connectedConnections = { ...connectedConnections };
     } catch (error) {
       console.error("Failed to connect:", error);
+      alert(`Failed to connect: ${error}`);
     } finally {
       loadingConnections[conn.id] = false;
       loadingConnections = { ...loadingConnections };
@@ -264,12 +312,18 @@
     closeContextMenu();
   }
 
-  function handleDisconnectConnection(conn) {
+  async function handleDisconnectConnection(conn) {
     // Disconnect - remove from connected list and collapse
-    delete connectedConnections[conn.id];
-    connectedConnections = { ...connectedConnections };
-    delete expandedConnections[conn.id];
-    expandedConnections = { ...expandedConnections };
+    try {
+      await disconnectFromDatabase(conn.id);
+      delete connectedConnections[conn.id];
+      connectedConnections = { ...connectedConnections };
+      delete expandedConnections[conn.id];
+      expandedConnections = { ...expandedConnections };
+    } catch (error) {
+      console.error("Failed to disconnect:", error);
+      alert(`Failed to disconnect: ${error}`);
+    }
     closeContextMenu();
   }
 

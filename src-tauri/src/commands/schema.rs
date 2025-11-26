@@ -1,27 +1,51 @@
-use crate::models::schema::*;
+use crate::commands::connection::ConnectionStore;
 use crate::models::connection::*;
 use crate::models::query_result::*;
+use crate::models::schema::*;
+use futures::FutureExt;
+use tauri::State;
 
 #[tauri::command]
-pub async fn get_databases(config: ConnectionConfig) -> Result<Vec<Database>, String> {
-    let mut conn = crate::db::traits::create_connection(&config.db_type);
-    
-    conn.connect(&config).await.map_err(|e| e.to_string())?;
-    let databases = conn.get_databases().await.map_err(|e| e.to_string())?;
-    conn.disconnect().await.map_err(|e| e.to_string())?;
-    
-    Ok(databases)
+pub async fn get_databases(
+    config: ConnectionConfig,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<Database>, String> {
+    let connection_id = config.id.clone();
+
+    // Check if already connected, if not connect first
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    // Use connection from pool
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_databases().await }.boxed()
+        })
+        .await
 }
 
 #[tauri::command]
-pub async fn get_tables(config: ConnectionConfig, database: String) -> Result<Vec<Table>, String> {
-    let mut conn = crate::db::traits::create_connection(&config.db_type);
-    
-    conn.connect(&config).await.map_err(|e| e.to_string())?;
-    let tables = conn.get_tables(&database).await.map_err(|e| e.to_string())?;
-    conn.disconnect().await.map_err(|e| e.to_string())?;
-    
-    Ok(tables)
+pub async fn get_tables(
+    config: ConnectionConfig,
+    database: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<Table>, String> {
+    let connection_id = config.id.clone();
+
+    // Check if already connected, if not connect first
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    // Use connection from pool
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_tables(&database).await }.boxed()
+        })
+        .await
 }
 
 #[tauri::command]
@@ -29,14 +53,22 @@ pub async fn get_table_schema(
     config: ConnectionConfig,
     database: String,
     table: String,
+    state: State<'_, ConnectionStore>,
 ) -> Result<TableSchema, String> {
-    let mut conn = crate::db::traits::create_connection(&config.db_type);
-    
-    conn.connect(&config).await.map_err(|e| e.to_string())?;
-    let schema = conn.get_table_schema(&database, &table).await.map_err(|e| e.to_string())?;
-    conn.disconnect().await.map_err(|e| e.to_string())?;
-    
-    Ok(schema)
+    let connection_id = config.id.clone();
+
+    // Check if already connected, if not connect first
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    // Use connection from pool
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_table_schema(&database, &table).await }.boxed()
+        })
+        .await
 }
 
 #[tauri::command]
@@ -46,12 +78,20 @@ pub async fn get_table_data(
     table: String,
     limit: u32,
     offset: u32,
+    state: State<'_, ConnectionStore>,
 ) -> Result<QueryResult, String> {
-    let mut conn = crate::db::traits::create_connection(&config.db_type);
-    
-    conn.connect(&config).await.map_err(|e| e.to_string())?;
-    let data = conn.get_table_data(&database, &table, limit, offset).await.map_err(|e| e.to_string())?;
-    conn.disconnect().await.map_err(|e| e.to_string())?;
-    
-    Ok(data)
+    let connection_id = config.id.clone();
+
+    // Check if already connected, if not connect first
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    // Use connection from pool
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_table_data(&database, &table, limit, offset).await }.boxed()
+        })
+        .await
 }

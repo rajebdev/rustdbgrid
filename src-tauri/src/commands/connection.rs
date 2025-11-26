@@ -1,10 +1,11 @@
 use crate::models::connection::*;
-use crate::utils::storage;
+use crate::utils::{connection_pool::ConnectionPool, storage};
 use std::sync::Mutex;
 use tauri::State;
 
 pub struct ConnectionStore {
     pub connections: Mutex<Vec<ConnectionConfig>>,
+    pub pool: ConnectionPool,
 }
 
 impl ConnectionStore {
@@ -17,6 +18,7 @@ impl ConnectionStore {
 
         ConnectionStore {
             connections: Mutex::new(connections),
+            pool: ConnectionPool::new(),
         }
     }
 
@@ -93,6 +95,9 @@ pub async fn delete_connection(
     id: String,
     state: State<'_, ConnectionStore>,
 ) -> Result<(), String> {
+    // Disconnect from pool if connected
+    let _ = state.pool.disconnect(&id).await;
+
     let mut connections = state.connections.lock().unwrap();
     connections.retain(|c| c.id != id);
 
@@ -103,6 +108,37 @@ pub async fn delete_connection(
     state.save_to_file()?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn connect_to_database(
+    config: ConnectionConfig,
+    state: State<'_, ConnectionStore>,
+) -> Result<(), String> {
+    state.pool.connect(config).await
+}
+
+#[tauri::command]
+pub async fn disconnect_from_database(
+    connection_id: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<(), String> {
+    state.pool.disconnect(&connection_id).await
+}
+
+#[tauri::command]
+pub async fn is_database_connected(
+    connection_id: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<bool, String> {
+    Ok(state.pool.is_connected(&connection_id).await)
+}
+
+#[tauri::command]
+pub async fn get_connected_databases(
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<String>, String> {
+    Ok(state.pool.get_connected_ids().await)
 }
 
 #[tauri::command]
