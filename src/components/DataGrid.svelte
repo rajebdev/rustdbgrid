@@ -46,6 +46,9 @@
   let showSqlPreview = false;
   let previewSql = "";
   let pendingUpdates = [];
+  let showPopupEditor = false;
+  let popupEditorValue = "";
+  let popupEditingCell = null;
 
   // Reactive variable to track if there are edits
   $: hasUnsavedEdits = editedRows.size > 0;
@@ -625,18 +628,77 @@
 
   // Inline editing functions
   function startEdit(rowIndex, column, currentValue) {
-    editingCell = { rowIndex, column };
-    editingValue =
+    const valueStr =
       currentValue === null || currentValue === undefined
         ? ""
         : String(currentValue);
-    originalValue = currentValue;
+
+    // Check if the value is longer than 500px (estimate ~70 characters for typical width)
+    // or if it contains newlines (multi-line text)
+    const estimatedWidth = valueStr.length * 7; // Rough estimate: 7px per character
+    const hasNewlines = valueStr.includes("\n") || valueStr.includes("\r");
+
+    if (estimatedWidth > 500 || hasNewlines || valueStr.length > 70) {
+      // Show popup editor for long content
+      showPopupEditor = true;
+      popupEditorValue = valueStr;
+      popupEditingCell = { rowIndex, column };
+      originalValue = currentValue;
+    } else {
+      // Use inline editing for short content
+      editingCell = { rowIndex, column };
+      editingValue = valueStr;
+      originalValue = currentValue;
+    }
   }
 
   function cancelEdit() {
     editingCell = null;
     editingValue = "";
     originalValue = "";
+  }
+
+  function closePopupEditor() {
+    showPopupEditor = false;
+    popupEditorValue = "";
+    popupEditingCell = null;
+    originalValue = "";
+  }
+
+  function savePopupEdit() {
+    if (!popupEditingCell) return;
+
+    const { rowIndex, column } = popupEditingCell;
+
+    // Check if value actually changed
+    if (
+      popupEditorValue === originalValue ||
+      (popupEditorValue === "" &&
+        (originalValue === null || originalValue === undefined))
+    ) {
+      closePopupEditor();
+      return;
+    }
+
+    // Backup original row data if this is the first edit on this row
+    if (!originalRowData.has(rowIndex)) {
+      originalRowData.set(rowIndex, { ...displayData.rows[rowIndex] });
+    }
+
+    // Store the edit in editedRows Map
+    if (!editedRows.has(rowIndex)) {
+      editedRows.set(rowIndex, new Map());
+    }
+    editedRows.get(rowIndex).set(column, popupEditorValue);
+
+    // Update display
+    displayData.rows[rowIndex][column] = popupEditorValue;
+    displayData = { ...displayData };
+
+    // Trigger reactivity by creating new Map
+    editedRows = new Map(editedRows);
+
+    closePopupEditor();
   }
 
   function finishEdit() {
@@ -1347,6 +1409,81 @@
           </button>
           <button class="btn btn-secondary" on:click={closeFilterModal}>
             Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Popup Editor Modal for Long Content -->
+{#if showPopupEditor && popupEditingCell}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="modal-backdrop show" on:click={closePopupEditor}></div>
+  <div class="modal d-block" tabindex="-1">
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div
+      class="modal-dialog modal-lg modal-dialog-centered"
+      on:click|stopPropagation
+    >
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title">
+            <i class="fas fa-edit"></i> Edit Cell Value
+          </h5>
+          <button
+            type="button"
+            class="btn-close btn-close-white"
+            on:click={closePopupEditor}
+            aria-label="Close"
+          ></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-2">
+            <strong>Column:</strong>
+            <span class="badge bg-info">{popupEditingCell.column}</span>
+            <strong class="ms-3">Row:</strong>
+            <span class="badge bg-info">{popupEditingCell.rowIndex + 1}</span>
+          </div>
+          <textarea
+            class="form-control font-monospace"
+            rows="15"
+            bind:value={popupEditorValue}
+            placeholder="Enter value..."
+            style="resize: vertical; min-height: 200px;"
+            on:keydown={(e) => {
+              if (e.key === "Escape") {
+                closePopupEditor();
+              } else if (e.key === "Enter" && e.ctrlKey) {
+                e.preventDefault();
+                savePopupEdit();
+              }
+            }}
+            use:focusInput
+          ></textarea>
+          <div class="form-text mt-2">
+            <i class="fas fa-info-circle"></i> Press Ctrl+Enter to save, Escape to
+            cancel
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            on:click={closePopupEditor}
+          >
+            <i class="fas fa-times"></i> Cancel
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            on:click={savePopupEdit}
+          >
+            <i class="fas fa-check"></i> Save
           </button>
         </div>
       </div>
