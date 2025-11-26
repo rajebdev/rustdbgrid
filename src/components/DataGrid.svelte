@@ -918,10 +918,6 @@
     gap: 0.25rem;
   }
 
-  .numeric-header-content {
-    flex-direction: row-reverse;
-  }
-
   .sort-button {
     flex: 1;
     border: none;
@@ -932,10 +928,6 @@
     align-items: center;
     gap: 0.25rem;
     color: inherit;
-  }
-
-  .numeric-sort {
-    flex-direction: row-reverse;
   }
 
   .sort-button:hover {
