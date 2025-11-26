@@ -290,7 +290,7 @@
                                   class="table-item-row"
                                   class:table-active={$selectedTable?.name ===
                                     table.name}
-                                  style="cursor: pointer; line-height: 1.2;"
+                                  style="cursor: pointer; line-height: 1.5;"
                                 >
                                   <td
                                     class="p-0 align-middle"
@@ -434,7 +434,7 @@
     transition: background-color 0.15s;
     min-height: 20px;
     border-radius: 3px;
-    line-height: 1.2;
+    line-height: 1.5;
   }
 
   .tree-label:hover {
@@ -493,7 +493,7 @@
     font-size: 11px;
     color: #6c757d;
     font-weight: 600;
-    line-height: 1.2;
+    line-height: 1.5;
     flex: 1;
     background: transparent;
     border: none;
