@@ -2,7 +2,8 @@ use crate::db::traits::DatabaseConnection;
 use crate::models::{connection::*, query_result::*, schema::*};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use sqlx::{Column as SqlxColumn, MySqlPool, Row};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use sqlx::{Column as SqlxColumn, MySqlPool, Row, TypeInfo};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -82,8 +83,32 @@ impl DatabaseConnection for MySQLConnection {
         for row in rows {
             let mut row_map = HashMap::new();
             for (i, col) in columns.iter().enumerate() {
+                let col_info = &row.columns()[i];
+                let type_name = col_info.type_info().name();
+
                 // Try to get value as different types in order of specificity
-                let value = if let Ok(v) = row.try_get::<i64, _>(i) {
+                let value = if type_name == "DATETIME" || type_name == "TIMESTAMP" {
+                    // Handle DATETIME and TIMESTAMP -> format: YYYY-MM-DD HH:mm:ss
+                    if let Ok(v) = row.try_get::<NaiveDateTime, _>(i) {
+                        serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string())
+                    } else {
+                        serde_json::Value::Null
+                    }
+                } else if type_name == "DATE" {
+                    // Handle DATE -> format: YYYY-MM-DD
+                    if let Ok(v) = row.try_get::<NaiveDate, _>(i) {
+                        serde_json::json!(v.format("%Y-%m-%d").to_string())
+                    } else {
+                        serde_json::Value::Null
+                    }
+                } else if type_name == "TIME" {
+                    // Handle TIME -> format: HH:mm:ss
+                    if let Ok(v) = row.try_get::<NaiveTime, _>(i) {
+                        serde_json::json!(v.format("%H:%M:%S").to_string())
+                    } else {
+                        serde_json::Value::Null
+                    }
+                } else if let Ok(v) = row.try_get::<i64, _>(i) {
                     serde_json::json!(v)
                 } else if let Ok(v) = row.try_get::<f64, _>(i) {
                     serde_json::json!(v)

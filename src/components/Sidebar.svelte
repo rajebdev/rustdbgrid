@@ -6,15 +6,12 @@
     selectedDatabase,
     selectedTable,
   } from "../stores/connections";
-  import {
-    getConnections,
-    getDatabases,
-    getTables,
-    getStorageInfo,
-  } from "../utils/tauri";
+  import { getConnections, getDatabases, getTables } from "../utils/tauri";
 
   const dispatch = createEventDispatcher();
   import ConnectionModal from "./ConnectionModal.svelte";
+
+  export let onToggleSidebar = null;
 
   let databases = [];
   let tables = [];
@@ -24,13 +21,11 @@
   let expandedDatabases = {};
   let expandedTables = {};
   let searchQuery = "";
-  let storageInfo = null;
   let loadingConnections = {}; // Track loading state per connection
   let loadingDatabases = {}; // Track loading state per database
 
   onMount(async () => {
     await loadConnections();
-    await loadStorageInfo();
   });
 
   async function loadConnections() {
@@ -39,14 +34,6 @@
       connections.set(conns);
     } catch (error) {
       console.error("Failed to load connections:", error);
-    }
-  }
-
-  async function loadStorageInfo() {
-    try {
-      storageInfo = await getStorageInfo();
-    } catch (error) {
-      console.error("Failed to load storage info:", error);
     }
   }
 
@@ -146,23 +133,38 @@
   async function handleSaveConnection() {
     closeModal();
     await loadConnections();
-    await loadStorageInfo();
   }
 
   $: filteredConnections = $connections.filter((conn) =>
     conn.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  function handleToggleSidebar() {
+    if (onToggleSidebar) {
+      onToggleSidebar();
+    }
+  }
 </script>
 
 <div class="d-flex flex-column h-100 bg-body-tertiary text-dark">
   <div class="p-3 pb-2 border-bottom bg-body">
-    <h6
-      class="text-uppercase text-secondary mb-2"
-      style="font-size: 11px; font-weight: 600; letter-spacing: 0.5px;"
-    >
-      <i class="fas fa-network-wired me-2"></i>
-      Connections
-    </h6>
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h6
+        class="text-uppercase text-secondary mb-0"
+        style="font-size: 11px; font-weight: 600; letter-spacing: 0.5px;"
+      >
+        <i class="fas fa-network-wired me-2"></i>
+        Connections
+      </h6>
+      <button
+        class="btn btn-sm btn-link text-secondary p-0"
+        on:click={handleToggleSidebar}
+        title="Hide Sidebar"
+        style="width: 20px; height: 20px; font-size: 12px;"
+      >
+        <i class="fas fa-chevron-left"></i>
+      </button>
+    </div>
     <div class="d-flex gap-2">
       <input
         type="search"
@@ -374,41 +376,6 @@
       </div>
     {/each}
   </div>
-
-  {#if storageInfo}
-    <div class="border-top p-3 bg-body-secondary">
-      <div
-        class="d-flex align-items-center gap-2 mb-2 text-secondary text-uppercase"
-        style="font-size: 11px; font-weight: 600; letter-spacing: 0.5px;"
-      >
-        <i class="fas fa-database"></i>
-        <span>Storage</span>
-      </div>
-      <div class="d-flex flex-column gap-2">
-        <div
-          class="d-flex align-items-center gap-2 p-2 bg-body border rounded"
-          style="font-size: 11px;"
-          title={storageInfo.path}
-        >
-          <i class="fas fa-folder text-success" style="width: 14px;"></i>
-          <span class="flex-grow-1 text-truncate"
-            >{storageInfo.exists ? "Auto-saved" : "Not saved yet"}</span
-          >
-        </div>
-        {#if storageInfo.exists}
-          <div
-            class="d-flex align-items-center gap-2 p-2 bg-body border rounded"
-            style="font-size: 11px;"
-          >
-            <i class="fas fa-shield-alt text-success" style="width: 14px;"></i>
-            <span class="flex-grow-1 text-truncate"
-              >Encrypted ({(storageInfo.size_bytes / 1024).toFixed(1)} KB)</span
-            >
-          </div>
-        {/if}
-      </div>
-    </div>
-  {/if}
 </div>
 
 {#if showModal}

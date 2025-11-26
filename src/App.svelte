@@ -21,6 +21,12 @@
   let tabs = [];
   let activeTab = null;
 
+  // Sidebar resize functionality
+  let sidebarWidth = 275;
+  let minSidebarWidth = 200;
+  let maxSidebarWidth = 600;
+  let isResizing = false;
+
   $: currentTabData = activeTab ? $tabDataStore[activeTab.id] : null;
 
   onMount(async () => {
@@ -170,6 +176,28 @@
   function closeModal() {
     showModal = false;
   }
+
+  function handleMouseDown(event) {
+    isResizing = true;
+    event.preventDefault();
+  }
+
+  function handleMouseMove(event) {
+    if (!isResizing) return;
+
+    const newWidth = event.clientX;
+    if (newWidth >= minSidebarWidth && newWidth <= maxSidebarWidth) {
+      sidebarWidth = newWidth;
+    }
+  }
+
+  function handleMouseUp() {
+    isResizing = false;
+  }
+
+  function toggleSidebar() {
+    showSidebar = !showSidebar;
+  }
 </script>
 
 <SplashScreen
@@ -177,6 +205,8 @@
   progress={loadingProgress}
   message={loadingMessage}
 />
+
+<svelte:window on:mousemove={handleMouseMove} on:mouseup={handleMouseUp} />
 
 <div class="d-flex flex-column vh-100 overflow-hidden bg-body">
   <MenuBar
@@ -202,9 +232,29 @@
 
   <div class="d-flex flex-grow-1 overflow-hidden">
     {#if showSidebar}
-      <div class="border-end" style="width: 275px; flex-shrink: 0;">
-        <Sidebar on:openTableTab={handleOpenTableTab} />
+      <div
+        class="sidebar-container border-end"
+        style="width: {sidebarWidth}px; flex-shrink: 0; position: relative;"
+      >
+        <Sidebar
+          on:openTableTab={handleOpenTableTab}
+          onToggleSidebar={toggleSidebar}
+        />
+        <button
+          class="resize-handle"
+          on:mousedown={handleMouseDown}
+          aria-label="Resize sidebar"
+          class:resizing={isResizing}
+        ></button>
       </div>
+    {:else}
+      <button
+        class="sidebar-toggle-button btn btn-sm btn-primary"
+        on:click={toggleSidebar}
+        title="Show Sidebar (Ctrl+B)"
+      >
+        <i class="fas fa-chevron-right"></i>
+      </button>
     {/if}
 
     <div
@@ -341,8 +391,7 @@
                 <i class="fas fa-question-circle me-2"></i>Help
               </h5>
               <div class="d-flex flex-column gap-2">
-                <a
-                  href="#"
+                <button
                   class="welcome-button btn btn-link text-start d-flex align-items-center gap-3 text-decoration-none px-3 py-2"
                 >
                   <i class="fas fa-book text-warning" style="font-size: 20px;"
@@ -352,10 +401,9 @@
                     <small class="text-muted">Learn how to use RustDBGrid</small
                     >
                   </div>
-                </a>
+                </button>
 
-                <a
-                  href="#"
+                <button
                   class="welcome-button btn btn-link text-start d-flex align-items-center gap-3 text-decoration-none px-3 py-2"
                 >
                   <i
@@ -369,7 +417,7 @@
                     >
                   </div>
                   <kbd class="kbd-shortcut">Ctrl+K Ctrl+S</kbd>
-                </a>
+                </button>
               </div>
             </div>
           </div>
@@ -413,5 +461,55 @@
     font-family: "Consolas", "Monaco", monospace;
     color: #666;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  .sidebar-container {
+    position: relative;
+  }
+
+  .resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 4px;
+    height: 100%;
+    cursor: col-resize;
+    background-color: transparent;
+    transition: background-color 0.2s;
+    z-index: 10;
+    border: none;
+    padding: 0;
+  }
+
+  .resize-handle:hover,
+  .resize-handle.resizing {
+    background-color: #0d6efd;
+  }
+
+  .resize-handle::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -2px;
+    width: 8px;
+    height: 100%;
+  }
+
+  .sidebar-toggle-button {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1000;
+    border-radius: 0 4px 4px 0;
+    padding: 8px 6px;
+    font-size: 12px;
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.15);
+    border-left: none;
+  }
+
+  .sidebar-toggle-button:hover {
+    padding-left: 8px;
+    transition: padding 0.2s ease;
   }
 </style>

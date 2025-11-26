@@ -1,12 +1,34 @@
 <script>
+  import { onMount } from "svelte";
   import {
     activeConnection,
     selectedDatabase,
     selectedTable,
+    isSaving,
   } from "../stores/connections";
   import { tabDataStore } from "../stores/tabData";
+  import { getStorageInfo } from "../utils/tauri";
 
   export let activeTabId = null;
+
+  let storageInfo = null;
+
+  onMount(async () => {
+    await loadStorageInfo();
+  });
+
+  async function loadStorageInfo() {
+    try {
+      storageInfo = await getStorageInfo();
+    } catch (error) {
+      console.error("Failed to load storage info:", error);
+    }
+  }
+
+  // Reactive statement: reload storage info when saving completes
+  $: if (!$isSaving) {
+    loadStorageInfo();
+  }
 
   $: currentTabData = activeTabId ? $tabDataStore[activeTabId] : null;
 </script>
@@ -71,6 +93,27 @@
         <span class="text-dark">
           {currentTabData.queryResult.columns.length} columns
         </span>
+      </div>
+    {/if}
+    {#if currentTabData?.queryResult && storageInfo}
+      <span class="vr"></span>
+    {/if}
+    {#if storageInfo}
+      <div
+        class="d-flex align-items-center gap-1"
+        title="{storageInfo.path}\n{storageInfo.exists
+          ? `Encrypted (${(storageInfo.size_bytes / 1024).toFixed(1)} KB)`
+          : 'Not saved yet'}"
+      >
+        {#if $isSaving}
+          <i class="fas fa-spinner fa-spin text-primary"></i>
+          <span class="text-dark">Saving...</span>
+        {:else}
+          <i class="fas fa-save text-success"></i>
+          <span class="text-dark"
+            >{storageInfo.exists ? "Saved" : "Not saved"}</span
+          >
+        {/if}
       </div>
     {/if}
   </div>

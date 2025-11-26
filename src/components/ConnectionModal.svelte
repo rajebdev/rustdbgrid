@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import { testConnection, saveConnection } from "../utils/tauri";
+  import { isSaving } from "../stores/connections";
 
   export let connection = null;
 
@@ -48,14 +49,17 @@
 
   async function handleSave() {
     saving = true;
+    isSaving.set(true);
     try {
       await saveConnection(formData);
       // Auto-saved to encrypted JSON file
       dispatch("save");
     } catch (error) {
       alert("Failed to save connection: " + error);
+    } finally {
+      saving = false;
+      isSaving.set(false);
     }
-    saving = false;
   }
 
   function handleClose() {

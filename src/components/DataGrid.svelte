@@ -315,14 +315,9 @@
     for (let i = 0; i < sampleSize; i++) {
       const value = data.rows[i][column];
       if (value === null || value === undefined) continue;
+      // Only consider actual numbers, not strings that look like numbers
       if (typeof value === "number") {
         numericCount++;
-      } else if (typeof value === "string") {
-        // Check if string is a valid number
-        const trimmed = value.trim();
-        if (trimmed !== "" && !isNaN(Number(trimmed))) {
-          numericCount++;
-        }
       }
     }
 
@@ -641,14 +636,10 @@
           <tr>
             {#each displayData.columns as column}
               {@const isNumeric = isNumericColumn(column)}
-              <th class:text-end={isNumeric}>
-                <div
-                  class="column-header"
-                  class:numeric-header-content={isNumeric}
-                >
+              <th>
+                <div class="column-header">
                   <button
                     class="sort-button"
-                    class:numeric-sort={isNumeric}
                     on:click={() => handleSort(column)}
                   >
                     <span class="column-name">{column}</span>
@@ -674,9 +665,7 @@
                 <div class="p-1">
                   <input
                     type="text"
-                    class="form-control form-control-sm {isNumeric
-                      ? 'text-end'
-                      : ''}"
+                    class="form-control form-control-sm"
                     placeholder="Type and press Enter..."
                     on:keydown={(e) => handleFilterKeydown(column, e)}
                     value={Array.isArray(columnFilters[column])
