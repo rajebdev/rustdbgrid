@@ -802,286 +802,137 @@
 
         {#if expandedConnections[conn.id]}
           <div class="tree-children">
-            {#each expandedConnections[conn.id].databases || [] as db (db.name)}
-              <div class="tree-item">
-                <div class="tree-node database-node">
-                  <button
-                    class="tree-toggle"
-                    on:click={() => toggleDatabase(conn.id, db)}
-                    aria-label="Toggle database"
-                  >
-                    {#if loadingDatabases[`${conn.id}-${db.name}`]}
-                      <i class="fas fa-spinner fa-spin"></i>
-                    {:else}
-                      <i
-                        class="fas fa-chevron-{expandedDatabases[
-                          `${conn.id}-${db.name}`
-                        ]
-                          ? 'down'
-                          : 'right'}"
-                      ></i>
-                    {/if}
-                  </button>
-                  <button
-                    class="tree-label"
-                    class:active={$selectedDatabase?.name === db.name ||
-                      activeContextDatabase === `${conn.id}-${db.name}`}
-                    on:click={() => toggleDatabase(conn.id, db)}
-                    on:contextmenu={(e) =>
-                      handleDatabaseContextMenu(e, db, conn)}
-                  >
-                    <i class="fas fa-database tree-icon"></i>
-                    <span class="tree-text">{db.name}</span>
-                  </button>
-                </div>
-
-                {#if expandedDatabases[`${conn.id}-${db.name}`]}
-                  <div class="tree-children">
-                    {#if conn.db_type === "PostgreSQL"}
-                      <!-- PostgreSQL: Schemas Parent -> Individual Schemas -> Tables -->
-                      {@const tables =
-                        expandedDatabases[`${conn.id}-${db.name}`].tables || []}
-                      {@const schemaGroups = tables.reduce((acc, table) => {
-                        const schema = table.schema || "public";
-                        if (!acc[schema]) acc[schema] = [];
-                        acc[schema].push(table);
-                        return acc;
-                      }, {})}
-
-                      <!-- Schemas Parent -->
-                      <div class="tree-item">
-                        <div class="tree-node tables-section-node">
-                          <button
-                            class="tree-toggle"
-                            aria-label="Toggle schemas"
-                            on:click={() =>
-                              toggleSchemasParent(conn.id, db.name)}
+            {#if conn.db_type === "Ignite"}
+              <!-- Ignite: Direct Caches (no database level) -->
+              {@const caches = expandedConnections[conn.id].databases || []}
+              <table
+                class="table table-sm table-hover mb-0 table-borderless"
+                style="padding-left: 8px;"
+              >
+                <tbody>
+                  {#each caches as cache (cache.name)}
+                    <tr
+                      class="table-item-row"
+                      class:table-active={$selectedTable?.name === cache.name}
+                      style="cursor: pointer; line-height: 1.5;"
+                    >
+                      <td
+                        class="p-0 align-middle"
+                        style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 8px !important;"
+                      >
+                        <button
+                          class="btn btn-sm p-0 text-secondary"
+                          style="width: 20px; height: 20px; font-size: 10px; flex-shrink: 0;"
+                          aria-label="Cache"
+                        >
+                          <i class="fas fa-chevron-right"></i>
+                        </button>
+                        <button
+                          class="btn btn-sm p-1 text-start border-0"
+                          style="font-size: 12px; display: inline-block; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                          on:click={() => {
+                            const table = {
+                              name: cache.name,
+                              schema: null,
+                              size_bytes: null,
+                            };
+                            selectTable(table, conn.id, cache.name);
+                          }}
+                          on:dblclick={() => {
+                            const table = {
+                              name: cache.name,
+                              schema: null,
+                              size_bytes: null,
+                            };
+                            handleTableDoubleClick(table, conn, {
+                              name: cache.name,
+                            });
+                          }}
+                          on:contextmenu={(e) => {
+                            const table = {
+                              name: cache.name,
+                              schema: null,
+                              size_bytes: null,
+                            };
+                            handleTableContextMenu(e, table, conn, {
+                              name: cache.name,
+                            });
+                          }}
+                        >
+                          <i
+                            class="fas fa-server text-secondary me-1"
+                            style="font-size: 11px;"
+                          ></i>
+                          <span class="text-truncate" title={cache.name}
+                            >{cache.name}</span
                           >
-                            <i
-                              class="fas fa-chevron-{expandedSchemasParent[
-                                `${conn.id}-${db.name}`
-                              ]
-                                ? 'down'
-                                : 'right'}"
-                            ></i>
-                          </button>
-                          <button
-                            class="tree-section-header"
-                            on:click={() =>
-                              toggleSchemasParent(conn.id, db.name)}
-                          >
-                            <i class="fas fa-folder-tree"></i>
-                            <span
-                              >Schemas ({Object.keys(schemaGroups)
-                                .length})</span
-                            >
-                          </button>
-                        </div>
-                        {#if expandedSchemasParent[`${conn.id}-${db.name}`]}
-                          <div class="tree-children">
-                            {#each Object.entries(schemaGroups) as [schemaName, schemaTables]}
-                              <div class="tree-item">
-                                <div class="tree-node tables-section-node">
-                                  <button
-                                    class="tree-toggle"
-                                    aria-label="Toggle schema"
-                                    on:click={() =>
-                                      toggleSchema(
-                                        conn.id,
-                                        db.name,
-                                        schemaName
-                                      )}
-                                  >
-                                    <i
-                                      class="fas fa-chevron-{expandedSchemas[
-                                        `${conn.id}-${db.name}-${schemaName}`
-                                      ]
-                                        ? 'down'
-                                        : 'right'}"
-                                    ></i>
-                                  </button>
-                                  <button
-                                    class="tree-section-header"
-                                    class:active={activeContextSchema ===
-                                      `${conn.id}-${db.name}-${schemaName}`}
-                                    on:click={() =>
-                                      toggleSchema(
-                                        conn.id,
-                                        db.name,
-                                        schemaName
-                                      )}
-                                    on:contextmenu={(e) =>
-                                      handleSchemaContextMenu(
-                                        e,
-                                        schemaName,
-                                        db,
-                                        conn
-                                      )}
-                                  >
-                                    <i class="fas fa-folder"></i>
-                                    <span>{schemaName}</span>
-                                  </button>
-                                </div>
-                                {#if expandedSchemas[`${conn.id}-${db.name}-${schemaName}`]}
-                                  <div class="tree-children">
-                                    <div class="tree-item">
-                                      <div
-                                        class="tree-node tables-section-node"
-                                      >
-                                        <button
-                                          class="tree-toggle"
-                                          aria-label="Toggle tables"
-                                          on:click={() =>
-                                            toggleTables(
-                                              conn.id,
-                                              `${db.name}-${schemaName}`
-                                            )}
-                                        >
-                                          <i
-                                            class="fas fa-chevron-{expandedTables[
-                                              `${conn.id}-${db.name}-${schemaName}`
-                                            ]
-                                              ? 'down'
-                                              : 'right'}"
-                                          ></i>
-                                        </button>
-                                        <button
-                                          class="tree-section-header"
-                                          on:click={() =>
-                                            toggleTables(
-                                              conn.id,
-                                              `${db.name}-${schemaName}`
-                                            )}
-                                        >
-                                          <i class="fas fa-table"></i>
-                                          <span
-                                            >Tables ({schemaTables.length})</span
-                                          >
-                                        </button>
-                                      </div>
-                                      {#if expandedTables[`${conn.id}-${db.name}-${schemaName}`]}
-                                        <div class="tree-children">
-                                          <table
-                                            class="table table-sm table-hover mb-0 table-borderless"
-                                            style="padding-left: 8px;"
-                                          >
-                                            <tbody>
-                                              {#each schemaTables as table (table.name)}
-                                                <tr
-                                                  class="table-item-row"
-                                                  class:table-active={$selectedTable?.name ===
-                                                    table.name ||
-                                                    activeContextTable ===
-                                                      `${conn.id}-${db.name}-${schemaName}-${table.name}`}
-                                                  style="cursor: pointer; line-height: 1.5;"
-                                                >
-                                                  <td
-                                                    class="p-0 align-middle"
-                                                    style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 8px !important;"
-                                                  >
-                                                    <button
-                                                      class="btn btn-sm p-0 text-secondary"
-                                                      style="width: 20px; height: 20px; font-size: 10px; flex-shrink: 0;"
-                                                      aria-label="Toggle table"
-                                                    >
-                                                      <i
-                                                        class="fas fa-chevron-right"
-                                                      ></i>
-                                                    </button>
-                                                    <button
-                                                      class="btn btn-sm p-1 text-start border-0"
-                                                      style="font-size: 12px; display: inline-block; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
-                                                      on:click={() =>
-                                                        selectTable(
-                                                          table,
-                                                          conn.id,
-                                                          db.name
-                                                        )}
-                                                      on:dblclick={() =>
-                                                        handleTableDoubleClick(
-                                                          table,
-                                                          expandedDatabases[
-                                                            `${conn.id}-${db.name}`
-                                                          ].connection,
-                                                          expandedDatabases[
-                                                            `${conn.id}-${db.name}`
-                                                          ].database
-                                                        )}
-                                                      on:contextmenu={(e) =>
-                                                        handleTableContextMenu(
-                                                          e,
-                                                          table,
-                                                          expandedDatabases[
-                                                            `${conn.id}-${db.name}`
-                                                          ].connection,
-                                                          expandedDatabases[
-                                                            `${conn.id}-${db.name}`
-                                                          ].database
-                                                        )}
-                                                    >
-                                                      <i
-                                                        class="fas fa-table text-secondary me-1"
-                                                        style="font-size: 11px;"
-                                                      ></i>
-                                                      <span
-                                                        class="text-truncate"
-                                                        title={table.name}
-                                                        >{table.name}</span
-                                                      >
-                                                    </button>
-                                                  </td>
-                                                  <td
-                                                    class="text-end align-middle"
-                                                    style="white-space: nowrap; width: 50px; min-width: 50px; max-width: 50px; padding: 2px 8px 2px 4px !important;"
-                                                  >
-                                                    {#if table.size_bytes !== undefined && table.size_bytes !== null && table.size_bytes > 0}
-                                                      <span
-                                                        class="badge bg-light text-secondary"
-                                                        style="font-size: 10px;"
-                                                        title="Table size"
-                                                        >{formatBytes(
-                                                          table.size_bytes
-                                                        )}</span
-                                                      >
-                                                    {/if}
-                                                  </td>
-                                                </tr>
-                                              {/each}
-                                            </tbody>
-                                          </table>
-                                        </div>
-                                      {/if}
-                                    </div>
-                                  </div>
-                                {/if}
-                              </div>
-                            {/each}
-                          </div>
-                        {/if}
-                      </div>
-                    {:else if conn.db_type === "MSSQL"}
-                      <!-- MSSQL: Direct Schemas (dbo, etc.) -> Tables -->
-                      {@const tables =
-                        expandedDatabases[`${conn.id}-${db.name}`].tables || []}
-                      {@const schemaGroups = tables.reduce((acc, table) => {
-                        const schema = table.schema || "dbo";
-                        if (!acc[schema]) acc[schema] = [];
-                        acc[schema].push(table);
-                        return acc;
-                      }, {})}
+                        </button>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {:else}
+              <!-- Other databases: normal hierarchy -->
+              {#each expandedConnections[conn.id].databases || [] as db (db.name)}
+                <div class="tree-item">
+                  <div class="tree-node database-node">
+                    <button
+                      class="tree-toggle"
+                      on:click={() => toggleDatabase(conn.id, db)}
+                      aria-label="Toggle database"
+                    >
+                      {#if loadingDatabases[`${conn.id}-${db.name}`]}
+                        <i class="fas fa-spinner fa-spin"></i>
+                      {:else}
+                        <i
+                          class="fas fa-chevron-{expandedDatabases[
+                            `${conn.id}-${db.name}`
+                          ]
+                            ? 'down'
+                            : 'right'}"
+                        ></i>
+                      {/if}
+                    </button>
+                    <button
+                      class="tree-label"
+                      class:active={$selectedDatabase?.name === db.name ||
+                        activeContextDatabase === `${conn.id}-${db.name}`}
+                      on:click={() => toggleDatabase(conn.id, db)}
+                      on:contextmenu={(e) =>
+                        handleDatabaseContextMenu(e, db, conn)}
+                    >
+                      <i class="fas fa-database tree-icon"></i>
+                      <span class="tree-text">{db.name}</span>
+                    </button>
+                  </div>
 
-                      {#each Object.entries(schemaGroups) as [schemaName, schemaTables]}
+                  {#if expandedDatabases[`${conn.id}-${db.name}`]}
+                    <div class="tree-children">
+                      {#if conn.db_type === "PostgreSQL"}
+                        <!-- PostgreSQL: Schemas Parent -> Individual Schemas -> Tables -->
+                        {@const tables =
+                          expandedDatabases[`${conn.id}-${db.name}`].tables ||
+                          []}
+                        {@const schemaGroups = tables.reduce((acc, table) => {
+                          const schema = table.schema || "public";
+                          if (!acc[schema]) acc[schema] = [];
+                          acc[schema].push(table);
+                          return acc;
+                        }, {})}
+
+                        <!-- Schemas Parent -->
                         <div class="tree-item">
                           <div class="tree-node tables-section-node">
                             <button
                               class="tree-toggle"
-                              aria-label="Toggle schema"
+                              aria-label="Toggle schemas"
                               on:click={() =>
-                                toggleSchema(conn.id, db.name, schemaName)}
+                                toggleSchemasParent(conn.id, db.name)}
                             >
                               <i
-                                class="fas fa-chevron-{expandedSchemas[
-                                  `${conn.id}-${db.name}-${schemaName}`
+                                class="fas fa-chevron-{expandedSchemasParent[
+                                  `${conn.id}-${db.name}`
                                 ]
                                   ? 'down'
                                   : 'right'}"
@@ -1089,329 +940,562 @@
                             </button>
                             <button
                               class="tree-section-header"
-                              class:active={activeContextSchema ===
-                                `${conn.id}-${db.name}-${schemaName}`}
                               on:click={() =>
-                                toggleSchema(conn.id, db.name, schemaName)}
-                              on:contextmenu={(e) =>
-                                handleSchemaContextMenu(
-                                  e,
-                                  schemaName,
-                                  db,
-                                  conn
-                                )}
+                                toggleSchemasParent(conn.id, db.name)}
                             >
-                              <i class="fas fa-database"></i>
-                              <span>{schemaName}</span>
+                              <i class="fas fa-folder-tree"></i>
+                              <span
+                                >Schemas ({Object.keys(schemaGroups)
+                                  .length})</span
+                              >
                             </button>
                           </div>
-                          {#if expandedSchemas[`${conn.id}-${db.name}-${schemaName}`]}
+                          {#if expandedSchemasParent[`${conn.id}-${db.name}`]}
                             <div class="tree-children">
-                              <div class="tree-item">
-                                <div class="tree-node tables-section-node">
-                                  <button
-                                    class="tree-toggle"
-                                    aria-label="Toggle tables"
-                                    on:click={() =>
-                                      toggleTables(
-                                        conn.id,
-                                        `${db.name}-${schemaName}`
-                                      )}
-                                  >
-                                    <i
-                                      class="fas fa-chevron-{expandedTables[
-                                        `${conn.id}-${db.name}-${schemaName}`
-                                      ]
-                                        ? 'down'
-                                        : 'right'}"
-                                    ></i>
-                                  </button>
-                                  <button
-                                    class="tree-section-header"
-                                    on:click={() =>
-                                      toggleTables(
-                                        conn.id,
-                                        `${db.name}-${schemaName}`
-                                      )}
-                                  >
-                                    <i class="fas fa-table"></i>
-                                    <span>Tables ({schemaTables.length})</span>
-                                  </button>
-                                </div>
-                                {#if expandedTables[`${conn.id}-${db.name}-${schemaName}`]}
-                                  <div class="tree-children">
-                                    <table
-                                      class="table table-sm table-hover mb-0 table-borderless"
-                                      style="padding-left: 8px;"
+                              {#each Object.entries(schemaGroups) as [schemaName, schemaTables]}
+                                <div class="tree-item">
+                                  <div class="tree-node tables-section-node">
+                                    <button
+                                      class="tree-toggle"
+                                      aria-label="Toggle schema"
+                                      on:click={() =>
+                                        toggleSchema(
+                                          conn.id,
+                                          db.name,
+                                          schemaName
+                                        )}
                                     >
-                                      <tbody>
-                                        {#each schemaTables as table (table.name)}
-                                          <tr
-                                            class="table-item-row"
-                                            class:table-active={$selectedTable?.name ===
-                                              table.name ||
-                                              activeContextTable ===
-                                                `${conn.id}-${db.name}-${schemaName}-${table.name}`}
-                                            style="cursor: pointer; line-height: 1.5;"
-                                          >
-                                            <td
-                                              class="p-0 align-middle"
-                                              style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 8px !important;"
-                                            >
-                                              <button
-                                                class="btn btn-sm p-0 text-secondary"
-                                                style="width: 20px; height: 20px; font-size: 10px; flex-shrink: 0;"
-                                                aria-label="Toggle table"
-                                              >
-                                                <i class="fas fa-chevron-right"
-                                                ></i>
-                                              </button>
-                                              <button
-                                                class="btn btn-sm p-1 text-start border-0"
-                                                style="font-size: 12px; display: inline-block; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
-                                                on:click={() =>
-                                                  selectTable(
-                                                    table,
-                                                    conn.id,
-                                                    db.name
-                                                  )}
-                                                on:dblclick={() =>
-                                                  handleTableDoubleClick(
-                                                    table,
-                                                    expandedDatabases[
-                                                      `${conn.id}-${db.name}`
-                                                    ].connection,
-                                                    expandedDatabases[
-                                                      `${conn.id}-${db.name}`
-                                                    ].database
-                                                  )}
-                                                on:contextmenu={(e) =>
-                                                  handleTableContextMenu(
-                                                    e,
-                                                    table,
-                                                    expandedDatabases[
-                                                      `${conn.id}-${db.name}`
-                                                    ].connection,
-                                                    expandedDatabases[
-                                                      `${conn.id}-${db.name}`
-                                                    ].database
-                                                  )}
-                                              >
-                                                <i
-                                                  class="fas fa-table text-secondary me-1"
-                                                  style="font-size: 11px;"
-                                                ></i>
-                                                <span
-                                                  class="text-truncate"
-                                                  title={table.name}
-                                                  >{table.name}</span
-                                                >
-                                              </button>
-                                            </td>
-                                            <td
-                                              class="text-end align-middle"
-                                              style="white-space: nowrap; width: 50px; min-width: 50px; max-width: 50px; padding: 2px 8px 2px 4px !important;"
-                                            >
-                                              {#if table.size_bytes !== undefined && table.size_bytes !== null && table.size_bytes > 0}
-                                                <span
-                                                  class="badge bg-light text-secondary"
-                                                  style="font-size: 10px;"
-                                                  title="Table size"
-                                                  >{formatBytes(
-                                                    table.size_bytes
-                                                  )}</span
-                                                >
-                                              {/if}
-                                            </td>
-                                          </tr>
-                                        {/each}
-                                      </tbody>
-                                    </table>
+                                      <i
+                                        class="fas fa-chevron-{expandedSchemas[
+                                          `${conn.id}-${db.name}-${schemaName}`
+                                        ]
+                                          ? 'down'
+                                          : 'right'}"
+                                      ></i>
+                                    </button>
+                                    <button
+                                      class="tree-section-header"
+                                      class:active={activeContextSchema ===
+                                        `${conn.id}-${db.name}-${schemaName}`}
+                                      on:click={() =>
+                                        toggleSchema(
+                                          conn.id,
+                                          db.name,
+                                          schemaName
+                                        )}
+                                      on:contextmenu={(e) =>
+                                        handleSchemaContextMenu(
+                                          e,
+                                          schemaName,
+                                          db,
+                                          conn
+                                        )}
+                                    >
+                                      <i class="fas fa-folder"></i>
+                                      <span>{schemaName}</span>
+                                    </button>
                                   </div>
-                                {/if}
-                              </div>
+                                  {#if expandedSchemas[`${conn.id}-${db.name}-${schemaName}`]}
+                                    <div class="tree-children">
+                                      <div class="tree-item">
+                                        <div
+                                          class="tree-node tables-section-node"
+                                        >
+                                          <button
+                                            class="tree-toggle"
+                                            aria-label="Toggle tables"
+                                            on:click={() =>
+                                              toggleTables(
+                                                conn.id,
+                                                `${db.name}-${schemaName}`
+                                              )}
+                                          >
+                                            <i
+                                              class="fas fa-chevron-{expandedTables[
+                                                `${conn.id}-${db.name}-${schemaName}`
+                                              ]
+                                                ? 'down'
+                                                : 'right'}"
+                                            ></i>
+                                          </button>
+                                          <button
+                                            class="tree-section-header"
+                                            on:click={() =>
+                                              toggleTables(
+                                                conn.id,
+                                                `${db.name}-${schemaName}`
+                                              )}
+                                          >
+                                            <i class="fas fa-table"></i>
+                                            <span
+                                              >Tables ({schemaTables.length})</span
+                                            >
+                                          </button>
+                                        </div>
+                                        {#if expandedTables[`${conn.id}-${db.name}-${schemaName}`]}
+                                          <div class="tree-children">
+                                            <table
+                                              class="table table-sm table-hover mb-0 table-borderless"
+                                              style="padding-left: 8px;"
+                                            >
+                                              <tbody>
+                                                {#each schemaTables as table (table.name)}
+                                                  <tr
+                                                    class="table-item-row"
+                                                    class:table-active={$selectedTable?.name ===
+                                                      table.name ||
+                                                      activeContextTable ===
+                                                        `${conn.id}-${db.name}-${schemaName}-${table.name}`}
+                                                    style="cursor: pointer; line-height: 1.5;"
+                                                  >
+                                                    <td
+                                                      class="p-0 align-middle"
+                                                      style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 8px !important;"
+                                                    >
+                                                      <button
+                                                        class="btn btn-sm p-0 text-secondary"
+                                                        style="width: 20px; height: 20px; font-size: 10px; flex-shrink: 0;"
+                                                        aria-label="Toggle table"
+                                                      >
+                                                        <i
+                                                          class="fas fa-chevron-right"
+                                                        ></i>
+                                                      </button>
+                                                      <button
+                                                        class="btn btn-sm p-1 text-start border-0"
+                                                        style="font-size: 12px; display: inline-block; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                                        on:click={() =>
+                                                          selectTable(
+                                                            table,
+                                                            conn.id,
+                                                            db.name
+                                                          )}
+                                                        on:dblclick={() =>
+                                                          handleTableDoubleClick(
+                                                            table,
+                                                            expandedDatabases[
+                                                              `${conn.id}-${db.name}`
+                                                            ].connection,
+                                                            expandedDatabases[
+                                                              `${conn.id}-${db.name}`
+                                                            ].database
+                                                          )}
+                                                        on:contextmenu={(e) =>
+                                                          handleTableContextMenu(
+                                                            e,
+                                                            table,
+                                                            expandedDatabases[
+                                                              `${conn.id}-${db.name}`
+                                                            ].connection,
+                                                            expandedDatabases[
+                                                              `${conn.id}-${db.name}`
+                                                            ].database
+                                                          )}
+                                                      >
+                                                        <i
+                                                          class="fas fa-table text-secondary me-1"
+                                                          style="font-size: 11px;"
+                                                        ></i>
+                                                        <span
+                                                          class="text-truncate"
+                                                          title={table.name}
+                                                          >{table.name}</span
+                                                        >
+                                                      </button>
+                                                    </td>
+                                                    <td
+                                                      class="text-end align-middle"
+                                                      style="white-space: nowrap; width: 50px; min-width: 50px; max-width: 50px; padding: 2px 8px 2px 4px !important;"
+                                                    >
+                                                      {#if table.size_bytes !== undefined && table.size_bytes !== null && table.size_bytes > 0}
+                                                        <span
+                                                          class="badge bg-light text-secondary"
+                                                          style="font-size: 10px;"
+                                                          title="Table size"
+                                                          >{formatBytes(
+                                                            table.size_bytes
+                                                          )}</span
+                                                        >
+                                                      {/if}
+                                                    </td>
+                                                  </tr>
+                                                {/each}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        {/if}
+                                      </div>
+                                    </div>
+                                  {/if}
+                                </div>
+                              {/each}
                             </div>
                           {/if}
                         </div>
-                      {/each}
-                    {:else}
-                      <!-- MySQL, MongoDB, Redis, Ignite: Direct Tables/Collections/Caches -->
-                      <div class="tree-item">
-                        <div class="tree-node tables-section-node">
-                          <button
-                            class="tree-toggle"
-                            aria-label="Toggle {conn.db_type === 'MongoDB'
-                              ? 'collections'
-                              : conn.db_type === 'Ignite'
-                                ? 'caches'
-                                : 'tables'}"
-                            on:click={() => toggleTables(conn.id, db.name)}
-                          >
-                            <i
-                              class="fas fa-chevron-{expandedTables[
-                                `${conn.id}-${db.name}`
-                              ]
-                                ? 'down'
-                                : 'right'}"
-                            ></i>
-                          </button>
-                          <button
-                            class="tree-section-header"
-                            on:click={() => toggleTables(conn.id, db.name)}
-                          >
-                            <i
-                              class="fas fa-{conn.db_type === 'MongoDB'
-                                ? 'layer-group'
+                      {:else if conn.db_type === "MSSQL"}
+                        <!-- MSSQL: Direct Schemas (dbo, etc.) -> Tables -->
+                        {@const tables =
+                          expandedDatabases[`${conn.id}-${db.name}`].tables ||
+                          []}
+                        {@const schemaGroups = tables.reduce((acc, table) => {
+                          const schema = table.schema || "dbo";
+                          if (!acc[schema]) acc[schema] = [];
+                          acc[schema].push(table);
+                          return acc;
+                        }, {})}
+
+                        {#each Object.entries(schemaGroups) as [schemaName, schemaTables]}
+                          <div class="tree-item">
+                            <div class="tree-node tables-section-node">
+                              <button
+                                class="tree-toggle"
+                                aria-label="Toggle schema"
+                                on:click={() =>
+                                  toggleSchema(conn.id, db.name, schemaName)}
+                              >
+                                <i
+                                  class="fas fa-chevron-{expandedSchemas[
+                                    `${conn.id}-${db.name}-${schemaName}`
+                                  ]
+                                    ? 'down'
+                                    : 'right'}"
+                                ></i>
+                              </button>
+                              <button
+                                class="tree-section-header"
+                                class:active={activeContextSchema ===
+                                  `${conn.id}-${db.name}-${schemaName}`}
+                                on:click={() =>
+                                  toggleSchema(conn.id, db.name, schemaName)}
+                                on:contextmenu={(e) =>
+                                  handleSchemaContextMenu(
+                                    e,
+                                    schemaName,
+                                    db,
+                                    conn
+                                  )}
+                              >
+                                <i class="fas fa-database"></i>
+                                <span>{schemaName}</span>
+                              </button>
+                            </div>
+                            {#if expandedSchemas[`${conn.id}-${db.name}-${schemaName}`]}
+                              <div class="tree-children">
+                                <div class="tree-item">
+                                  <div class="tree-node tables-section-node">
+                                    <button
+                                      class="tree-toggle"
+                                      aria-label="Toggle tables"
+                                      on:click={() =>
+                                        toggleTables(
+                                          conn.id,
+                                          `${db.name}-${schemaName}`
+                                        )}
+                                    >
+                                      <i
+                                        class="fas fa-chevron-{expandedTables[
+                                          `${conn.id}-${db.name}-${schemaName}`
+                                        ]
+                                          ? 'down'
+                                          : 'right'}"
+                                      ></i>
+                                    </button>
+                                    <button
+                                      class="tree-section-header"
+                                      on:click={() =>
+                                        toggleTables(
+                                          conn.id,
+                                          `${db.name}-${schemaName}`
+                                        )}
+                                    >
+                                      <i class="fas fa-table"></i>
+                                      <span>Tables ({schemaTables.length})</span
+                                      >
+                                    </button>
+                                  </div>
+                                  {#if expandedTables[`${conn.id}-${db.name}-${schemaName}`]}
+                                    <div class="tree-children">
+                                      <table
+                                        class="table table-sm table-hover mb-0 table-borderless"
+                                        style="padding-left: 8px;"
+                                      >
+                                        <tbody>
+                                          {#each schemaTables as table (table.name)}
+                                            <tr
+                                              class="table-item-row"
+                                              class:table-active={$selectedTable?.name ===
+                                                table.name ||
+                                                activeContextTable ===
+                                                  `${conn.id}-${db.name}-${schemaName}-${table.name}`}
+                                              style="cursor: pointer; line-height: 1.5;"
+                                            >
+                                              <td
+                                                class="p-0 align-middle"
+                                                style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 8px !important;"
+                                              >
+                                                <button
+                                                  class="btn btn-sm p-0 text-secondary"
+                                                  style="width: 20px; height: 20px; font-size: 10px; flex-shrink: 0;"
+                                                  aria-label="Toggle table"
+                                                >
+                                                  <i
+                                                    class="fas fa-chevron-right"
+                                                  ></i>
+                                                </button>
+                                                <button
+                                                  class="btn btn-sm p-1 text-start border-0"
+                                                  style="font-size: 12px; display: inline-block; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                                  on:click={() =>
+                                                    selectTable(
+                                                      table,
+                                                      conn.id,
+                                                      db.name
+                                                    )}
+                                                  on:dblclick={() =>
+                                                    handleTableDoubleClick(
+                                                      table,
+                                                      expandedDatabases[
+                                                        `${conn.id}-${db.name}`
+                                                      ].connection,
+                                                      expandedDatabases[
+                                                        `${conn.id}-${db.name}`
+                                                      ].database
+                                                    )}
+                                                  on:contextmenu={(e) =>
+                                                    handleTableContextMenu(
+                                                      e,
+                                                      table,
+                                                      expandedDatabases[
+                                                        `${conn.id}-${db.name}`
+                                                      ].connection,
+                                                      expandedDatabases[
+                                                        `${conn.id}-${db.name}`
+                                                      ].database
+                                                    )}
+                                                >
+                                                  <i
+                                                    class="fas fa-table text-secondary me-1"
+                                                    style="font-size: 11px;"
+                                                  ></i>
+                                                  <span
+                                                    class="text-truncate"
+                                                    title={table.name}
+                                                    >{table.name}</span
+                                                  >
+                                                </button>
+                                              </td>
+                                              <td
+                                                class="text-end align-middle"
+                                                style="white-space: nowrap; width: 50px; min-width: 50px; max-width: 50px; padding: 2px 8px 2px 4px !important;"
+                                              >
+                                                {#if table.size_bytes !== undefined && table.size_bytes !== null && table.size_bytes > 0}
+                                                  <span
+                                                    class="badge bg-light text-secondary"
+                                                    style="font-size: 10px;"
+                                                    title="Table size"
+                                                    >{formatBytes(
+                                                      table.size_bytes
+                                                    )}</span
+                                                  >
+                                                {/if}
+                                              </td>
+                                            </tr>
+                                          {/each}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  {/if}
+                                </div>
+                              </div>
+                            {/if}
+                          </div>
+                        {/each}
+                      {:else}
+                        <!-- MySQL, MongoDB, Redis, Ignite: Direct Tables/Collections/Caches -->
+                        <div class="tree-item">
+                          <div class="tree-node tables-section-node">
+                            <button
+                              class="tree-toggle"
+                              aria-label="Toggle {conn.db_type === 'MongoDB'
+                                ? 'collections'
                                 : conn.db_type === 'Ignite'
-                                  ? 'server'
-                                  : 'table'}"
-                            ></i>
-                            <span
-                              >{conn.db_type === "MongoDB"
-                                ? "Collections"
-                                : conn.db_type === "Ignite"
-                                  ? "Caches"
-                                  : "Tables"} ({expandedDatabases[
-                                `${conn.id}-${db.name}`
-                              ].tables?.length || 0})</span
+                                  ? 'caches'
+                                  : 'tables'}"
+                              on:click={() => toggleTables(conn.id, db.name)}
                             >
-                          </button>
-                        </div>
-                        {#if expandedTables[`${conn.id}-${db.name}`]}
-                          <div class="tree-children">
-                            <table
-                              class="table table-sm table-hover mb-0 table-borderless"
-                              style="padding-left: 8px;"
+                              <i
+                                class="fas fa-chevron-{expandedTables[
+                                  `${conn.id}-${db.name}`
+                                ]
+                                  ? 'down'
+                                  : 'right'}"
+                              ></i>
+                            </button>
+                            <button
+                              class="tree-section-header"
+                              on:click={() => toggleTables(conn.id, db.name)}
                             >
-                              <tbody>
-                                {#each expandedDatabases[`${conn.id}-${db.name}`].tables || [] as table (table.name)}
-                                  <tr
-                                    class="table-item-row"
-                                    class:table-active={$selectedTable?.name ===
-                                      table.name ||
-                                      activeContextTable ===
-                                        `${conn.id}-${db.name}-${table.schema || "public"}-${table.name}`}
-                                    style="cursor: pointer; line-height: 1.5;"
-                                  >
-                                    <td
-                                      class="p-0 align-middle"
-                                      style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 8px !important;"
+                              <i
+                                class="fas fa-{conn.db_type === 'MongoDB'
+                                  ? 'layer-group'
+                                  : conn.db_type === 'Ignite'
+                                    ? 'server'
+                                    : 'table'}"
+                              ></i>
+                              <span
+                                >{conn.db_type === "MongoDB"
+                                  ? "Collections"
+                                  : conn.db_type === "Ignite"
+                                    ? "Caches"
+                                    : "Tables"} ({expandedDatabases[
+                                  `${conn.id}-${db.name}`
+                                ].tables?.length || 0})</span
+                              >
+                            </button>
+                          </div>
+                          {#if expandedTables[`${conn.id}-${db.name}`]}
+                            <div class="tree-children">
+                              <table
+                                class="table table-sm table-hover mb-0 table-borderless"
+                                style="padding-left: 8px;"
+                              >
+                                <tbody>
+                                  {#each expandedDatabases[`${conn.id}-${db.name}`].tables || [] as table (table.name)}
+                                    <tr
+                                      class="table-item-row"
+                                      class:table-active={$selectedTable?.name ===
+                                        table.name ||
+                                        activeContextTable ===
+                                          `${conn.id}-${db.name}-${table.schema || "public"}-${table.name}`}
+                                      style="cursor: pointer; line-height: 1.5;"
                                     >
-                                      <button
-                                        class="btn btn-sm p-0 text-secondary"
-                                        style="width: 20px; height: 20px; font-size: 10px; flex-shrink: 0;"
-                                        aria-label="Toggle {conn.db_type ===
-                                        'MongoDB'
-                                          ? 'collection'
-                                          : conn.db_type === 'Ignite'
-                                            ? 'cache'
-                                            : 'table'}"
+                                      <td
+                                        class="p-0 align-middle"
+                                        style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 8px !important;"
                                       >
-                                        <i class="fas fa-chevron-right"></i>
-                                      </button>
-                                      <button
-                                        class="btn btn-sm p-1 text-start border-0"
-                                        style="font-size: 12px; display: inline-block; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
-                                        on:click={() =>
-                                          selectTable(table, conn.id, db.name)}
-                                        on:dblclick={() =>
-                                          handleTableDoubleClick(
-                                            table,
-                                            expandedDatabases[
-                                              `${conn.id}-${db.name}`
-                                            ].connection,
-                                            expandedDatabases[
-                                              `${conn.id}-${db.name}`
-                                            ].database
-                                          )}
-                                        on:contextmenu={(e) =>
-                                          handleTableContextMenu(
-                                            e,
-                                            table,
-                                            expandedDatabases[
-                                              `${conn.id}-${db.name}`
-                                            ].connection,
-                                            expandedDatabases[
-                                              `${conn.id}-${db.name}`
-                                            ].database
-                                          )}
-                                      >
-                                        <i
-                                          class="fas fa-{conn.db_type ===
+                                        <button
+                                          class="btn btn-sm p-0 text-secondary"
+                                          style="width: 20px; height: 20px; font-size: 10px; flex-shrink: 0;"
+                                          aria-label="Toggle {conn.db_type ===
                                           'MongoDB'
-                                            ? 'layer-group'
+                                            ? 'collection'
                                             : conn.db_type === 'Ignite'
-                                              ? 'server'
-                                              : 'table'} text-secondary me-1"
-                                          style="font-size: 11px;"
-                                        ></i>
-                                        <span
-                                          class="text-truncate"
-                                          title={table.name}>{table.name}</span
+                                              ? 'cache'
+                                              : 'table'}"
                                         >
-                                      </button>
-                                    </td>
-                                    <td
-                                      class="text-end align-middle"
-                                      style="white-space: nowrap; width: 50px; min-width: 50px; max-width: 50px; padding: 2px 8px 2px 4px !important;"
-                                    >
-                                      {#if table.size_bytes !== undefined && table.size_bytes !== null && table.size_bytes > 0}
-                                        <span
-                                          class="badge bg-light text-secondary"
-                                          style="font-size: 10px;"
-                                          title="{conn.db_type === 'MongoDB'
-                                            ? 'Collection'
-                                            : conn.db_type === 'Ignite'
-                                              ? 'Cache'
-                                              : 'Table'} size"
-                                          >{formatBytes(table.size_bytes)}</span
+                                          <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                        <button
+                                          class="btn btn-sm p-1 text-start border-0"
+                                          style="font-size: 12px; display: inline-block; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                          on:click={() =>
+                                            selectTable(
+                                              table,
+                                              conn.id,
+                                              db.name
+                                            )}
+                                          on:dblclick={() =>
+                                            handleTableDoubleClick(
+                                              table,
+                                              expandedDatabases[
+                                                `${conn.id}-${db.name}`
+                                              ].connection,
+                                              expandedDatabases[
+                                                `${conn.id}-${db.name}`
+                                              ].database
+                                            )}
+                                          on:contextmenu={(e) =>
+                                            handleTableContextMenu(
+                                              e,
+                                              table,
+                                              expandedDatabases[
+                                                `${conn.id}-${db.name}`
+                                              ].connection,
+                                              expandedDatabases[
+                                                `${conn.id}-${db.name}`
+                                              ].database
+                                            )}
                                         >
-                                      {/if}
-                                    </td>
-                                  </tr>
-                                {/each}
-                              </tbody>
-                            </table>
+                                          <i
+                                            class="fas fa-{conn.db_type ===
+                                            'MongoDB'
+                                              ? 'layer-group'
+                                              : conn.db_type === 'Ignite'
+                                                ? 'server'
+                                                : 'table'} text-secondary me-1"
+                                            style="font-size: 11px;"
+                                          ></i>
+                                          <span
+                                            class="text-truncate"
+                                            title={table.name}
+                                            >{table.name}</span
+                                          >
+                                        </button>
+                                      </td>
+                                      <td
+                                        class="text-end align-middle"
+                                        style="white-space: nowrap; width: 50px; min-width: 50px; max-width: 50px; padding: 2px 8px 2px 4px !important;"
+                                      >
+                                        {#if table.size_bytes !== undefined && table.size_bytes !== null && table.size_bytes > 0}
+                                          <span
+                                            class="badge bg-light text-secondary"
+                                            style="font-size: 10px;"
+                                            title="{conn.db_type === 'MongoDB'
+                                              ? 'Collection'
+                                              : conn.db_type === 'Ignite'
+                                                ? 'Cache'
+                                                : 'Table'} size"
+                                            >{formatBytes(
+                                              table.size_bytes
+                                            )}</span
+                                          >
+                                        {/if}
+                                      </td>
+                                    </tr>
+                                  {/each}
+                                </tbody>
+                              </table>
+                            </div>
+                          {/if}
+                        </div>
+
+                        {#if conn.db_type !== "MongoDB" && conn.db_type !== "Redis" && conn.db_type !== "Ignite"}
+                          <div class="tree-item">
+                            <div class="tree-node tables-section-node">
+                              <button
+                                class="tree-toggle"
+                                aria-label="Toggle views"
+                              >
+                                <i class="fas fa-chevron-right"></i>
+                              </button>
+                              <div class="tree-section-header">
+                                <i class="fas fa-eye"></i>
+                                <span>Views</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div class="tree-item">
+                            <div class="tree-node tables-section-node">
+                              <button
+                                class="tree-toggle"
+                                aria-label="Toggle functions"
+                              >
+                                <i class="fas fa-chevron-right"></i>
+                              </button>
+                              <div class="tree-section-header">
+                                <i class="fas fa-code"></i>
+                                <span>Functions</span>
+                              </div>
+                            </div>
                           </div>
                         {/if}
-                      </div>
-
-                      {#if conn.db_type !== "MongoDB" && conn.db_type !== "Redis" && conn.db_type !== "Ignite"}
-                        <div class="tree-item">
-                          <div class="tree-node tables-section-node">
-                            <button
-                              class="tree-toggle"
-                              aria-label="Toggle views"
-                            >
-                              <i class="fas fa-chevron-right"></i>
-                            </button>
-                            <div class="tree-section-header">
-                              <i class="fas fa-eye"></i>
-                              <span>Views</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div class="tree-item">
-                          <div class="tree-node tables-section-node">
-                            <button
-                              class="tree-toggle"
-                              aria-label="Toggle functions"
-                            >
-                              <i class="fas fa-chevron-right"></i>
-                            </button>
-                            <div class="tree-section-header">
-                              <i class="fas fa-code"></i>
-                              <span>Functions</span>
-                            </div>
-                          </div>
-                        </div>
                       {/if}
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-            {/each}
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            {/if}
           </div>
         {/if}
       </div>
