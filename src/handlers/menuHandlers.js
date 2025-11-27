@@ -299,7 +299,18 @@ export function createMenuHandlers(context) {
 
       try {
         const { disconnectFromDatabase } = await import("../utils/tauri");
-        await disconnectFromDatabase(activeConnection.id);
+        const connectionId = activeConnection.id;
+        await disconnectFromDatabase(connectionId);
+
+        // Close all tabs for this connection and get closed tab IDs
+        const closedTabIds =
+          context.tabStore.closeTabsByConnection(connectionId);
+
+        // Clean up tab data for closed tabs
+        if (closedTabIds.length > 0) {
+          tabDataStore.removeTabsByIds(closedTabIds);
+        }
+
         await showMessage("Disconnected successfully");
       } catch (error) {
         console.error("Failed to disconnect:", error);

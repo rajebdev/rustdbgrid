@@ -152,6 +152,52 @@ function createTabStore() {
     setTabs: (newTabs) => {
       tabs.set(newTabs);
     },
+
+    /**
+     * Close all tabs for a specific connection
+     * Returns array of closed tab IDs for cleanup
+     */
+    closeTabsByConnection: (connectionId) => {
+      let closedTabIds = [];
+
+      tabs.update((currentTabs) => {
+        const tabsToKeep = currentTabs.filter((tab) => {
+          // For query tabs, check tab.connection
+          if (tab.type === "query" && tab.connection?.id === connectionId) {
+            closedTabIds.push(tab.id);
+            return false;
+          }
+          // For table tabs, check tab.tableInfo.connection
+          if (
+            tab.type === "table" &&
+            tab.tableInfo?.connection?.id === connectionId
+          ) {
+            closedTabIds.push(tab.id);
+            return false;
+          }
+          return true;
+        });
+
+        // Update active tab if current active tab was closed
+        const currentActive = get(activeTab);
+        if (currentActive) {
+          const isActiveTabClosed = !tabsToKeep.find(
+            (t) => t.id === currentActive.id
+          );
+          if (isActiveTabClosed) {
+            if (tabsToKeep.length > 0) {
+              activeTab.set(tabsToKeep[0]);
+            } else {
+              activeTab.set(null);
+            }
+          }
+        }
+
+        return tabsToKeep;
+      });
+
+      return closedTabIds;
+    },
   };
 }
 

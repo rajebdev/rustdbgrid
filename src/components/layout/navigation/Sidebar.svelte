@@ -6,6 +6,8 @@
     selectedDatabase,
     selectedTable,
   } from "../../../stores/connections";
+  import { tabStore } from "../../../stores/tabs";
+  import { tabDataStore } from "../../../stores/tabData";
   import {
     getConnections,
     getDatabases,
@@ -338,6 +340,13 @@
     // Disconnect - remove from connected list and collapse
     try {
       await disconnectFromDatabase(conn.id);
+
+      // Close all tabs for this connection
+      const closedTabIds = tabStore.closeTabsByConnection(conn.id);
+      if (closedTabIds.length > 0) {
+        tabDataStore.removeTabsByIds(closedTabIds);
+      }
+
       delete connectedConnections[conn.id];
       connectedConnections = { ...connectedConnections };
       delete expandedConnections[conn.id];

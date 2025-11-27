@@ -113,6 +113,17 @@ const createTabDataStore = () => {
       });
     },
 
+    // Hapus data untuk multiple tabs (by tab IDs)
+    removeTabsByIds: (tabIds) => {
+      update((store) => {
+        const newStore = { ...store };
+        tabIds.forEach((tabId) => {
+          delete newStore[tabId];
+        });
+        return newStore;
+      });
+    },
+
     // Clear all data
     clear: () => set({}),
   };
