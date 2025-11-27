@@ -294,7 +294,12 @@
 
           <div class="row">
             <div class="col-md-6 mb-3">
-              <label class="form-label" for="username">Username</label>
+              <label class="form-label" for="username"
+                >Username {formData.db_type === "Redis" ||
+                formData.db_type === "Ignite"
+                  ? "(optional)"
+                  : ""}</label
+              >
               <input
                 type="text"
                 class="form-control"
@@ -303,7 +308,12 @@
               />
             </div>
             <div class="col-md-6 mb-3">
-              <label class="form-label" for="password">Password</label>
+              <label class="form-label" for="password"
+                >Password {formData.db_type === "Redis" ||
+                formData.db_type === "Ignite"
+                  ? "(optional)"
+                  : ""}</label
+              >
               <input
                 type="password"
                 class="form-control"

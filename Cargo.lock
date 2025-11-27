@@ -451,6 +451,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bufstream"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40e38929add23cdf8a366df9b0e088953150724bcbe5fc330b0d8eb3b328eec8"
+
+[[package]]
 name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2274,6 +2280,15 @@ checksum = "3acae9609540aa318d1bc588455225fb2085b9ed0c4f6bd0d9d5bcd86f1a0344"
 dependencies = [
  "icu_normalizer",
  "icu_properties",
+]
+
+[[package]]
+name = "ignite-rs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7f00a934b760ae6a488a8edceed17cc505d42b4a356560d80b7a714bcab1a68"
+dependencies = [
+ "bufstream",
 ]
 
 [[package]]
@@ -4245,6 +4260,7 @@ dependencies = [
  "dirs 5.0.1",
  "futures",
  "hostname",
+ "ignite-rs",
  "log",
  "mongodb",
  "rand 0.8.5",
