@@ -46,7 +46,8 @@ export async function executeQueryWithFilters(
   filters = null,
   sortColumn = null,
   sortDirection = null,
-  limit = null
+  limit = null,
+  offset = null
 ) {
   if (!baseQuery || baseQuery.trim() === "") {
     throw new Error("baseQuery is required and cannot be empty");
@@ -69,6 +70,7 @@ export async function executeQueryWithFilters(
     sortColumn,
     sortDirection,
     limit,
+    offset,
   });
 
   const payload = {
@@ -78,6 +80,7 @@ export async function executeQueryWithFilters(
     sortColumn: sortColumn,
     sortDirection: sortDirection,
     limit,
+    offset,
   };
 
   console.log("📦 Full payload:", JSON.stringify(payload, null, 2));

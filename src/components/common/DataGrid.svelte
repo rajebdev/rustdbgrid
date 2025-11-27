@@ -192,6 +192,53 @@
         if (cacheName) {
           // Use getTableData which uses SCAN internally
           result = await getTableData(connection, cacheName, "", 200, 0);
+
+          // Apply client-side filtering for Ignite if filters are set
+          if (Object.keys(filters).length > 0 && result?.rows) {
+            const filteredRows = result.rows.filter((row) => {
+              return Object.entries(filters).every(([column, filterValue]) => {
+                const cellValue = row[column];
+                const cellStr =
+                  cellValue === null || cellValue === undefined
+                    ? "NULL"
+                    : String(cellValue);
+
+                if (Array.isArray(filterValue)) {
+                  // Array filter - check if value is in the array
+                  return filterValue.some((fv) => {
+                    if (fv === "NULL")
+                      return cellValue === null || cellValue === undefined;
+                    return cellStr === fv;
+                  });
+                } else if (
+                  typeof filterValue === "string" &&
+                  filterValue.trim() !== ""
+                ) {
+                  // Text filter - case-insensitive contains
+                  return cellStr
+                    .toLowerCase()
+                    .includes(filterValue.toLowerCase());
+                }
+                return true;
+              });
+            });
+            result = { ...result, rows: filteredRows };
+          }
+
+          // Apply client-side sorting for Ignite if sort is set
+          if (sortColumn && result?.rows) {
+            const direction = sortDirection.toUpperCase() === "DESC" ? -1 : 1;
+            result.rows.sort((a, b) => {
+              const aVal = a[sortColumn];
+              const bVal = b[sortColumn];
+              if (aVal === null || aVal === undefined) return direction;
+              if (bVal === null || bVal === undefined) return -direction;
+              if (typeof aVal === "number" && typeof bVal === "number") {
+                return (aVal - bVal) * direction;
+              }
+              return String(aVal).localeCompare(String(bVal)) * direction;
+            });
+          }
         } else {
           throw new Error(
             "Cannot determine cache name for Ignite. Please specify cache name."
@@ -204,7 +251,8 @@
           Object.keys(filters).length > 0 ? filters : null,
           sortColumn,
           sortColumn ? sortDirection.toUpperCase() : null,
-          200 // Default limit 200 rows
+          200, // Default limit 200 rows
+          0 // Start from offset 0
         );
       }
 
@@ -296,21 +344,40 @@
         loadMoreQuery = `SCAN ${cacheName} LIMIT 200 OFFSET ${currentOffset}`;
       } else {
         // Standard SQL-based pagination for other databases
-        loadMoreQuery = buildPaginatedQuery(
-          dbType,
-          executedQuery,
-          200,
-          currentOffset
-        );
+        // Check if we have filters - if so, let backend handle pagination with offset
+        const hasFilters = Object.keys(filters).length > 0;
 
-        result = await executeQueryWithFilters(
-          connection,
-          loadMoreQuery,
-          Object.keys(filters).length > 0 ? filters : null,
-          sortColumn,
-          sortColumn ? sortDirection.toUpperCase() : null,
-          200
-        );
+        if (hasFilters) {
+          // With filters: send original query + offset, backend handles pagination
+          result = await executeQueryWithFilters(
+            connection,
+            executedQuery, // Original query without pagination
+            filters,
+            sortColumn,
+            sortColumn ? sortDirection.toUpperCase() : null,
+            200,
+            currentOffset // Send offset to backend
+          );
+          loadMoreQuery = result.final_query || executedQuery;
+        } else {
+          // Without filters: build paginated query in frontend
+          loadMoreQuery = buildPaginatedQuery(
+            dbType,
+            executedQuery,
+            200,
+            currentOffset
+          );
+
+          result = await executeQueryWithFilters(
+            connection,
+            loadMoreQuery,
+            null,
+            sortColumn,
+            sortColumn ? sortDirection.toUpperCase() : null,
+            null, // No limit needed, already in query
+            null // No offset needed, already in query
+          );
+        }
       }
 
       if (result && result.rows && result.rows.length > 0) {
