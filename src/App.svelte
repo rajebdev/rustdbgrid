@@ -43,8 +43,9 @@
   let runningQueries = new Map();
 
   // Derived state from stores
-  $: activeTab = $tabStore.activeTab;
-  $: currentTabData = activeTab ? $tabDataStore[activeTab.id] : null;
+  $: tabs = $tabStore;
+  $: activeTab = tabStore.activeTab;
+  $: currentTabData = $activeTab ? $tabDataStore[$activeTab.id] : null;
 
   // Reusable event handlers
   const handleAddQueryTab = () => tabStore.addQueryTab();
@@ -95,8 +96,8 @@
 
   // Keyboard shortcuts
   const handleCloseActiveTab = () => {
-    if (activeTab && $tabStore.length > 0) {
-      handleTabClose({ detail: activeTab });
+    if ($activeTab && tabs.length > 0) {
+      handleTabClose({ detail: $activeTab });
     }
   };
 
@@ -193,7 +194,7 @@
 
 <MainLayout
   {showToolbar}
-  activeTabId={activeTab?.id}
+  activeTabId={$activeTab?.id}
   on:newQuery={handleMenuAction}
   on:openFile={handleMenuAction}
   on:saveQuery={handleMenuAction}
@@ -227,15 +228,16 @@
       minWidth={200}
       maxWidth={600}
       on:startResize={handleStartResize}
-      on:openTableTab={(e) =>
-        handleOpenTableTab(e, tabStore, tabDataStore, getTableData)}
+      on:openTableTab={(e) => {
+        handleOpenTableTab(e, tabStore, tabDataStore, getTableData);
+      }}
     />
   </svelte:fragment>
 
   <svelte:fragment slot="content">
     <ContentArea
-      tabs={$tabStore}
-      {activeTab}
+      {tabs}
+      activeTab={$activeTab}
       {currentTabData}
       {editorHeight}
       {isResizingEditor}
