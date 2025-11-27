@@ -80,85 +80,96 @@ impl DatabaseConnection for MySQLConnection {
             .map(|c| SqlxColumn::name(c).to_string())
             .collect();
 
-        // Extract column types
+        // Extract column types and categorize them once upfront
         let mut column_types = HashMap::new();
-        for col in rows[0].columns() {
-            let col_name = SqlxColumn::name(col).to_string();
-            let type_name = col.type_info().name().to_uppercase();
-            column_types.insert(col_name, type_name);
+
+        // Define column type categories for efficient lookup
+        #[derive(Clone, Copy)]
+        enum ColType {
+            DateTime,
+            Date,
+            Time,
+            Integer,
+            Float,
+            Boolean,
+            String,
+            Blob,
+            Unknown,
         }
 
-        let mut result_rows = Vec::new();
+        // Pre-compute column types once
+        let col_type_map: Vec<ColType> = rows[0]
+            .columns()
+            .iter()
+            .map(|col| {
+                let col_name = SqlxColumn::name(col).to_string();
+                let type_name = col.type_info().name().to_uppercase();
+                column_types.insert(col_name, type_name.clone());
+
+                match type_name.as_str() {
+                    "DATETIME" | "TIMESTAMP" => ColType::DateTime,
+                    "DATE" => ColType::Date,
+                    "TIME" => ColType::Time,
+                    "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "BIGINT" => ColType::Integer,
+                    "FLOAT" | "DOUBLE" | "DECIMAL" => ColType::Float,
+                    "BOOLEAN" | "BOOL" => ColType::Boolean,
+                    "VARCHAR" | "CHAR" | "TEXT" | "TINYTEXT" | "MEDIUMTEXT" | "LONGTEXT"
+                    | "ENUM" | "SET" => ColType::String,
+                    "BLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BINARY" | "VARBINARY" | "TINYBLOB" => {
+                        ColType::Blob
+                    }
+                    _ => ColType::Unknown,
+                }
+            })
+            .collect();
+
+        let mut result_rows = Vec::with_capacity(rows.len());
 
         for row in rows {
-            let mut row_map = HashMap::new();
+            let mut row_map = HashMap::with_capacity(columns.len());
             for (i, col) in columns.iter().enumerate() {
-                let col_info = &row.columns()[i];
-                let type_name_raw = col_info.type_info().name();
-                let type_name = type_name_raw.to_uppercase();
-
-                // Debug log untuk melihat tipe data
-                println!(
-                    "🔍 Column: {}, Type (raw): '{}', Type (upper): '{}'",
-                    col, type_name_raw, type_name
-                );
-
-                // Get value based on column type
-                let value = match type_name.as_str() {
-                    "DATETIME" | "TIMESTAMP" => {
-                        // Handle DATETIME and TIMESTAMP -> format: YYYY-MM-DD HH:mm:ss
-                        row.try_get::<NaiveDateTime, _>(i)
-                            .map(|v| serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string()))
-                            .unwrap_or(serde_json::Value::Null)
-                    }
-                    "DATE" => {
-                        // Handle DATE -> format: YYYY-MM-DD
-                        row.try_get::<NaiveDate, _>(i)
-                            .map(|v| serde_json::json!(v.format("%Y-%m-%d").to_string()))
-                            .unwrap_or(serde_json::Value::Null)
-                    }
-                    "TIME" => {
-                        // Handle TIME -> format: HH:mm:ss
-                        row.try_get::<NaiveTime, _>(i)
-                            .map(|v| serde_json::json!(v.format("%H:%M:%S").to_string()))
-                            .unwrap_or(serde_json::Value::Null)
-                    }
-                    "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "BIGINT" => row
+                // Use pre-computed type - no string matching per row
+                let value = match col_type_map[i] {
+                    ColType::DateTime => row
+                        .try_get::<NaiveDateTime, _>(i)
+                        .map(|v| serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string()))
+                        .unwrap_or(serde_json::Value::Null),
+                    ColType::Date => row
+                        .try_get::<NaiveDate, _>(i)
+                        .map(|v| serde_json::json!(v.format("%Y-%m-%d").to_string()))
+                        .unwrap_or(serde_json::Value::Null),
+                    ColType::Time => row
+                        .try_get::<NaiveTime, _>(i)
+                        .map(|v| serde_json::json!(v.format("%H:%M:%S").to_string()))
+                        .unwrap_or(serde_json::Value::Null),
+                    ColType::Integer => row
                         .try_get::<i64, _>(i)
                         .map(|v| serde_json::json!(v))
                         .unwrap_or(serde_json::Value::Null),
-                    "FLOAT" | "DOUBLE" | "DECIMAL" => row
+                    ColType::Float => row
                         .try_get::<f64, _>(i)
                         .map(|v| serde_json::json!(v))
                         .unwrap_or(serde_json::Value::Null),
-                    "BOOLEAN" | "BOOL" => row
+                    ColType::Boolean => row
                         .try_get::<bool, _>(i)
                         .map(|v| serde_json::json!(v))
                         .unwrap_or(serde_json::Value::Null),
-                    "VARCHAR" | "CHAR" | "TEXT" | "TINYTEXT" | "MEDIUMTEXT" | "LONGTEXT"
-                    | "ENUM" | "SET" => {
-                        // Handle string types explicitly
-                        row.try_get::<String, _>(i)
-                            .map(|v| serde_json::json!(v))
-                            .unwrap_or(serde_json::Value::Null)
-                    }
-                    "BLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BINARY" | "VARBINARY" => {
-                        // Handle binary data
-                        row.try_get::<Vec<u8>, _>(i)
-                            .map(|v| serde_json::json!(format!("[BLOB {} bytes]", v.len())))
-                            .unwrap_or(serde_json::Value::Null)
-                    }
-                    _ => {
-                        // Default fallback: try string first, then binary
-                        row.try_get::<String, _>(i)
-                            .map(|v| serde_json::json!(v))
-                            .or_else(|_| {
-                                row.try_get::<Vec<u8>, _>(i).map(|v| {
-                                    serde_json::json!(format!("[BINARY {} bytes]", v.len()))
-                                })
-                            })
-                            .unwrap_or(serde_json::Value::Null)
-                    }
+                    ColType::String => row
+                        .try_get::<String, _>(i)
+                        .map(|v| serde_json::json!(v))
+                        .unwrap_or(serde_json::Value::Null),
+                    ColType::Blob => row
+                        .try_get::<Vec<u8>, _>(i)
+                        .map(|v| serde_json::json!(format!("[BLOB {} bytes]", v.len())))
+                        .unwrap_or(serde_json::Value::Null),
+                    ColType::Unknown => row
+                        .try_get::<String, _>(i)
+                        .map(|v| serde_json::json!(v))
+                        .or_else(|_| {
+                            row.try_get::<Vec<u8>, _>(i)
+                                .map(|v| serde_json::json!(format!("[BINARY {} bytes]", v.len())))
+                        })
+                        .unwrap_or(serde_json::Value::Null),
                 };
                 row_map.insert(col.clone(), value);
             }

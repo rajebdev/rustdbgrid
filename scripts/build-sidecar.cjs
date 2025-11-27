@@ -58,7 +58,7 @@ async function main() {
   // 2. Generate SEA blob
   console.log("\n🔧 Generating SEA blob...");
   run("node --experimental-sea-config sea-config.json", {
-    cwd: path.join(SRC_BRIDGE_DIR, ".cache"),
+    cwd: SRC_BRIDGE_DIR,
   });
 
   // 3. Copy node executable
@@ -84,11 +84,17 @@ async function main() {
 
   // 4. Inject SEA blob with postject
   console.log("\n💉 Injecting SEA blob...");
-  const blobPath = path.join(SRC_BRIDGE_DIR, "ignite-sea.blob");
+  const blobPath = path.join(SRC_BRIDGE_DIR, ".cache", "ignite-sea.blob");
 
   if (platform === "darwin") {
     run(
       `npx postject "${tempExe}" NODE_SEA_BLOB "${blobPath}" --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 --macho-segment-name NODE_SEA`,
+      { cwd: ROOT_DIR }
+    );
+  } else if (platform === "win32") {
+    // Windows: need --overwrite to handle signed executables
+    run(
+      `npx postject "${tempExe}" NODE_SEA_BLOB "${blobPath}" --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 --overwrite`,
       { cwd: ROOT_DIR }
     );
   } else {

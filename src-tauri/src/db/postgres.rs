@@ -9,37 +9,79 @@ use std::collections::HashMap;
 use std::time::Instant;
 use uuid::Uuid;
 
-/// Extract value from a PostgreSQL row based on type name
-fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) -> serde_json::Value {
-    macro_rules! try_get {
-        ($t:ty) => {
-            if is_array {
-                if let Ok(v) = row.try_get::<Vec<$t>, _>(idx) {
-                    return serde_json::json!(v);
-                }
-            } else {
-                if let Ok(v) = row.try_get::<$t, _>(idx) {
-                    return serde_json::json!(v);
-                }
-            }
-        };
-        ($t:ty, $fmt:expr) => {
-            if is_array {
-                if let Ok(v) = row.try_get::<Vec<$t>, _>(idx) {
-                    let formatted: Vec<String> = v.iter().map(|x| format!($fmt, x)).collect();
-                    return serde_json::json!(formatted);
-                }
-            } else {
-                if let Ok(v) = row.try_get::<$t, _>(idx) {
-                    return serde_json::json!(format!($fmt, v));
-                }
-            }
-        };
-    }
+/// Enum for pre-computed PostgreSQL column types
+#[derive(Clone, Copy)]
+enum PgColType {
+    Timestamp,
+    TimestampTz,
+    Date,
+    Time,
+    TimeTz,
+    Interval,
+    Int16,
+    Int32,
+    Int64,
+    Oid,
+    Float32,
+    Float64,
+    Numeric,
+    Money,
+    Boolean,
+    String,
+    Uuid,
+    Json,
+    Bytea,
+    Network,
+    BitString,
+    Geometry,
+    Range,
+    Unknown,
+}
 
+/// Map base type string to enum (called once per column)
+fn map_pg_type(base_type: &str) -> PgColType {
     match base_type {
-        // Date/Time types
-        "timestamp" => {
+        "timestamp" => PgColType::Timestamp,
+        "timestamptz" => PgColType::TimestampTz,
+        "date" => PgColType::Date,
+        "time" => PgColType::Time,
+        "timetz" => PgColType::TimeTz,
+        "interval" => PgColType::Interval,
+        "int2" | "smallint" | "smallserial" => PgColType::Int16,
+        "int4" | "int" | "integer" | "serial" => PgColType::Int32,
+        "int8" | "bigint" | "bigserial" => PgColType::Int64,
+        "oid" => PgColType::Oid,
+        "float4" | "real" => PgColType::Float32,
+        "float8" | "double precision" => PgColType::Float64,
+        "numeric" | "decimal" => PgColType::Numeric,
+        "money" => PgColType::Money,
+        "bool" | "boolean" => PgColType::Boolean,
+        "text" | "varchar" | "char" | "bpchar" | "name" | "citext" | "unknown" | "xml" => {
+            PgColType::String
+        }
+        "uuid" => PgColType::Uuid,
+        "json" | "jsonb" => PgColType::Json,
+        "bytea" => PgColType::Bytea,
+        "inet" | "cidr" | "macaddr" | "macaddr8" => PgColType::Network,
+        "bit" | "varbit" => PgColType::BitString,
+        "point" | "line" | "lseg" | "box" | "path" | "polygon" | "circle" => PgColType::Geometry,
+        "int4range" | "int8range" | "numrange" | "tsrange" | "tstzrange" | "daterange" => {
+            PgColType::Range
+        }
+        _ => PgColType::Unknown,
+    }
+}
+
+/// Extract value using pre-computed type enum (no string matching per row)
+fn extract_pg_value_typed(
+    row: &PgRow,
+    idx: usize,
+    col_type: PgColType,
+    is_array: bool,
+    base_type: &str,
+) -> serde_json::Value {
+    match col_type {
+        PgColType::Timestamp => {
             if is_array {
                 if let Ok(v) = row.try_get::<Vec<NaiveDateTime>, _>(idx) {
                     let formatted: Vec<String> = v
@@ -52,7 +94,7 @@ fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) ->
                 return serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string());
             }
         }
-        "timestamptz" => {
+        PgColType::TimestampTz => {
             if is_array {
                 if let Ok(v) = row.try_get::<Vec<DateTime<Utc>>, _>(idx) {
                     let formatted: Vec<String> = v
@@ -67,7 +109,7 @@ fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) ->
                 return serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string());
             }
         }
-        "date" => {
+        PgColType::Date => {
             if is_array {
                 if let Ok(v) = row.try_get::<Vec<NaiveDate>, _>(idx) {
                     let formatted: Vec<String> =
@@ -78,7 +120,7 @@ fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) ->
                 return serde_json::json!(v.format("%Y-%m-%d").to_string());
             }
         }
-        "time" => {
+        PgColType::Time => {
             if is_array {
                 if let Ok(v) = row.try_get::<Vec<NaiveTime>, _>(idx) {
                     let formatted: Vec<String> =
@@ -89,11 +131,16 @@ fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) ->
                 return serde_json::json!(v.format("%H:%M:%S").to_string());
             }
         }
-        "timetz" => {
-            try_get!(String);
+        PgColType::TimeTz => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<String>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else if let Ok(v) = row.try_get::<String, _>(idx) {
+                return serde_json::json!(v);
+            }
         }
-        "interval" => {
-            // Interval tidak support array dengan mudah
+        PgColType::Interval => {
             if !is_array {
                 if let Ok(v) = row.try_get::<sqlx::postgres::types::PgInterval, _>(idx) {
                     return serde_json::json!(format!(
@@ -103,65 +150,101 @@ fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) ->
                 }
             }
         }
-
-        // Integer types
-        "int2" | "smallint" | "smallserial" => {
-            try_get!(i16);
+        PgColType::Int16 => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<i16>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else if let Ok(v) = row.try_get::<i16, _>(idx) {
+                return serde_json::json!(v);
+            }
         }
-        "int4" | "int" | "integer" | "serial" => {
-            try_get!(i32);
+        PgColType::Int32 => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<i32>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else if let Ok(v) = row.try_get::<i32, _>(idx) {
+                return serde_json::json!(v);
+            }
         }
-        "int8" | "bigint" | "bigserial" => {
-            try_get!(i64);
+        PgColType::Int64 => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<i64>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else if let Ok(v) = row.try_get::<i64, _>(idx) {
+                return serde_json::json!(v);
+            }
         }
-        "oid" => {
+        PgColType::Oid => {
             if !is_array {
                 if let Ok(v) = row.try_get::<sqlx::postgres::types::Oid, _>(idx) {
                     return serde_json::json!(v.0);
                 }
             }
-            try_get!(i32);
+            if let Ok(v) = row.try_get::<i32, _>(idx) {
+                return serde_json::json!(v);
+            }
         }
-
-        // Floating point types
-        "float4" | "real" => {
-            try_get!(f32);
+        PgColType::Float32 => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<f32>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else if let Ok(v) = row.try_get::<f32, _>(idx) {
+                return serde_json::json!(v);
+            }
         }
-        "float8" | "double precision" => {
-            try_get!(f64);
+        PgColType::Float64 => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<f64>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else if let Ok(v) = row.try_get::<f64, _>(idx) {
+                return serde_json::json!(v);
+            }
         }
-
-        // Numeric/Decimal
-        "numeric" | "decimal" => {
-            try_get!(String);
-            if !is_array {
+        PgColType::Numeric => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<String>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else {
+                if let Ok(v) = row.try_get::<String, _>(idx) {
+                    return serde_json::json!(v);
+                }
                 if let Ok(v) = row.try_get::<f64, _>(idx) {
                     return serde_json::json!(v);
                 }
             }
         }
-
-        // Money type
-        "money" => {
+        PgColType::Money => {
             if !is_array {
                 if let Ok(v) = row.try_get::<sqlx::postgres::types::PgMoney, _>(idx) {
                     return serde_json::json!(format!("${:.2}", v.0 as f64 / 100.0));
                 }
             }
         }
-
-        // Boolean type
-        "bool" | "boolean" => {
-            try_get!(bool);
+        PgColType::Boolean => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<bool>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else if let Ok(v) = row.try_get::<bool, _>(idx) {
+                return serde_json::json!(v);
+            }
         }
-
-        // String types
-        "text" | "varchar" | "char" | "bpchar" | "name" | "citext" | "unknown" | "xml" => {
-            try_get!(String);
+        PgColType::String => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<String>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else if let Ok(v) = row.try_get::<String, _>(idx) {
+                return serde_json::json!(v);
+            }
         }
-
-        // UUID type
-        "uuid" => {
+        PgColType::Uuid => {
             if is_array {
                 if let Ok(v) = row.try_get::<Vec<Uuid>, _>(idx) {
                     let formatted: Vec<String> = v.iter().map(|u| u.to_string()).collect();
@@ -171,9 +254,7 @@ fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) ->
                 return serde_json::json!(v.to_string());
             }
         }
-
-        // JSON types
-        "json" | "jsonb" => {
+        PgColType::Json => {
             if is_array {
                 if let Ok(v) = row.try_get::<Vec<serde_json::Value>, _>(idx) {
                     return serde_json::json!(v);
@@ -182,9 +263,7 @@ fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) ->
                 return v;
             }
         }
-
-        // Binary data
-        "bytea" => {
+        PgColType::Bytea => {
             if is_array {
                 if let Ok(v) = row.try_get::<Vec<Vec<u8>>, _>(idx) {
                     let formatted: Vec<String> = v
@@ -197,29 +276,23 @@ fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) ->
                 return serde_json::json!(format!("[BYTEA {} bytes]", v.len()));
             }
         }
-
-        // Network types
-        "inet" | "cidr" | "macaddr" | "macaddr8" => {
-            try_get!(String);
+        PgColType::Network | PgColType::BitString => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<String>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else if let Ok(v) = row.try_get::<String, _>(idx) {
+                return serde_json::json!(v);
+            }
         }
-
-        // Bit string types
-        "bit" | "varbit" => {
-            try_get!(String);
-        }
-
-        // Geometric types
-        "point" | "line" | "lseg" | "box" | "path" | "polygon" | "circle" => {
+        PgColType::Geometry => {
             return serde_json::json!(format!("[{} geometry]", base_type.to_uppercase()));
         }
-
-        // Range types
-        "int4range" | "int8range" | "numrange" | "tsrange" | "tstzrange" | "daterange" => {
+        PgColType::Range => {
             return serde_json::json!(format!("[{} range]", base_type));
         }
-
-        // Fallback
-        _ => {
+        PgColType::Unknown => {
+            // Fallback: try common types
             if is_array {
                 if let Ok(v) = row.try_get::<Vec<String>, _>(idx) {
                     return serde_json::json!(v);
@@ -246,7 +319,6 @@ fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) ->
             }
         }
     }
-
     serde_json::Value::Null
 }
 
@@ -322,30 +394,36 @@ impl DatabaseConnection for PostgresConnection {
             .iter()
             .map(|c| SqlxColumn::name(c).to_string())
             .collect();
-        let mut result_rows = Vec::new();
 
-        for row in rows {
-            let mut row_map = HashMap::new();
-            for (i, col) in columns.iter().enumerate() {
-                let col_info = &row.columns()[i];
-                let type_name = col_info.type_info().name();
-
+        // Pre-compute column type info once upfront (base_type, is_array, col_type enum)
+        let col_type_info: Vec<(String, bool, PgColType)> = rows[0]
+            .columns()
+            .iter()
+            .map(|col| {
+                let type_name = col.type_info().name();
                 // Check if array type (can be _typename or TYPENAME[])
-                let (is_array, base_type_owned);
-                if let Some(stripped) = type_name.strip_prefix('_') {
+                let (base_type, is_array) = if let Some(stripped) = type_name.strip_prefix('_') {
                     // Format: _varchar, _int4, etc.
-                    is_array = true;
-                    base_type_owned = stripped.to_string();
+                    (stripped.to_lowercase(), true)
                 } else if let Some(stripped) = type_name.strip_suffix("[]") {
                     // Format: VARCHAR[], INT4[], etc. - convert to lowercase for matching
-                    is_array = true;
-                    base_type_owned = stripped.to_lowercase();
+                    (stripped.to_lowercase(), true)
                 } else {
-                    is_array = false;
-                    base_type_owned = type_name.to_lowercase();
-                }
+                    (type_name.to_lowercase(), false)
+                };
+                let col_type = map_pg_type(&base_type);
+                (base_type, is_array, col_type)
+            })
+            .collect();
 
-                let value = extract_pg_value(&row, i, &base_type_owned, is_array);
+        let mut result_rows = Vec::with_capacity(rows.len());
+
+        for row in rows {
+            let mut row_map = HashMap::with_capacity(columns.len());
+            for (i, col) in columns.iter().enumerate() {
+                // Use pre-computed type info - enum matching instead of string matching per row
+                let (base_type, is_array, col_type) = &col_type_info[i];
+                let value = extract_pg_value_typed(&row, i, *col_type, *is_array, base_type);
                 row_map.insert(col.clone(), value);
             }
             result_rows.push(row_map);

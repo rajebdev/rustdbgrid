@@ -24,6 +24,132 @@ impl Default for MSSQLConnection {
     }
 }
 
+// Enum for pre-computed column types
+#[derive(Clone, Copy)]
+enum MssqlColType {
+    String,
+    Int32,
+    Int64,
+    Int16,
+    UInt8,
+    Float32,
+    Float64,
+    Boolean,
+    Uuid,
+    DateTime,
+    Date,
+    Time,
+    Binary,
+    Decimal,
+    Unknown,
+}
+
+// Optimized helper function using pre-computed type
+fn row_value_to_json_typed(row: &Row, index: usize, col_type: MssqlColType) -> serde_json::Value {
+    match col_type {
+        MssqlColType::String => {
+            if let Some(v) = row.try_get::<&str, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+        }
+        MssqlColType::Int32 => {
+            if let Some(v) = row.try_get::<i32, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+        }
+        MssqlColType::Int64 => {
+            if let Some(v) = row.try_get::<i64, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+        }
+        MssqlColType::Int16 => {
+            if let Some(v) = row.try_get::<i16, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+        }
+        MssqlColType::UInt8 => {
+            if let Some(v) = row.try_get::<u8, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+        }
+        MssqlColType::Float32 => {
+            if let Some(v) = row.try_get::<f32, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+        }
+        MssqlColType::Float64 => {
+            if let Some(v) = row.try_get::<f64, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+        }
+        MssqlColType::Boolean => {
+            if let Some(v) = row.try_get::<bool, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+        }
+        MssqlColType::Uuid => {
+            if let Some(v) = row.try_get::<tiberius::Uuid, _>(index).ok().flatten() {
+                return serde_json::json!(v.to_string());
+            }
+        }
+        MssqlColType::DateTime => {
+            if let Some(v) = row
+                .try_get::<chrono::NaiveDateTime, _>(index)
+                .ok()
+                .flatten()
+            {
+                return serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string());
+            }
+        }
+        MssqlColType::Date => {
+            if let Some(v) = row.try_get::<chrono::NaiveDate, _>(index).ok().flatten() {
+                return serde_json::json!(v.format("%Y-%m-%d").to_string());
+            }
+        }
+        MssqlColType::Time => {
+            if let Some(v) = row.try_get::<chrono::NaiveTime, _>(index).ok().flatten() {
+                return serde_json::json!(v.format("%H:%M:%S").to_string());
+            }
+        }
+        MssqlColType::Binary => {
+            if let Some(v) = row.try_get::<&[u8], _>(index).ok().flatten() {
+                return serde_json::json!(format!("[BINARY {} bytes]", v.len()));
+            }
+        }
+        MssqlColType::Decimal => {
+            if let Some(v) = row
+                .try_get::<bigdecimal::BigDecimal, _>(index)
+                .ok()
+                .flatten()
+            {
+                return serde_json::json!(v.to_string());
+            }
+        }
+        MssqlColType::Unknown => {
+            // Fallback: try common types in order
+            if let Some(v) = row.try_get::<&str, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+            if let Some(v) = row.try_get::<i32, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+            if let Some(v) = row.try_get::<i64, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+            if let Some(v) = row.try_get::<f64, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+            if let Some(v) = row.try_get::<bool, _>(index).ok().flatten() {
+                return serde_json::json!(v);
+            }
+            if let Some(v) = row.try_get::<&[u8], _>(index).ok().flatten() {
+                return serde_json::json!(format!("[BINARY {} bytes]", v.len()));
+            }
+        }
+    }
+    serde_json::Value::Null
+}
+
 #[async_trait]
 impl DatabaseConnection for MSSQLConnection {
     async fn connect(&mut self, config: &ConnectionConfig) -> Result<()> {
@@ -117,18 +243,66 @@ impl DatabaseConnection for MSSQLConnection {
 
         // Extract column types
         let mut column_types = HashMap::new();
-        for col in rows[0].columns() {
-            let col_name = col.name().to_string();
-            let type_name = format!("{:?}", col.column_type()).to_uppercase();
-            column_types.insert(col_name, type_name);
-        }
 
-        let mut result_rows = Vec::new();
+        // Pre-compute column types once
+        let col_type_map: Vec<MssqlColType> = rows[0]
+            .columns()
+            .iter()
+            .map(|col| {
+                let col_name = col.name().to_string();
+                let type_name = format!("{:?}", col.column_type()).to_uppercase();
+                let col_type = match type_name.as_str() {
+                    t if t.contains("VARCHAR")
+                        || t.contains("CHAR")
+                        || t.contains("TEXT")
+                        || t.contains("NVARCHAR")
+                        || t.contains("NCHAR")
+                        || t.contains("NTEXT") =>
+                    {
+                        MssqlColType::String
+                    }
+                    t if t.contains("BIGINT") || t.contains("INT8") => MssqlColType::Int64,
+                    t if t.contains("SMALLINT") || t.contains("INT2") => MssqlColType::Int16,
+                    t if t.contains("TINYINT") => MssqlColType::UInt8,
+                    t if t.contains("INT") || t.contains("INT4") => MssqlColType::Int32,
+                    t if t.contains("REAL") || t.contains("FLOAT4") => MssqlColType::Float32,
+                    t if t.contains("FLOAT") || t.contains("DOUBLE") || t.contains("FLOAT8") => {
+                        MssqlColType::Float64
+                    }
+                    t if t.contains("BIT") || t.contains("BOOL") => MssqlColType::Boolean,
+                    t if t.contains("UNIQUEIDENTIFIER") || t.contains("UUID") => MssqlColType::Uuid,
+                    t if t.contains("DATETIME")
+                        || t.contains("TIMESTAMP")
+                        || t.contains("SMALLDATETIME") =>
+                    {
+                        MssqlColType::DateTime
+                    }
+                    t if t.contains("DATE") => MssqlColType::Date,
+                    t if t.contains("TIME") => MssqlColType::Time,
+                    t if t.contains("BINARY") || t.contains("VARBINARY") || t.contains("IMAGE") => {
+                        MssqlColType::Binary
+                    }
+                    t if t.contains("DECIMAL")
+                        || t.contains("NUMERIC")
+                        || t.contains("MONEY")
+                        || t.contains("SMALLMONEY") =>
+                    {
+                        MssqlColType::Decimal
+                    }
+                    _ => MssqlColType::Unknown,
+                };
+                column_types.insert(col_name, type_name);
+                col_type
+            })
+            .collect();
+
+        let mut result_rows = Vec::with_capacity(rows.len());
 
         for row in rows {
-            let mut row_map = HashMap::new();
+            let mut row_map = HashMap::with_capacity(columns.len());
             for (i, col_name) in columns.iter().enumerate() {
-                let value = row_value_to_json(&row, i);
+                // Use pre-computed type for faster extraction
+                let value = row_value_to_json_typed(&row, i, col_type_map[i]);
                 row_map.insert(col_name.clone(), value);
             }
             result_rows.push(row_map);
@@ -298,78 +472,4 @@ impl DatabaseConnection for MSSQLConnection {
         );
         self.execute_query(&query).await
     }
-}
-
-// Helper function to convert tiberius row values to JSON
-fn row_value_to_json(row: &Row, index: usize) -> serde_json::Value {
-    // Try different types and return appropriate JSON value
-
-    // String types
-    if let Some(v) = row.try_get::<&str, _>(index).ok().flatten() {
-        return serde_json::json!(v);
-    }
-
-    // Integer types
-    if let Some(v) = row.try_get::<i32, _>(index).ok().flatten() {
-        return serde_json::json!(v);
-    }
-    if let Some(v) = row.try_get::<i64, _>(index).ok().flatten() {
-        return serde_json::json!(v);
-    }
-    if let Some(v) = row.try_get::<i16, _>(index).ok().flatten() {
-        return serde_json::json!(v);
-    }
-    if let Some(v) = row.try_get::<u8, _>(index).ok().flatten() {
-        return serde_json::json!(v);
-    }
-
-    // Float types
-    if let Some(v) = row.try_get::<f32, _>(index).ok().flatten() {
-        return serde_json::json!(v);
-    }
-    if let Some(v) = row.try_get::<f64, _>(index).ok().flatten() {
-        return serde_json::json!(v);
-    }
-
-    // Boolean
-    if let Some(v) = row.try_get::<bool, _>(index).ok().flatten() {
-        return serde_json::json!(v);
-    }
-
-    // UUID/GUID
-    if let Some(v) = row.try_get::<tiberius::Uuid, _>(index).ok().flatten() {
-        return serde_json::json!(v.to_string());
-    }
-
-    // Date and time types
-    if let Some(v) = row
-        .try_get::<chrono::NaiveDateTime, _>(index)
-        .ok()
-        .flatten()
-    {
-        return serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string());
-    }
-    if let Some(v) = row.try_get::<chrono::NaiveDate, _>(index).ok().flatten() {
-        return serde_json::json!(v.format("%Y-%m-%d").to_string());
-    }
-    if let Some(v) = row.try_get::<chrono::NaiveTime, _>(index).ok().flatten() {
-        return serde_json::json!(v.format("%H:%M:%S").to_string());
-    }
-
-    // Binary data
-    if let Some(v) = row.try_get::<&[u8], _>(index).ok().flatten() {
-        return serde_json::json!(format!("[BINARY {} bytes]", v.len()));
-    }
-
-    // Numeric/Decimal (using bigdecimal from tiberius features)
-    if let Some(v) = row
-        .try_get::<bigdecimal::BigDecimal, _>(index)
-        .ok()
-        .flatten()
-    {
-        return serde_json::json!(v.to_string());
-    }
-
-    // Default to null if we can't convert
-    serde_json::Value::Null
 }
