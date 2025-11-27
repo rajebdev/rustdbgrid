@@ -22,8 +22,12 @@ KEYS *
 GET key_name
 HGETALL hash_name`,
 
-    "Apache Ignite": `-- Apache Ignite Query
-SELECT * FROM table_name LIMIT 100;`,
+    Ignite: `-- Apache Ignite SCAN Query
+-- Use SCAN to browse cache data (recommended)
+SCAN cache_name LIMIT 100
+
+-- Or use SQL if cache has SQL tables defined
+-- SELECT * FROM "SCHEMA"."TABLE_NAME" LIMIT 100`,
 
     SQLite: `-- SQLite Query
 SELECT * FROM table_name LIMIT 100;`,
@@ -97,13 +101,13 @@ export function getQueryExamples(dbType) {
       set_operations: "SADD myset member1 member2\nSMEMBERS myset",
     },
 
-    "Apache Ignite": {
-      select: "SELECT * FROM users WHERE age > 18 LIMIT 10;",
+    Ignite: {
+      scan: "SCAN cache_name LIMIT 100",
+      select: 'SELECT * FROM "SCHEMA"."TABLE" LIMIT 10;',
       insert:
-        "INSERT INTO users (id, name, email, age) VALUES (1, 'John', 'john@example.com', 25);",
-      update: "UPDATE users SET email = 'newemail@example.com' WHERE id = 1;",
+        "-- SQL INSERT only works if SQL tables are defined\nINSERT INTO users (id, name, email) VALUES (1, 'John', 'john@example.com');",
+      update: "UPDATE users SET email = 'new@example.com' WHERE id = 1;",
       delete: "DELETE FROM users WHERE id = 1;",
-      join: "SELECT u.name, o.order_date FROM users u JOIN orders o ON u.id = o.user_id LIMIT 10;",
     },
   };
 
@@ -186,10 +190,26 @@ export function buildPaginatedQuery(
       // Redis doesn't use SQL LIMIT, return as-is
       return baseQuery;
 
+    case "Ignite":
+      // Apache Ignite SCAN uses custom format: SCAN cache_name LIMIT x OFFSET y
+      // Check if it's a SCAN operation
+      if (baseQuery.toUpperCase().startsWith("SCAN ")) {
+        // Remove existing LIMIT/OFFSET from SCAN
+        baseQuery = baseQuery.replace(/\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?/gi, "");
+        baseQuery = baseQuery.replace(/\s+OFFSET\s+\d+/gi, "");
+
+        if (offset > 0) {
+          return `${baseQuery} LIMIT ${limit} OFFSET ${offset}`;
+        } else {
+          return `${baseQuery} LIMIT ${limit}`;
+        }
+      }
+    // Fall through to default for non-SCAN queries
+    // But Ignite should always use SCAN for cache data
+
     case "MySQL":
     case "PostgreSQL":
     case "SQLite":
-    case "Ignite":
     default:
       // Standard SQL LIMIT OFFSET syntax
       // Remove existing LIMIT/OFFSET

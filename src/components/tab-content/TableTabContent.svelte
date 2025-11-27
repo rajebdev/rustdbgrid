@@ -14,6 +14,8 @@
       {tabId}
       executedQuery={currentTabData?.executedQuery || ""}
       connection={tableInfo?.connection || $activeConnection}
+      tableName={tableInfo?.name || ""}
+      databaseName={tableInfo?.database || ""}
     />
   {:else}
     <div

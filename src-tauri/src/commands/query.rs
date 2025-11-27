@@ -44,10 +44,13 @@ pub async fn execute_query_with_filters(
         state.pool.connect(config.clone()).await?;
     }
 
-    // For MongoDB and Redis, execute the original query without modification
-    // These databases don't use SQL syntax
+    // For MongoDB, Redis, and Apache Ignite - execute original query without modification
+    // These databases use their own query format (not standard SQL)
     use crate::models::connection::DatabaseType;
-    if matches!(config.db_type, DatabaseType::MongoDB | DatabaseType::Redis) {
+    if matches!(
+        config.db_type,
+        DatabaseType::MongoDB | DatabaseType::Redis | DatabaseType::Ignite
+    ) {
         let query_clone = base_query.clone();
         let mut result = state
             .pool

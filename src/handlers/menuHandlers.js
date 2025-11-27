@@ -48,6 +48,9 @@ export async function handleOpenTableTab(
     } else if (connection.db_type === "Redis") {
       // Redis uses command format
       baseQuery = `KEYS ${table.name}:*`;
+    } else if (connection.db_type === "Ignite") {
+      // Apache Ignite uses SCAN for cache data
+      baseQuery = `SCAN ${database.name}`;
     } else if (connection.db_type === "PostgreSQL" && table.schema) {
       baseQuery = `SELECT * FROM "${table.schema}"."${table.name}"`;
     } else if (connection.db_type === "MySQL") {

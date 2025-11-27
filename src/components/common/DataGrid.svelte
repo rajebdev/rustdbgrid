@@ -7,6 +7,7 @@
     getFilterValues,
     executeQueryWithFilters,
     executeQuery,
+    getTableData,
   } from "../../utils/tauri";
   import ArrayCell from "./ArrayCell.svelte";
 
@@ -14,6 +15,8 @@
   export let tabId = null;
   export let executedQuery = "";
   export let connection = null;
+  export let tableName = ""; // Table/cache name for Ignite/NoSQL
+  export let databaseName = ""; // Database/cache name for Ignite/NoSQL
 
   let displayData = null; // Internal state for display (can be filtered or original)
   let isFiltered = false; // Track if current data is filtered
@@ -163,14 +166,47 @@
 
       console.log("📦 Filters to send:", filters);
 
-      const result = await executeQueryWithFilters(
-        connection,
-        executedQuery,
-        Object.keys(filters).length > 0 ? filters : null,
-        sortColumn,
-        sortColumn ? sortDirection.toUpperCase() : null,
-        200 // Default limit 200 rows
-      );
+      const dbType = connection?.db_type || "MySQL";
+      const isIgnite = dbType === "Ignite";
+
+      let result;
+
+      // For Apache Ignite, ALWAYS use SCAN - never use SQL query
+      if (isIgnite) {
+        // Priority: databaseName prop > tableName prop > parse from executedQuery
+        let cacheName = databaseName || tableName || "";
+
+        // Fallback: try to parse from SCAN query if props are empty
+        if (!cacheName) {
+          const scanMatch = executedQuery.match(/^SCAN\s+(\S+)/i);
+          cacheName = scanMatch ? scanMatch[1] : "";
+        }
+
+        console.log("🔥 Ignite reload with SCAN:", {
+          cacheName,
+          databaseName,
+          tableName,
+          executedQuery: executedQuery.substring(0, 50),
+        });
+
+        if (cacheName) {
+          // Use getTableData which uses SCAN internally
+          result = await getTableData(connection, cacheName, "", 200, 0);
+        } else {
+          throw new Error(
+            "Cannot determine cache name for Ignite. Please specify cache name."
+          );
+        }
+      } else {
+        result = await executeQueryWithFilters(
+          connection,
+          executedQuery,
+          Object.keys(filters).length > 0 ? filters : null,
+          sortColumn,
+          sortColumn ? sortDirection.toUpperCase() : null,
+          200 // Default limit 200 rows
+        );
+      }
 
       // Update displayData with filtered results
       displayData = result;
@@ -216,21 +252,66 @@
 
       // Build query with LIMIT and OFFSET based on database type
       const dbType = connection?.db_type || "MySQL";
-      const loadMoreQuery = buildPaginatedQuery(
-        dbType,
-        executedQuery,
-        200,
-        currentOffset
-      );
 
-      const result = await executeQueryWithFilters(
-        connection,
-        loadMoreQuery,
-        Object.keys(filters).length > 0 ? filters : null,
-        sortColumn,
-        sortColumn ? sortDirection.toUpperCase() : null,
-        200
-      );
+      // For Apache Ignite, ALWAYS use SCAN - never use SQL query
+      const isIgnite = dbType === "Ignite";
+
+      let result;
+      let loadMoreQuery = executedQuery;
+
+      if (isIgnite) {
+        // For Ignite, ALWAYS use SCAN with getTableData
+        // Priority: databaseName prop > tableName prop > parse from executedQuery
+        let cacheName = databaseName || tableName || "";
+
+        // Fallback: try to parse from SCAN query if props are empty
+        if (!cacheName) {
+          const scanMatch = executedQuery.match(/^SCAN\s+(\S+)/i);
+          cacheName = scanMatch ? scanMatch[1] : "";
+        }
+
+        console.log("📥 Ignite SCAN load more:", {
+          cacheName,
+          databaseName,
+          tableName,
+          offset: currentOffset,
+          executedQuery: executedQuery.substring(0, 50),
+        });
+
+        if (!cacheName) {
+          console.error("❌ Cannot determine cache name for Ignite load more");
+          hasMoreData = false;
+          isLoadingMore = false;
+          return;
+        }
+
+        result = await getTableData(
+          connection,
+          cacheName, // database = cache name
+          "", // table = empty for cache scan
+          200, // limit
+          currentOffset // offset
+        );
+
+        loadMoreQuery = `SCAN ${cacheName} LIMIT 200 OFFSET ${currentOffset}`;
+      } else {
+        // Standard SQL-based pagination for other databases
+        loadMoreQuery = buildPaginatedQuery(
+          dbType,
+          executedQuery,
+          200,
+          currentOffset
+        );
+
+        result = await executeQueryWithFilters(
+          connection,
+          loadMoreQuery,
+          Object.keys(filters).length > 0 ? filters : null,
+          sortColumn,
+          sortColumn ? sortDirection.toUpperCase() : null,
+          200
+        );
+      }
 
       if (result && result.rows && result.rows.length > 0) {
         // Append new rows to existing data

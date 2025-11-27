@@ -20,14 +20,26 @@ use tokio::net::windows::named_pipe::ClientOptions;
 use tokio::net::UnixStream;
 
 // Generate random pipe name once per process - provides security without overhead
+// Use a fixed base name for development to avoid orphan processes on reload
 static PIPE_NAME: Lazy<String> = Lazy::new(|| {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let pid = std::process::id();
-    format!("rustdbgrid-ignite-{}-{}", pid, timestamp % 1_000_000)
+    // In development, use a predictable name so HMR/reload can reconnect
+    // In production, add PID for security (multiple instances)
+    #[cfg(debug_assertions)]
+    {
+        // Development: fixed name allows reconnection after reload
+        "rustdbgrid-ignite-dev".to_string()
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        // Production: unique per process for security
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let pid = std::process::id();
+        format!("rustdbgrid-ignite-{}-{}", pid, timestamp % 1_000_000)
+    }
 });
 
 // Sidecar process handle
@@ -357,6 +369,10 @@ impl IgniteConnection {
             return Ok(());
         }
 
+        // Bridge not running - reset the flag so ensure_sidecar_running will start it
+        log::info!("🔄 [IGNITE BRIDGE] Bridge not responding, restarting...");
+        SIDECAR_STARTED.store(false, std::sync::atomic::Ordering::Relaxed);
+
         // Start sidecar
         Self::ensure_sidecar_running()?;
 
@@ -364,6 +380,7 @@ impl IgniteConnection {
         for _ in 0..50 {
             tokio::time::sleep(Duration::from_millis(100)).await;
             if self.is_bridge_running().await {
+                log::info!("✅ [IGNITE BRIDGE] Bridge restarted successfully");
                 return Ok(());
             }
         }
@@ -424,6 +441,11 @@ impl DatabaseConnection for IgniteConnection {
 
     async fn disconnect(&mut self) -> Result<()> {
         if let Some(connection_id) = &self.connection_id {
+            log::info!(
+                "🔌 [IGNITE] Sending disconnect request to bridge for connection: {}",
+                connection_id
+            );
+
             let request = IpcRequest {
                 action: "disconnect".to_string(),
                 connection_id: Some(connection_id.clone()),
@@ -438,7 +460,30 @@ impl DatabaseConnection for IgniteConnection {
                 offset: None,
             };
 
-            let _ = self.send_request(&request).await;
+            match self.send_request(&request).await {
+                Ok(response) => {
+                    if response.success {
+                        log::info!(
+                            "✅ [IGNITE] Bridge confirmed disconnect for connection: {}",
+                            connection_id
+                        );
+                    } else {
+                        log::warn!(
+                            "⚠️ [IGNITE] Bridge disconnect returned failure for connection: {}",
+                            connection_id
+                        );
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "⚠️ [IGNITE] Failed to send disconnect to bridge for connection {}: {}",
+                        connection_id,
+                        e
+                    );
+                }
+            }
+        } else {
+            log::info!("🔌 [IGNITE] No connection_id to disconnect");
         }
 
         self.config = None;
@@ -475,12 +520,80 @@ impl DatabaseConnection for IgniteConnection {
     }
 
     async fn execute_query(&mut self, query: &str) -> Result<QueryResult> {
+        // Ensure bridge is running (may have auto-shutdown)
+        self.ensure_bridge_running().await?;
+
         let start = Instant::now();
         let connection_id = self
             .connection_id
             .as_ref()
             .ok_or_else(|| anyhow!("Not connected to Ignite"))?;
 
+        let query_upper = query.trim().to_uppercase();
+
+        // For SCAN queries, use scan action instead of query
+        if query_upper.starts_with("SCAN ") {
+            // Parse: SCAN cache_name [LIMIT x] [OFFSET y]
+            let parts: Vec<&str> = query.split_whitespace().collect();
+            let cache_name = parts.get(1).map(|s| s.to_string());
+
+            // Parse LIMIT and OFFSET
+            let mut limit = 200u32;
+            let mut offset = 0u32;
+
+            for i in 0..parts.len() {
+                if parts[i].to_uppercase() == "LIMIT" {
+                    if let Some(val) = parts.get(i + 1) {
+                        limit = val.parse().unwrap_or(200);
+                    }
+                }
+                if parts[i].to_uppercase() == "OFFSET" {
+                    if let Some(val) = parts.get(i + 1) {
+                        offset = val.parse().unwrap_or(0);
+                    }
+                }
+            }
+
+            log::info!(
+                "🔥 [IGNITE] Executing SCAN: cache={:?}, limit={}, offset={}",
+                cache_name,
+                limit,
+                offset
+            );
+
+            let request = IpcRequest {
+                action: "scan".to_string(),
+                connection_id: Some(connection_id.clone()),
+                host: None,
+                port: None,
+                username: None,
+                password: None,
+                query: None,
+                cache_name: cache_name.clone(),
+                table_name: None,
+                limit: Some(limit),
+                offset: Some(offset),
+            };
+
+            let result = self.send_request(&request).await?;
+
+            if !result.success {
+                return Err(anyhow!(result.message.unwrap_or("Scan failed".to_string())));
+            }
+
+            let br = result.result.ok_or_else(|| anyhow!("No scan data"))?;
+
+            return Ok(QueryResult {
+                columns: br.columns,
+                column_types: None,
+                rows: br.rows,
+                rows_affected: br.rows_affected,
+                execution_time: start.elapsed().as_millis(),
+                final_query: Some(query.to_string()),
+            });
+        }
+
+        // For SQL queries, use query action
         let request = IpcRequest {
             action: "query".to_string(),
             connection_id: Some(connection_id.clone()),
@@ -516,6 +629,9 @@ impl DatabaseConnection for IgniteConnection {
     }
 
     async fn get_databases(&mut self) -> Result<Vec<Database>> {
+        // Ensure bridge is running (may have auto-shutdown)
+        self.ensure_bridge_running().await?;
+
         let connection_id = self
             .connection_id
             .as_ref()
@@ -552,6 +668,9 @@ impl DatabaseConnection for IgniteConnection {
     }
 
     async fn get_tables(&mut self, database: &str) -> Result<Vec<Table>> {
+        // Ensure bridge is running (may have auto-shutdown)
+        self.ensure_bridge_running().await?;
+
         let connection_id = self
             .connection_id
             .as_ref()
@@ -592,6 +711,9 @@ impl DatabaseConnection for IgniteConnection {
     }
 
     async fn get_table_schema(&mut self, database: &str, table: &str) -> Result<TableSchema> {
+        // Ensure bridge is running (may have auto-shutdown)
+        self.ensure_bridge_running().await?;
+
         let connection_id = self
             .connection_id
             .as_ref()
@@ -647,6 +769,9 @@ impl DatabaseConnection for IgniteConnection {
         limit: u32,
         offset: u32,
     ) -> Result<QueryResult> {
+        // Ensure bridge is running (may have auto-shutdown)
+        self.ensure_bridge_running().await?;
+
         let start = Instant::now();
         let connection_id = self
             .connection_id

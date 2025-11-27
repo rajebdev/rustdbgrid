@@ -28,6 +28,9 @@ const PIPE_PATH =
 // Store active connections
 const connections = new Map();
 
+// Track shutdown timer to avoid multiple timers
+let shutdownTimer = null;
+
 /**
  * Extract fields from BinaryObject
  */
@@ -119,6 +122,13 @@ async function handleRequest(request) {
 }
 
 async function handleConnect({ connectionId, host, port, username, password }) {
+  // Cancel any pending shutdown timer since we're getting a new connection
+  if (shutdownTimer) {
+    clearTimeout(shutdownTimer);
+    shutdownTimer = null;
+    console.error("📊 [CONNECT] Cancelled pending shutdown timer");
+  }
+
   // Disconnect existing connection with same ID
   if (connections.has(connectionId)) {
     try {
@@ -138,22 +148,77 @@ async function handleConnect({ connectionId, host, port, username, password }) {
 
   await client.connect(config);
   connections.set(connectionId, client);
-  console.error(`✅ Connected: ${connectionId}`);
+  console.error(`✅ Connected: ${connectionId} (total: ${connections.size})`);
 
   return { success: true, message: "Connected to Ignite" };
 }
 
 async function handleDisconnect({ connectionId }) {
+  console.error(
+    `🔌 [DISCONNECT] Received disconnect request for: ${connectionId}`
+  );
+
   if (connections.has(connectionId)) {
-    connections.get(connectionId).disconnect();
+    try {
+      const client = connections.get(connectionId);
+      if (client) {
+        client.disconnect();
+      }
+    } catch (e) {
+      console.error(
+        `⚠️ [DISCONNECT] Error during client disconnect: ${e.message}`
+      );
+    }
     connections.delete(connectionId);
-    console.error(`🔌 Disconnected: ${connectionId}`);
+    console.error(`✅ [DISCONNECT] Removed connection: ${connectionId}`);
+  } else {
+    console.error(`⚠️ [DISCONNECT] Connection not found: ${connectionId}`);
   }
 
-  // Auto-shutdown if no connections
+  console.error(
+    `📊 [DISCONNECT] Active connections remaining: ${connections.size}`
+  );
+
+  // Log all remaining connections for debugging
+  if (connections.size > 0) {
+    console.error(
+      `📋 [DISCONNECT] Remaining connection IDs: ${Array.from(
+        connections.keys()
+      ).join(", ")}`
+    );
+  }
+
+  // Auto-shutdown if no connections after a delay (allows reconnection)
   if (connections.size === 0) {
-    console.error("📭 No active connections, shutting down...");
-    setTimeout(() => process.exit(0), 100);
+    // Clear any existing shutdown timer to avoid multiple timers
+    if (shutdownTimer) {
+      clearTimeout(shutdownTimer);
+      shutdownTimer = null;
+    }
+
+    console.error(
+      "📭 [DISCONNECT] No active connections, will shutdown in 10 seconds if no new connections..."
+    );
+    shutdownTimer = setTimeout(() => {
+      if (connections.size === 0) {
+        console.error(
+          "📭 [DISCONNECT] Still no connections, shutting down bridge process..."
+        );
+        process.exit(0);
+      } else {
+        console.error(
+          `📊 [DISCONNECT] New connection established (${connections.size}), staying alive`
+        );
+      }
+      shutdownTimer = null;
+    }, 10000); // 10 second grace period (reduced from 30)
+  } else if (shutdownTimer) {
+    // Cancel shutdown timer if new connections exist
+    clearTimeout(shutdownTimer);
+    shutdownTimer = null;
+    console.error(
+      "📊 [DISCONNECT] Shutdown timer cancelled, connections still active"
+    );
   }
 
   return { success: true };
@@ -215,26 +280,47 @@ async function handleGetTables({ connectionId, cacheName }) {
     };
   }
 
-  try {
-    const cache = client
-      .getCache(cacheName)
-      .setKeyType(IgniteClient.ObjectType.PRIMITIVE_TYPE.INTEGER);
-    const query = new SqlFieldsQuery(
-      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?"
-    ).setArgs(cacheName.toUpperCase());
+  // Retry logic for transient Ignite errors
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const cache = client
+        .getCache(cacheName)
+        .setKeyType(IgniteClient.ObjectType.PRIMITIVE_TYPE.INTEGER);
+      const query = new SqlFieldsQuery(
+        "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?"
+      ).setArgs(cacheName.toUpperCase());
 
-    const cursor = await cache.query(query);
-    const rows = await cursor.getAll();
+      const cursor = await cache.query(query);
+      const rows = await cursor.getAll();
 
-    return {
-      success: true,
-      tables: rows.map((row) => ({ name: row[0], type: "table" })),
-    };
-  } catch (sqlError) {
-    return {
-      success: true,
-      tables: [{ name: cacheName, type: "cache" }],
-    };
+      return {
+        success: true,
+        tables: rows.map((row) => ({ name: row[0], type: "table" })),
+      };
+    } catch (sqlError) {
+      // Check if this is a transient schema/thread error
+      const isSchemaError =
+        sqlError.message &&
+        (sqlError.message.includes("Failed to set schema") ||
+          sqlError.message.includes("for thread"));
+
+      if (isSchemaError && attempt < maxRetries) {
+        console.log(
+          `⚠️ Schema error on getTables attempt ${attempt}, retrying in ${
+            attempt * 100
+          }ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+        continue;
+      }
+
+      // Return cache as fallback table
+      return {
+        success: true,
+        tables: [{ name: cacheName, type: "cache" }],
+      };
+    }
   }
 }
 
@@ -261,7 +347,106 @@ async function handleQuery({ connectionId, query, cacheName }) {
     };
   }
 
-  const targetCache = cacheName || "PUBLIC";
+  // Get available caches for smart schema detection
+  let availableCaches = [];
+  try {
+    availableCaches = await client.cacheNames();
+  } catch (e) {
+    console.error(`⚠️ [QUERY] Failed to get cache names: ${e.message}`);
+  }
+
+  // If query is a simple SELECT without schema prefix, try to find the correct cache/schema
+  let modifiedQuery = query;
+  let targetCache = cacheName || "PUBLIC";
+
+  if (queryUpper.startsWith("SELECT") && queryUpper.includes("FROM")) {
+    const fromMatch = query.match(/\bFROM\s+["']?(\w+)["']?/i);
+    if (fromMatch) {
+      const tableName = fromMatch[1];
+      // Check if tableName doesn't already have schema prefix (no dot in name)
+      if (
+        !query.includes(".") ||
+        !query.match(/\bFROM\s+["']?\w+["']?\.["']?\w+["']?/i)
+      ) {
+        // Try to find a cache with the same name as the table
+        // In Ignite, cache name often equals table name
+        const matchingCache = availableCaches.find(
+          (c) => c.toUpperCase() === tableName.toUpperCase()
+        );
+
+        if (matchingCache) {
+          // Use the matching cache as schema
+          targetCache = matchingCache;
+          modifiedQuery = query.replace(
+            new RegExp(`\\bFROM\\s+["']?${tableName}["']?`, "i"),
+            `FROM "${matchingCache}"."${tableName}"`
+          );
+          console.error(
+            `📝 [QUERY] Found matching cache, using: "${matchingCache}"."${tableName}"`
+          );
+        } else if (cacheName) {
+          // Use provided cacheName as schema
+          modifiedQuery = query.replace(
+            new RegExp(`\\bFROM\\s+["']?${tableName}["']?`, "i"),
+            `FROM "${cacheName}"."${tableName}"`
+          );
+          console.error(
+            `📝 [QUERY] Added provided cache as schema: "${cacheName}"."${tableName}"`
+          );
+        } else {
+          // No matching cache found, try using table name as both cache and table
+          // This is common in Ignite where cache name = table name
+          if (availableCaches.length > 0) {
+            // First try: use first cache as schema (might work for some setups)
+            targetCache = availableCaches[0];
+            modifiedQuery = query.replace(
+              new RegExp(`\\bFROM\\s+["']?${tableName}["']?`, "i"),
+              `FROM "${tableName}"."${tableName}"`
+            );
+            console.error(
+              `📝 [QUERY] No matching cache, trying: "${tableName}"."${tableName}"`
+            );
+          }
+        }
+      }
+    }
+  } else {
+    // Query already has schema prefix like "SCHEMA"."TABLE"
+    // Check if schema exists, if not try to fix it
+    const schemaTableMatch = query.match(
+      /\bFROM\s+["']?(\w+)["']?\.["']?(\w+)["']?/i
+    );
+    if (schemaTableMatch) {
+      const [, schemaName, tableName] = schemaTableMatch;
+
+      // Check if schema (cache) exists
+      if (
+        !availableCaches.some(
+          (c) => c.toUpperCase() === schemaName.toUpperCase()
+        )
+      ) {
+        // Schema doesn't exist, try to find matching cache by table name
+        const matchingCache = availableCaches.find(
+          (c) => c.toUpperCase() === tableName.toUpperCase()
+        );
+
+        if (matchingCache) {
+          // Replace with correct schema
+          modifiedQuery = query.replace(
+            new RegExp(
+              `\\bFROM\\s+["']?${schemaName}["']?\\.["']?${tableName}["']?`,
+              "i"
+            ),
+            `FROM "${matchingCache}"."${tableName}"`
+          );
+          targetCache = matchingCache;
+          console.error(
+            `📝 [QUERY] Fixed schema: "${schemaName}"."${tableName}" -> "${matchingCache}"."${tableName}"`
+          );
+        }
+      }
+    }
+  }
 
   // Validate cache exists before querying
   let cache;
@@ -289,16 +474,92 @@ async function handleQuery({ connectionId, query, cacheName }) {
     };
   }
 
-  const sqlQuery = new SqlFieldsQuery(query);
+  // Use modified query with schema prefix
+  const sqlQuery = new SqlFieldsQuery(modifiedQuery);
   sqlQuery.setIncludeFieldNames(true);
 
-  const cursor = await cache.query(sqlQuery);
-  const allRows = await cursor.getAll();
+  // Retry logic for transient Ignite errors (schema/thread errors)
+  const maxRetries = 3;
+  let cursor = null;
+  let allRows = null;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      cursor = await cache.query(sqlQuery);
+      allRows = await cursor.getAll();
+      lastError = null;
+      break; // Success
+    } catch (queryError) {
+      lastError = queryError;
+
+      // Check if this is a transient schema/thread error or table not found
+      const isSchemaError =
+        queryError.message &&
+        (queryError.message.includes("Failed to set schema") ||
+          queryError.message.includes("for thread"));
+      const isTableNotFound =
+        queryError.message &&
+        queryError.message.includes("Table") &&
+        queryError.message.includes("not found");
+      const isSchemaNotFound =
+        queryError.message &&
+        queryError.message.includes("Schema") &&
+        queryError.message.includes("not found");
+
+      if (isSchemaError && attempt < maxRetries) {
+        console.log(
+          `⚠️ Schema error on query attempt ${attempt}, retrying in ${
+            attempt * 100
+          }ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+        continue;
+      }
+
+      // For schema not found, this cache might not have SQL tables
+      // Suggest using SCAN instead
+      if (isSchemaNotFound) {
+        const cacheNames = await client.cacheNames();
+        return {
+          success: false,
+          message: `${
+            queryError.message
+          }\n\nThis cache may not have SQL tables defined. Try using SCAN instead:\nSCAN ${targetCache}\n\nAvailable caches: ${cacheNames.join(
+            ", "
+          )}`,
+        };
+      }
+
+      // For table not found, provide helpful error message
+      if (isTableNotFound) {
+        const cacheNames = await client.cacheNames();
+        return {
+          success: false,
+          message: `${
+            queryError.message
+          }\n\nAvailable caches/schemas: ${cacheNames.join(
+            ", "
+          )}\n\nTip: Use fully qualified table name like "CACHE_NAME"."TABLE_NAME" or use SCAN for key-value access`,
+        };
+      }
+
+      // Non-retryable error or last attempt
+      break;
+    }
+  }
+
+  if (lastError) {
+    return {
+      success: false,
+      message: `Query failed: ${lastError.message}`,
+    };
+  }
 
   let columns = [];
   const rows = [];
 
-  if (allRows.length > 0) {
+  if (allRows && allRows.length > 0) {
     try {
       columns = cursor.getFieldNames();
     } catch (e) {
@@ -321,7 +582,7 @@ async function handleQuery({ connectionId, query, cacheName }) {
       rows,
       rowsAffected: rows.length,
       executionTime: Date.now() - startTime,
-      finalQuery: query,
+      finalQuery: modifiedQuery, // Return the actual query executed (with schema prefix if added)
     },
   };
 }
@@ -358,66 +619,124 @@ async function handleScan({
   }
 
   let cache, cursor, entries;
-  try {
-    cache = client.getCache(cacheName);
-    cursor = await cache.query(new ScanQuery());
-    entries = await cursor.getAll();
-  } catch (scanError) {
-    // Handle cache-related errors with retry using getOrCreateCache
-    if (
-      scanError.message &&
-      scanError.message.includes("Cache does not exist")
-    ) {
-      try {
-        cache = await client.getOrCreateCache(cacheName);
-        cursor = await cache.query(new ScanQuery());
-        entries = await cursor.getAll();
-      } catch (retryError) {
-        return {
-          success: false,
-          message: `Failed to access cache '${cacheName}': ${retryError.message}`,
-        };
+
+  // Retry logic for transient Ignite errors
+  const maxRetries = 3;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      cache = client.getCache(cacheName);
+      const scanQuery = new ScanQuery();
+      // Set a reasonable page size to avoid timeout on large datasets
+      scanQuery.setPageSize(Math.min(limit + offset + 100, 5000));
+      cursor = await cache.query(scanQuery);
+
+      // Use getAll but with proper error handling
+      entries = await cursor.getAll();
+      lastError = null;
+      break; // Success, exit retry loop
+    } catch (scanError) {
+      lastError = scanError;
+
+      // Check if this is a transient schema/thread error that can be retried
+      const isSchemaError =
+        scanError.message &&
+        (scanError.message.includes("Failed to set schema") ||
+          scanError.message.includes("for thread"));
+
+      // Handle cache-related errors with retry using getOrCreateCache
+      if (
+        scanError.message &&
+        scanError.message.includes("Cache does not exist")
+      ) {
+        try {
+          cache = await client.getOrCreateCache(cacheName);
+          const scanQuery = new ScanQuery();
+          scanQuery.setPageSize(Math.min(limit + offset + 100, 5000));
+          cursor = await cache.query(scanQuery);
+          entries = await cursor.getAll();
+          lastError = null;
+          break; // Success
+        } catch (retryError) {
+          lastError = retryError;
+        }
+      } else if (isSchemaError && attempt < maxRetries) {
+        // Wait a bit before retry for schema/thread errors
+        console.log(
+          `⚠️ Schema error on attempt ${attempt}, retrying in ${
+            attempt * 100
+          }ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+        continue;
       }
-    } else {
-      return {
-        success: false,
-        message: `Scan failed: ${scanError.message}`,
-      };
+
+      // If not a retryable error or last attempt, break
+      if (!isSchemaError || attempt === maxRetries) {
+        break;
+      }
     }
+  }
+
+  // Check if we succeeded after retries
+  if (lastError) {
+    return {
+      success: false,
+      message: `Scan failed: ${lastError.message}`,
+    };
+  }
+
+  if (!entries) {
+    return {
+      success: false,
+      message: `Scan failed: No entries returned`,
+    };
   }
 
   const rows = [];
   const columnsSet = new Set(["_key"]);
 
-  const startIdx = offset;
+  // Calculate slice indices
+  const startIdx = Math.min(offset, entries.length);
   const endIdx = Math.min(offset + limit, entries.length);
 
   for (let i = startIdx; i < endIdx; i++) {
-    const entry = entries[i];
-    const key = entry.getKey();
-    const value = entry.getValue();
+    try {
+      const entry = entries[i];
+      if (!entry) continue;
 
-    let rowObj = { _key: toJsonSafe(key) };
+      const key = entry.getKey();
+      const value = entry.getValue();
 
-    if (value && typeof value.getFieldNames === "function") {
-      const extracted = await extractFields(value);
-      for (const [k, v] of Object.entries(extracted)) {
-        if (k !== "_type") {
+      let rowObj = { _key: toJsonSafe(key) };
+
+      if (value && typeof value.getFieldNames === "function") {
+        const extracted = await extractFields(value);
+        for (const [k, v] of Object.entries(extracted)) {
+          if (k !== "_type") {
+            columnsSet.add(k);
+            rowObj[k] = toJsonSafe(v);
+          }
+        }
+      } else if (typeof value === "object" && value !== null) {
+        for (const [k, v] of Object.entries(value)) {
           columnsSet.add(k);
           rowObj[k] = toJsonSafe(v);
         }
+      } else {
+        columnsSet.add("_value");
+        rowObj["_value"] = toJsonSafe(value);
       }
-    } else if (typeof value === "object" && value !== null) {
-      for (const [k, v] of Object.entries(value)) {
-        columnsSet.add(k);
-        rowObj[k] = toJsonSafe(v);
-      }
-    } else {
-      columnsSet.add("_value");
-      rowObj["_value"] = toJsonSafe(value);
-    }
 
-    rows.push(rowObj);
+      rows.push(rowObj);
+    } catch (entryError) {
+      console.error(
+        `Error processing entry at index ${i}: ${entryError.message}`
+      );
+      // Continue with next entry instead of failing completely
+      continue;
+    }
   }
 
   return {
@@ -426,6 +745,7 @@ async function handleScan({
       columns: Array.from(columnsSet),
       rows,
       totalCount: entries.length,
+      hasMore: endIdx < entries.length,
       rowsAffected: rows.length,
       executionTime: Date.now() - startTime,
     },
@@ -454,6 +774,36 @@ async function handleGetSchema({ connectionId, cacheName, tableName }) {
     };
   }
 
+  // Helper function to execute query with retry
+  async function executeWithRetry(cache, queryObj, maxRetries = 3) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const cursor = await cache.query(queryObj);
+        const rows = await cursor.getAll();
+        return rows;
+      } catch (error) {
+        lastError = error;
+        const isSchemaError =
+          error.message &&
+          (error.message.includes("Failed to set schema") ||
+            error.message.includes("for thread"));
+
+        if (isSchemaError && attempt < maxRetries) {
+          console.log(
+            `⚠️ Schema error on attempt ${attempt}, retrying in ${
+              attempt * 100
+            }ms...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+          continue;
+        }
+        break;
+      }
+    }
+    throw lastError;
+  }
+
   try {
     const cache = client.getCache(cacheName);
     const table = tableName || cacheName;
@@ -462,8 +812,7 @@ async function handleGetSchema({ connectionId, cacheName, tableName }) {
       "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ?"
     ).setArgs(table.toUpperCase());
 
-    const cursor = await cache.query(query);
-    const rows = await cursor.getAll();
+    const rows = await executeWithRetry(cache, query);
 
     return {
       success: true,
@@ -479,58 +828,64 @@ async function handleGetSchema({ connectionId, cacheName, tableName }) {
       },
     };
   } catch (sqlError) {
-    // Infer schema from data
-    const cache = client.getCache(cacheName);
-    const cursor = await cache.query(new ScanQuery());
-    const entries = await cursor.getAll();
+    // Infer schema from data using ScanQuery with retry
+    try {
+      const cache = client.getCache(cacheName);
+      const entries = await executeWithRetry(cache, new ScanQuery());
 
-    const columnsMap = new Map();
-    columnsMap.set("_key", {
-      name: "_key",
-      dataType: "UNKNOWN",
-      isNullable: false,
-    });
+      const columnsMap = new Map();
+      columnsMap.set("_key", {
+        name: "_key",
+        dataType: "UNKNOWN",
+        isNullable: false,
+      });
 
-    for (let i = 0; i < Math.min(10, entries.length); i++) {
-      const value = entries[i].getValue();
+      for (let i = 0; i < Math.min(10, entries.length); i++) {
+        const value = entries[i].getValue();
 
-      if (value && typeof value.getFieldNames === "function") {
-        for (const fieldName of value.getFieldNames()) {
-          if (!columnsMap.has(fieldName)) {
-            const fieldValue = await value.getField(fieldName);
-            columnsMap.set(fieldName, {
-              name: fieldName,
-              dataType: typeof fieldValue,
-              isNullable: true,
-            });
+        if (value && typeof value.getFieldNames === "function") {
+          for (const fieldName of value.getFieldNames()) {
+            if (!columnsMap.has(fieldName)) {
+              const fieldValue = await value.getField(fieldName);
+              columnsMap.set(fieldName, {
+                name: fieldName,
+                dataType: typeof fieldValue,
+                isNullable: true,
+              });
+            }
           }
-        }
-      } else if (typeof value === "object" && value !== null) {
-        for (const [k, v] of Object.entries(value)) {
-          if (!columnsMap.has(k)) {
-            columnsMap.set(k, {
-              name: k,
-              dataType: typeof v,
-              isNullable: true,
-            });
+        } else if (typeof value === "object" && value !== null) {
+          for (const [k, v] of Object.entries(value)) {
+            if (!columnsMap.has(k)) {
+              columnsMap.set(k, {
+                name: k,
+                dataType: typeof v,
+                isNullable: true,
+              });
+            }
           }
+        } else if (!columnsMap.has("_value")) {
+          columnsMap.set("_value", {
+            name: "_value",
+            dataType: typeof value,
+            isNullable: true,
+          });
         }
-      } else if (!columnsMap.has("_value")) {
-        columnsMap.set("_value", {
-          name: "_value",
-          dataType: typeof value,
-          isNullable: true,
-        });
       }
-    }
 
-    return {
-      success: true,
-      schema: {
-        tableName: cacheName,
-        columns: Array.from(columnsMap.values()),
-      },
-    };
+      return {
+        success: true,
+        schema: {
+          tableName: cacheName,
+          columns: Array.from(columnsMap.values()),
+        },
+      };
+    } catch (scanError) {
+      return {
+        success: false,
+        message: `Failed to get schema: ${scanError.message}`,
+      };
+    }
   }
 }
 
