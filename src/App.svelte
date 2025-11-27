@@ -42,36 +42,32 @@
   let isResizingEditor = false;
   let runningQueries = new Map();
 
-  // Tab subscriptions
-  $: tabs = $tabStore;
+  // Derived state from stores
   $: activeTab = $tabStore.activeTab;
   $: currentTabData = activeTab ? $tabDataStore[activeTab.id] : null;
 
+  // Reusable event handlers
+  const handleAddQueryTab = () => tabStore.addQueryTab();
+  const handleToggleSidebar = () => (showSidebar = !showSidebar);
+  const handleShowModal = () => (showModal = true);
+  const handleShowKeyboardShortcuts = () => (showKeyboardShortcutsModal = true);
+
   // Menu handlers
   const menuHandlers = createMenuHandlers({
-    get tabs() {
-      return get(tabStore);
-    },
-    get activeTab() {
-      return get(tabStore.activeTab);
-    },
+    tabStore,
     tabDataStore,
-    addNewQueryTab: () => tabStore.addQueryTab(),
-    get activeConnection() {
-      return get(activeConnection);
-    },
+    activeConnection,
+    addNewQueryTab: handleAddQueryTab,
     setShowModal: (val) => (showModal = val),
     setShowToolbar: (val) => (showToolbar = val),
     setShowAboutModal: (val) => (showAboutModal = val),
     runningQueries,
     getTableData,
-    setActiveTab: (tab) => tabStore.selectTab(tab),
-    updateTabs: () => tabStore.updateTabs(),
   });
 
   // Action map for menu events
   const actionHandlers = {
-    newQuery: () => tabStore.addQueryTab(),
+    newQuery: handleAddQueryTab,
     openFile: menuHandlers.handleOpenFile,
     saveQuery: menuHandlers.handleSaveQuery,
     saveAs: menuHandlers.handleSaveAs,
@@ -81,10 +77,10 @@
     redo: menuHandlers.handleRedo,
     copy: menuHandlers.handleCopy,
     paste: menuHandlers.handlePaste,
-    toggleSidebar: () => (showSidebar = !showSidebar),
+    toggleSidebar: handleToggleSidebar,
     toggleToolbar: menuHandlers.handleToggleToolbar,
     viewColumns: menuHandlers.handleViewColumns,
-    newConnection: () => (showModal = true),
+    newConnection: handleShowModal,
     connect: menuHandlers.handleConnect,
     disconnect: menuHandlers.handleDisconnect,
     execute: menuHandlers.handleExecute,
@@ -98,21 +94,26 @@
   };
 
   // Keyboard shortcuts
+  const handleCloseActiveTab = () => {
+    if (activeTab && $tabStore.length > 0) {
+      handleTabClose({ detail: activeTab });
+    }
+  };
+
   useKeyboardShortcuts({
-    newQuery: () => tabStore.addQueryTab(),
+    newQuery: handleAddQueryTab,
     openFile: menuHandlers.handleOpenFile,
     saveQuery: menuHandlers.handleSaveQuery,
     saveAs: menuHandlers.handleSaveAs,
-    toggleSidebar: () => (showSidebar = !showSidebar),
-    newConnection: () => (showModal = true),
+    toggleSidebar: handleToggleSidebar,
+    newConnection: handleShowModal,
     execute: menuHandlers.handleExecute,
     executeScript: menuHandlers.handleExecuteScript,
     refresh: menuHandlers.handleRefresh,
-    closeTab: () =>
-      activeTab && tabs.length > 0 && handleTabClose({ detail: activeTab }),
+    closeTab: handleCloseActiveTab,
     nextTab: () => tabStore.nextTab(),
     previousTab: () => tabStore.previousTab(),
-    showKeyboardShortcuts: () => (showKeyboardShortcutsModal = true),
+    showKeyboardShortcuts: handleShowKeyboardShortcuts,
   });
 
   // Window resize handling
@@ -233,18 +234,18 @@
 
   <svelte:fragment slot="content">
     <ContentArea
-      {tabs}
+      tabs={$tabStore}
       {activeTab}
       {currentTabData}
       {editorHeight}
       {isResizingEditor}
       on:tabSelect={handleTabSelect}
       on:tabClose={handleTabClose}
-      on:newTab={() => tabStore.addQueryTab()}
-      on:newQuery={() => tabStore.addQueryTab()}
-      on:newConnection={() => (showModal = true)}
-      on:toggleSidebar={() => (showSidebar = !showSidebar)}
-      on:keyboardShortcuts={() => (showKeyboardShortcutsModal = true)}
+      on:newTab={handleAddQueryTab}
+      on:newQuery={handleAddQueryTab}
+      on:newConnection={handleShowModal}
+      on:toggleSidebar={handleToggleSidebar}
+      on:keyboardShortcuts={handleShowKeyboardShortcuts}
     />
   </svelte:fragment>
 </MainLayout>
