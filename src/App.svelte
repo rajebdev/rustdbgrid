@@ -5,7 +5,6 @@
   import SidebarWrapper from "./components/layout/wrappers/SidebarWrapper.svelte";
   import ContentArea from "./components/layout/wrappers/ContentArea.svelte";
   import ConnectionModal from "./components/modals/ConnectionModal.svelte";
-  import SplashScreen from "./components/screens/SplashScreen.svelte";
   import AboutModal from "./components/modals/AboutModal.svelte";
   import KeyboardShortcutsModal from "./components/modals/KeyboardShortcutsModal.svelte";
   import { activeConnection } from "./stores/connections";
@@ -30,9 +29,6 @@
   let showAboutModal = false;
   let showKeyboardShortcutsModal = false;
   let showToolbar = true;
-  let showSplash = true;
-  let loadingProgress = 0;
-  let loadingMessage = "Initializing...";
 
   // Resize state
   let sidebarWidth = 320;
@@ -144,11 +140,7 @@
   });
 
   onMount(async () => {
-    await initializeApplication(({ progress, message }) => {
-      loadingProgress = progress;
-      loadingMessage = message;
-    });
-    showSplash = false;
+    await initializeApplication();
   });
 
   // Event handlers
@@ -183,12 +175,6 @@
     event.detail.event.preventDefault();
   }
 </script>
-
-<SplashScreen
-  bind:show={showSplash}
-  progress={loadingProgress}
-  message={loadingMessage}
-/>
 
 <svelte:window on:mousemove={handleMouseMove} on:mouseup={handleMouseUp} />
 
