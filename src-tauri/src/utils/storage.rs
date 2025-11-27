@@ -91,6 +91,7 @@ fn from_stored_connection(
         "MongoDB" => DatabaseType::MongoDB,
         "Redis" => DatabaseType::Redis,
         "Ignite" => DatabaseType::Ignite,
+        "MSSQL" => DatabaseType::MSSQL,
         _ => DatabaseType::MySQL,
     };
 

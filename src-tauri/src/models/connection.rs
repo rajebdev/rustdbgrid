@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DatabaseType {
     MySQL,
@@ -7,6 +8,7 @@ pub enum DatabaseType {
     MongoDB,
     Redis,
     Ignite,
+    MSSQL,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

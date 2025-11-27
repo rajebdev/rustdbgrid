@@ -98,6 +98,27 @@
           formData.port = match[3] ? parseInt(match[3]) : 6379;
           if (match[4]) formData.database = match[4];
         }
+      } else if (formData.db_type === "MSSQL") {
+        // mssql://user:password@host:port/database or jdbc:sqlserver://host:port;databaseName=database
+        let match = str.match(
+          /^jdbc:sqlserver:\/\/([^:;]+)(?::(\d+))?(?:;databaseName=([^;]+))?/
+        );
+        if (match) {
+          formData.host = match[1];
+          formData.port = match[2] ? parseInt(match[2]) : 1433;
+          if (match[3]) formData.database = match[3];
+        } else {
+          match = str.match(
+            /^mssql:\/\/(?:([^:]+):([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
+          );
+          if (match) {
+            if (match[1]) formData.username = decodeURIComponent(match[1]);
+            if (match[2]) formData.password = decodeURIComponent(match[2]);
+            formData.host = match[3];
+            formData.port = match[4] ? parseInt(match[4]) : 1433;
+            if (match[5]) formData.database = match[5];
+          }
+        }
       }
 
       connectionString = "";
@@ -120,6 +141,7 @@
     else if (formData.db_type === "MongoDB") formData.port = 27017;
     else if (formData.db_type === "Redis") formData.port = 6379;
     else if (formData.db_type === "Ignite") formData.port = 10800;
+    else if (formData.db_type === "MSSQL") formData.port = 1433;
   }
 
   async function handleTest() {
@@ -220,6 +242,9 @@
                     mongodb://user:password@host:port/database
                   {:else if formData.db_type === "Redis"}
                     redis://:password@host:port/database
+                  {:else if formData.db_type === "MSSQL"}
+                    mssql://user:password@host:port/database or
+                    jdbc:sqlserver://host:port;databaseName=database
                   {:else}
                     Connection string format varies by database type
                   {/if}
@@ -240,6 +265,7 @@
               <option value="MongoDB">🍃 MongoDB</option>
               <option value="Redis">📕 Redis</option>
               <option value="Ignite">🔥 Apache Ignite</option>
+              <option value="MSSQL">🗄️ Microsoft SQL Server</option>
             </select>
           </div>
 

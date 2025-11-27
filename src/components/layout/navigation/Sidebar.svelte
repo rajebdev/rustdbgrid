@@ -779,6 +779,8 @@
                 ></i>
               {:else if conn.db_type === "Ignite"}
                 <span class="tree-icon connection-icon db-emoji">🔥</span>
+              {:else if conn.db_type === "MSSQL"}
+                <span class="tree-icon connection-icon db-emoji">🗄️</span>
               {:else}
                 <i class="fas fa-server tree-icon connection-icon"></i>
               {/if}
@@ -835,12 +837,14 @@
 
                 {#if expandedDatabases[`${conn.id}-${db.name}`]}
                   <div class="tree-children">
-                    {#if conn.db_type === "PostgreSQL"}
-                      <!-- PostgreSQL: Schemas Parent -> Individual Schemas -> Tables -->
+                    {#if conn.db_type === "PostgreSQL" || conn.db_type === "MSSQL"}
+                      <!-- PostgreSQL & MSSQL: Schemas Parent -> Individual Schemas -> Tables -->
                       {@const tables =
                         expandedDatabases[`${conn.id}-${db.name}`].tables || []}
                       {@const schemaGroups = tables.reduce((acc, table) => {
-                        const schema = table.schema || "public";
+                        const schema =
+                          table.schema ||
+                          (conn.db_type === "MSSQL" ? "dbo" : "public");
                         if (!acc[schema]) acc[schema] = [];
                         acc[schema].push(table);
                         return acc;
@@ -868,7 +872,11 @@
                             on:click={() =>
                               toggleSchemasParent(conn.id, db.name)}
                           >
-                            <i class="fas fa-folder-tree"></i>
+                            <i
+                              class="fas fa-{conn.db_type === 'MSSQL'
+                                ? 'layer-group'
+                                : 'folder-tree'}"
+                            ></i>
                             <span
                               >Schemas ({Object.keys(schemaGroups)
                                 .length})</span
@@ -916,7 +924,11 @@
                                         conn
                                       )}
                                   >
-                                    <i class="fas fa-folder"></i>
+                                    <i
+                                      class="fas fa-{conn.db_type === 'MSSQL'
+                                        ? 'database'
+                                        : 'folder'}"
+                                    ></i>
                                     <span>{schemaName}</span>
                                   </button>
                                 </div>
