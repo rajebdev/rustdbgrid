@@ -286,8 +286,8 @@ impl IgniteConnection {
         }
         let child = command
             .env("IGNITE_BRIDGE_PIPE", &*PIPE_NAME)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
             .spawn()
             .map_err(|e| anyhow!("Failed to start Ignite bridge: {}", e))?;
 

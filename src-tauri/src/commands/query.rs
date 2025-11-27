@@ -28,6 +28,7 @@ pub async fn execute_query(
         .await
 }
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_query_with_filters(
     config: ConnectionConfig,
     base_query: String,

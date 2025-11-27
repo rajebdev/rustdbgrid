@@ -6,7 +6,7 @@ mod db;
 mod models;
 mod utils;
 
-use commands::{connection, export, query, schema};
+use commands::{connection, export, logging, query, schema};
 
 fn main() {
     tauri::Builder::default()
@@ -20,6 +20,20 @@ fn main() {
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
                 ])
                 .level(log::LevelFilter::Debug)
+                .format(|out, message, record| {
+                    let now = chrono::Local::now();
+                    let timestamp = now.format("%Y-%m-%d %H:%M:%S%.3f");
+                    let target = record.target();
+                    let level = record.level();
+                    out.finish(format_args!(
+                        "[{}][{};{}][RUST][{}] {}",
+                        timestamp,
+                        target,
+                        record.line().map(|l| l.to_string()).unwrap_or_default(),
+                        level,
+                        message
+                    ))
+                })
                 .build(),
         )
         .manage(connection::ConnectionStore::new())
@@ -53,6 +67,7 @@ fn main() {
             export::export_data,
             export::copy_schema,
             export::copy_data,
+            logging::log_from_frontend,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

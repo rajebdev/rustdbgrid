@@ -2,11 +2,13 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 import "./app.css";
 import App from "./App.svelte";
-import { attachConsole } from "@tauri-apps/plugin-log";
 
-// Attach console to Tauri's log plugin to show all console.log in terminal
-if (window.__TAURI__) {
-  attachConsole();
+// Override console BEFORE app loads
+try {
+  const { overrideConsole } = await import("./utils/logger.js");
+  overrideConsole();
+} catch (e) {
+  console.error("Failed to load logger:", e);
 }
 
 const app = new App({

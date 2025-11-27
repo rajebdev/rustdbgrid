@@ -14,10 +14,69 @@ const IgniteClientConfiguration = IgniteClient.IgniteClientConfiguration;
 const ScanQuery = IgniteClient.ScanQuery;
 const SqlFieldsQuery = IgniteClient.SqlFieldsQuery;
 
+// =============================================================================
+// Unified Logging - All logs go to stdout with consistent format
+// =============================================================================
+const LOG_LEVELS = {
+  DEBUG: "DEBUG",
+  INFO: "INFO",
+  WARN: "WARN",
+  ERROR: "ERROR",
+};
+
+/**
+ * Get caller info (file and line number)
+ */
+function getCallerInfo() {
+  const err = new Error();
+  const stack = err.stack.split("\n");
+  // stack[0] = "Error", stack[1] = getCallerInfo, stack[2] = formatLog, stack[3] = log.xxx, stack[4] = actual caller
+  const callerLine = stack[4] || stack[3] || "";
+  const match = callerLine.match(/at\s+(?:(.+?)\s+\()?(?:(.+?):(\d+):(\d+))/);
+  if (match) {
+    const fn = match[1] || "anonymous";
+    const file = match[2] || "";
+    const line = match[3] || "";
+    // Extract just filename from path
+    const fileName = file.split(/[/\\]/).pop() || file;
+    return `${fileName};${fn}:${line}`;
+  }
+  return "ignite.cjs;unknown";
+}
+
+function formatLog(level, message) {
+  const now = new Date();
+  const timestamp =
+    now.getFullYear() +
+    "-" +
+    String(now.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(now.getDate()).padStart(2, "0") +
+    " " +
+    String(now.getHours()).padStart(2, "0") +
+    ":" +
+    String(now.getMinutes()).padStart(2, "0") +
+    ":" +
+    String(now.getSeconds()).padStart(2, "0") +
+    "." +
+    String(now.getMilliseconds()).padStart(3, "0");
+
+  const caller = getCallerInfo();
+  // Format: [TIMESTAMP][file;fn:line][BRIDGE][LEVEL] message
+  return `[${timestamp}][${caller}][BRIDGE][${level}] ${message}`;
+}
+
+const log = {
+  debug: (msg) => console.log(formatLog(LOG_LEVELS.DEBUG, msg)),
+  info: (msg) => console.log(formatLog(LOG_LEVELS.INFO, msg)),
+  warn: (msg) => console.log(formatLog(LOG_LEVELS.WARN, msg)),
+  error: (msg) => console.log(formatLog(LOG_LEVELS.ERROR, msg)),
+};
+
 // Pipe/Socket path - requires IGNITE_BRIDGE_PIPE from parent process
 const PIPE_NAME = process.env.IGNITE_BRIDGE_PIPE;
 if (!PIPE_NAME) {
-  console.error("Error: IGNITE_BRIDGE_PIPE environment variable is required");
+  log.error("IGNITE_BRIDGE_PIPE environment variable is required");
   process.exit(1);
 }
 const PIPE_PATH =
@@ -126,7 +185,7 @@ async function handleConnect({ connectionId, host, port, username, password }) {
   if (shutdownTimer) {
     clearTimeout(shutdownTimer);
     shutdownTimer = null;
-    console.error("📊 [CONNECT] Cancelled pending shutdown timer");
+    log.info("📊 [CONNECT] Cancelled pending shutdown timer");
   }
 
   // Disconnect existing connection with same ID
@@ -148,15 +207,13 @@ async function handleConnect({ connectionId, host, port, username, password }) {
 
   await client.connect(config);
   connections.set(connectionId, client);
-  console.error(`✅ Connected: ${connectionId} (total: ${connections.size})`);
+  log.info(`✅ Connected: ${connectionId} (total: ${connections.size})`);
 
   return { success: true, message: "Connected to Ignite" };
 }
 
 async function handleDisconnect({ connectionId }) {
-  console.error(
-    `🔌 [DISCONNECT] Received disconnect request for: ${connectionId}`
-  );
+  log.info(`🔌 [DISCONNECT] Received disconnect request for: ${connectionId}`);
 
   if (connections.has(connectionId)) {
     try {
@@ -165,23 +222,19 @@ async function handleDisconnect({ connectionId }) {
         client.disconnect();
       }
     } catch (e) {
-      console.error(
-        `⚠️ [DISCONNECT] Error during client disconnect: ${e.message}`
-      );
+      log.warn(`⚠️ [DISCONNECT] Error during client disconnect: ${e.message}`);
     }
     connections.delete(connectionId);
-    console.error(`✅ [DISCONNECT] Removed connection: ${connectionId}`);
+    log.info(`✅ [DISCONNECT] Removed connection: ${connectionId}`);
   } else {
-    console.error(`⚠️ [DISCONNECT] Connection not found: ${connectionId}`);
+    log.warn(`⚠️ [DISCONNECT] Connection not found: ${connectionId}`);
   }
 
-  console.error(
-    `📊 [DISCONNECT] Active connections remaining: ${connections.size}`
-  );
+  log.info(`📊 [DISCONNECT] Active connections remaining: ${connections.size}`);
 
   // Log all remaining connections for debugging
   if (connections.size > 0) {
-    console.error(
+    log.debug(
       `📋 [DISCONNECT] Remaining connection IDs: ${Array.from(
         connections.keys()
       ).join(", ")}`
@@ -196,17 +249,17 @@ async function handleDisconnect({ connectionId }) {
       shutdownTimer = null;
     }
 
-    console.error(
+    log.info(
       "📭 [DISCONNECT] No active connections, will shutdown in 10 seconds if no new connections..."
     );
     shutdownTimer = setTimeout(() => {
       if (connections.size === 0) {
-        console.error(
+        log.info(
           "📭 [DISCONNECT] Still no connections, shutting down bridge process..."
         );
         process.exit(0);
       } else {
-        console.error(
+        log.info(
           `📊 [DISCONNECT] New connection established (${connections.size}), staying alive`
         );
       }
@@ -216,7 +269,7 @@ async function handleDisconnect({ connectionId }) {
     // Cancel shutdown timer if new connections exist
     clearTimeout(shutdownTimer);
     shutdownTimer = null;
-    console.error(
+    log.info(
       "📊 [DISCONNECT] Shutdown timer cancelled, connections still active"
     );
   }
@@ -306,7 +359,7 @@ async function handleGetTables({ connectionId, cacheName }) {
           sqlError.message.includes("for thread"));
 
       if (isSchemaError && attempt < maxRetries) {
-        console.log(
+        log.warn(
           `⚠️ Schema error on getTables attempt ${attempt}, retrying in ${
             attempt * 100
           }ms...`
@@ -352,7 +405,7 @@ async function handleQuery({ connectionId, query, cacheName }) {
   try {
     availableCaches = await client.cacheNames();
   } catch (e) {
-    console.error(`⚠️ [QUERY] Failed to get cache names: ${e.message}`);
+    log.warn(`⚠️ [QUERY] Failed to get cache names: ${e.message}`);
   }
 
   // If query is a simple SELECT without schema prefix, try to find the correct cache/schema
@@ -381,7 +434,7 @@ async function handleQuery({ connectionId, query, cacheName }) {
             new RegExp(`\\bFROM\\s+["']?${tableName}["']?`, "i"),
             `FROM "${matchingCache}"."${tableName}"`
           );
-          console.error(
+          log.debug(
             `📝 [QUERY] Found matching cache, using: "${matchingCache}"."${tableName}"`
           );
         } else if (cacheName) {
@@ -390,7 +443,7 @@ async function handleQuery({ connectionId, query, cacheName }) {
             new RegExp(`\\bFROM\\s+["']?${tableName}["']?`, "i"),
             `FROM "${cacheName}"."${tableName}"`
           );
-          console.error(
+          log.debug(
             `📝 [QUERY] Added provided cache as schema: "${cacheName}"."${tableName}"`
           );
         } else {
@@ -403,7 +456,7 @@ async function handleQuery({ connectionId, query, cacheName }) {
               new RegExp(`\\bFROM\\s+["']?${tableName}["']?`, "i"),
               `FROM "${tableName}"."${tableName}"`
             );
-            console.error(
+            log.debug(
               `📝 [QUERY] No matching cache, trying: "${tableName}"."${tableName}"`
             );
           }
@@ -440,7 +493,7 @@ async function handleQuery({ connectionId, query, cacheName }) {
             `FROM "${matchingCache}"."${tableName}"`
           );
           targetCache = matchingCache;
-          console.error(
+          log.debug(
             `📝 [QUERY] Fixed schema: "${schemaName}"."${tableName}" -> "${matchingCache}"."${tableName}"`
           );
         }
@@ -508,7 +561,7 @@ async function handleQuery({ connectionId, query, cacheName }) {
         queryError.message.includes("not found");
 
       if (isSchemaError && attempt < maxRetries) {
-        console.log(
+        log.warn(
           `⚠️ Schema error on query attempt ${attempt}, retrying in ${
             attempt * 100
           }ms...`
@@ -663,7 +716,7 @@ async function handleScan({
         }
       } else if (isSchemaError && attempt < maxRetries) {
         // Wait a bit before retry for schema/thread errors
-        console.log(
+        log.warn(
           `⚠️ Schema error on attempt ${attempt}, retrying in ${
             attempt * 100
           }ms...`
@@ -731,9 +784,7 @@ async function handleScan({
 
       rows.push(rowObj);
     } catch (entryError) {
-      console.error(
-        `Error processing entry at index ${i}: ${entryError.message}`
-      );
+      log.warn(`Error processing entry at index ${i}: ${entryError.message}`);
       // Continue with next entry instead of failing completely
       continue;
     }
@@ -790,7 +841,7 @@ async function handleGetSchema({ connectionId, cacheName, tableName }) {
             error.message.includes("for thread"));
 
         if (isSchemaError && attempt < maxRetries) {
-          console.log(
+          log.warn(
             `⚠️ Schema error on attempt ${attempt}, retrying in ${
               attempt * 100
             }ms...`
@@ -936,7 +987,7 @@ function handleClient(socket) {
   });
 
   socket.on("error", (err) => {
-    console.error("Socket error:", err.message);
+    log.error(`Socket error: ${err.message}`);
   });
 
   socket.on("close", () => {
@@ -958,12 +1009,12 @@ function startServer() {
   const server = net.createServer(handleClient);
 
   server.on("error", (err) => {
-    console.error("Server error:", err.message);
+    log.error(`Server error: ${err.message}`);
     process.exit(1);
   });
 
   server.listen(PIPE_PATH, () => {
-    console.error(`🚀 Ignite Bridge IPC server running on ${PIPE_PATH}`);
+    log.info(`🚀 Ignite Bridge IPC server running on ${PIPE_PATH}`);
     // Signal ready to parent process
     if (process.send) {
       process.send({ ready: true, pipe: PIPE_PATH });
@@ -976,7 +1027,7 @@ function startServer() {
 }
 
 function shutdown(server) {
-  console.error("⏹️ Shutting down...");
+  log.info("⏹️ Shutting down...");
   for (const [id, client] of connections) {
     try {
       client.disconnect();
