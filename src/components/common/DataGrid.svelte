@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { tabDataStore } from "../../stores/tabData";
   import { activeConnection } from "../../stores/connections";
+  import { buildPaginatedQuery } from "../../utils/defaultQueries";
   import {
     getFilterValues,
     executeQueryWithFilters,
@@ -212,14 +213,14 @@
         }
       }
 
-      // Build query with LIMIT and OFFSET
-      let loadMoreQuery = executedQuery;
-
-      // Remove existing LIMIT if present (case insensitive)
-      loadMoreQuery = loadMoreQuery.replace(/\s+LIMIT\s+\d+/gi, "");
-
-      // Add new LIMIT and OFFSET
-      loadMoreQuery += ` LIMIT 200 OFFSET ${currentOffset}`;
+      // Build query with LIMIT and OFFSET based on database type
+      const dbType = connection?.db_type || "MySQL";
+      const loadMoreQuery = buildPaginatedQuery(
+        dbType,
+        executedQuery,
+        200,
+        currentOffset
+      );
 
       const result = await executeQueryWithFilters(
         connection,
@@ -242,8 +243,12 @@
         currentOffset = newRows.length; // Set offset to total row count
         hasMoreData = result.rows.length === 200; // If less than 200, no more data
 
-        // Update final query to show current LIMIT/OFFSET
-        finalQuery = loadMoreQuery;
+        // Update final query - prefer backend's final_query to preserve original format for NoSQL
+        if (result.final_query) {
+          finalQuery = result.final_query;
+        } else {
+          finalQuery = loadMoreQuery;
+        }
 
         console.log(
           "✅ Loaded",

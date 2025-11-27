@@ -48,7 +48,7 @@
   $: currentTabData = $activeTab ? $tabDataStore[$activeTab.id] : null;
 
   // Reusable event handlers
-  const handleAddQueryTab = () => tabStore.addQueryTab();
+  const handleAddQueryTab = () => tabStore.addQueryTab($activeConnection);
   const handleToggleSidebar = () => (showSidebar = !showSidebar);
   const handleShowModal = () => (showModal = true);
   const handleShowKeyboardShortcuts = () => (showKeyboardShortcutsModal = true);

@@ -14,13 +14,14 @@ function createTabStore() {
     /**
      * Add a new query tab
      */
-    addQueryTab: () => {
+    addQueryTab: (connection = null) => {
       tabs.update((currentTabs) => {
         const newTab = {
           id: Date.now(),
           title: `Query ${currentTabs.length + 1}`,
           type: "query",
           modified: false,
+          connection: connection, // Store connection info
         };
         activeTab.set(newTab);
         return [...currentTabs, newTab];

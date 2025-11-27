@@ -27,7 +27,6 @@ pub async fn execute_query(
         })
         .await
 }
-
 #[tauri::command]
 pub async fn execute_query_with_filters(
     config: ConnectionConfig,
@@ -38,25 +37,50 @@ pub async fn execute_query_with_filters(
     limit: Option<usize>,
     state: State<'_, ConnectionStore>,
 ) -> Result<QueryResult, String> {
-    println!("🔍 [RUST] execute_query_with_filters called");
-    println!(
-        "  📝 base_query: {}",
-        &base_query[..base_query.len().min(100)]
-    );
-    println!("  🔧 filters: {:?}", filters);
-    println!(
-        "  📊 sort_column: {:?}, sort_direction: {:?}",
-        sort_column, sort_direction
-    );
-    println!("  📏 limit: {:?}", limit);
-
     let connection_id = config.id.clone();
 
     // Check if already connected, if not connect first
     if !state.pool.is_connected(&connection_id).await {
-        state.pool.connect(config).await?;
+        state.pool.connect(config.clone()).await?;
     }
 
+    // For MongoDB and Redis, execute the original query without modification
+    // These databases don't use SQL syntax
+    use crate::models::connection::DatabaseType;
+    if matches!(config.db_type, DatabaseType::MongoDB | DatabaseType::Redis) {
+        let query_clone = base_query.clone();
+        let mut result = state
+            .pool
+            .with_connection(&connection_id, |conn| {
+                async move { conn.execute_query(&query_clone).await }.boxed()
+            })
+            .await?;
+
+        // Keep original query for display
+        result.final_query = Some(base_query);
+        return Ok(result);
+    }
+
+    // For MSSQL, if query already has pagination (ROW_NUMBER or TOP), use it as-is
+    // Frontend buildPaginatedQuery already handles MSSQL pagination correctly
+    if matches!(config.db_type, DatabaseType::MSSQL)
+        && (base_query.to_uppercase().contains("ROW_NUMBER()")
+            || base_query.to_uppercase().contains("TOP ")
+            || (filters.is_none() && sort_column.is_none()))
+    {
+        let query_clone = base_query.clone();
+        let mut result = state
+            .pool
+            .with_connection(&connection_id, |conn| {
+                async move { conn.execute_query(&query_clone).await }.boxed()
+            })
+            .await?;
+
+        result.final_query = Some(base_query);
+        return Ok(result);
+    }
+
+    // For SQL databases, proceed with query building
     // Extract table name from simple SELECT queries to avoid subquery
     // Preserve database.table format for cross-database queries
     let cleaned_query = base_query.trim().to_uppercase();
@@ -76,7 +100,6 @@ pub async fn execute_query_with_filters(
 
             // Extract and preserve database.table format (e.g., apps_config.jns_config)
             let table = after_from[..table_end].trim().to_string();
-            println!("  📋 Extracted table name: {}", table);
             table
         } else {
             base_query.clone()
@@ -169,12 +192,28 @@ pub async fn execute_query_with_filters(
         query.push_str(&format!(" ORDER BY {} {}", col, direction));
     }
 
-    // Add LIMIT clause
+    // Add LIMIT/pagination clause based on database type
     if let Some(limit_val) = limit {
-        query.push_str(&format!(" LIMIT {}", limit_val));
+        match config.db_type {
+            DatabaseType::MSSQL => {
+                // SQL Server uses TOP (if no ORDER BY) or OFFSET-FETCH (with ORDER BY)
+                if query.to_uppercase().contains("ORDER BY") {
+                    // Has ORDER BY, use OFFSET-FETCH
+                    query.push_str(&format!(
+                        " OFFSET 0 ROWS FETCH NEXT {} ROWS ONLY",
+                        limit_val
+                    ));
+                } else {
+                    // No ORDER BY, use TOP by modifying SELECT
+                    query = query.replace("SELECT", &format!("SELECT TOP {}", limit_val));
+                }
+            }
+            _ => {
+                // Standard SQL LIMIT for MySQL, PostgreSQL, SQLite, etc.
+                query.push_str(&format!(" LIMIT {}", limit_val));
+            }
+        }
     }
-
-    println!("📤 [RUST] Final query: {}", query);
 
     let query_clone = query.clone();
     let mut result = state
@@ -199,11 +238,6 @@ pub async fn get_filter_values(
     _limit: Option<usize>, // Intentionally unused - we want all distinct values
     state: State<'_, ConnectionStore>,
 ) -> Result<FilterValuesResult, String> {
-    println!("🔍 [RUST] get_filter_values called");
-    println!("  📝 Original query: {}", &query);
-    println!("  📊 Column: {}", &column);
-    println!("  🔎 Search query: {:?}", search_query);
-
     let connection_id = config.id.clone();
 
     // Check if already connected, if not connect first
@@ -232,7 +266,6 @@ pub async fn get_filter_values(
             }
 
             let table = after_from[..table_end].trim().to_string();
-            println!("  📋 Extracted table name: {}", table);
             table
         } else {
             // Fallback to subquery if can't extract
@@ -273,8 +306,6 @@ pub async fn get_filter_values(
             )
         }
     };
-
-    println!("  📤 Filter query: {}", filter_query);
 
     let query_clone = filter_query.clone();
     let result = state

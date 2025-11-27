@@ -1,5 +1,6 @@
 import { fileService, showMessage, showError } from "../services/fileService";
 import { get } from "svelte/store";
+import { buildPaginatedQuery } from "../utils/defaultQueries";
 
 /**
  * Handle opening table tab
@@ -33,14 +34,37 @@ export async function handleOpenTableTab(
       0
     );
 
-    let tableQuery;
-    if (connection.db_type === "PostgreSQL" && table.schema) {
-      tableQuery = `SELECT * FROM "${table.schema}"."${table.name}" LIMIT 200`;
+    // Build appropriate query based on database type
+    let baseQuery;
+    if (connection.db_type === "MongoDB") {
+      // MongoDB uses JSON query format
+      baseQuery = JSON.stringify({
+        db: database.name,
+        collection: table.name,
+        operation: "find",
+        query: {},
+        options: { limit: 200 },
+      });
+    } else if (connection.db_type === "Redis") {
+      // Redis uses command format
+      baseQuery = `KEYS ${table.name}:*`;
+    } else if (connection.db_type === "PostgreSQL" && table.schema) {
+      baseQuery = `SELECT * FROM "${table.schema}"."${table.name}"`;
     } else if (connection.db_type === "MySQL") {
-      tableQuery = `SELECT * FROM ${database.name}.${table.name} LIMIT 200`;
+      baseQuery = `SELECT * FROM ${database.name}.${table.name}`;
+    } else if (connection.db_type === "MSSQL") {
+      // SQL Server uses [database].[schema].[table] format
+      baseQuery = `SELECT * FROM [${database.name}].[dbo].[${table.name}]`;
     } else {
-      tableQuery = `SELECT * FROM ${table.name} LIMIT 200`;
+      baseQuery = `SELECT * FROM ${table.name}`;
     }
+
+    const tableQuery = buildPaginatedQuery(
+      connection.db_type,
+      baseQuery,
+      200,
+      0
+    );
 
     tabDataStore.setQueryResult(newTab.id, tableData);
     tabDataStore.setExecutedQuery(newTab.id, tableQuery);

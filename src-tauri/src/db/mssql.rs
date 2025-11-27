@@ -181,10 +181,16 @@ impl DatabaseConnection for MSSQLConnection {
             .map_err(|e| anyhow!("Failed to get connection from pool: {}", e))?;
 
         let query = format!(
-            "SELECT TABLE_NAME as name, TABLE_SCHEMA as schema_name
-            FROM [{database}].INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME"
+            "SELECT 
+                t.TABLE_NAME as name, 
+                t.TABLE_SCHEMA as schema_name,
+                COALESCE(SUM(p.rows * 8 * 1024), 0) as size_bytes
+            FROM [{database}].INFORMATION_SCHEMA.TABLES t
+            LEFT JOIN [{database}].sys.tables st ON t.TABLE_NAME = st.name
+            LEFT JOIN [{database}].sys.partitions p ON st.object_id = p.object_id
+            WHERE t.TABLE_TYPE = 'BASE TABLE' AND (p.index_id = 0 OR p.index_id = 1 OR p.index_id IS NULL)
+            GROUP BY t.TABLE_NAME, t.TABLE_SCHEMA
+            ORDER BY t.TABLE_NAME"
         );
 
         let stream = conn.query(query, &[]).await?;
@@ -195,10 +201,11 @@ impl DatabaseConnection for MSSQLConnection {
             .filter_map(|row| {
                 let name = row.get::<&str, _>("name")?.to_string();
                 let schema = row.get::<&str, _>("schema_name").map(|s| s.to_string());
+                let size_bytes: Option<i64> = row.get("size_bytes");
                 Some(Table {
                     name,
                     schema,
-                    size_bytes: Some(0),
+                    size_bytes: size_bytes.map(|v| if v >= 0 { v as u64 } else { 0 }),
                 })
             })
             .collect();
@@ -277,8 +284,17 @@ impl DatabaseConnection for MSSQLConnection {
         limit: u32,
         offset: u32,
     ) -> Result<QueryResult> {
+        // For first page, use TOP for better performance
+        if offset == 0 {
+            let query = format!("SELECT TOP {} * FROM [{database}].[dbo].[{table}]", limit);
+            return self.execute_query(&query).await;
+        }
+
+        // For subsequent pages, we need ORDER BY with OFFSET-FETCH
+        // Use a subquery with ROW_NUMBER() to avoid ORDER BY issues
         let query = format!(
-            "SELECT * FROM [{database}].[dbo].[{table}] ORDER BY (SELECT NULL) OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+            "SELECT * FROM (SELECT ROW_NUMBER() OVER (ORDER BY (SELECT 0)) AS __RowNum, * FROM [{database}].[dbo].[{table}]) AS __Paginated WHERE __RowNum > {} AND __RowNum <= {}",
+            offset, offset + limit
         );
         self.execute_query(&query).await
     }

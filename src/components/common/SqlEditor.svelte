@@ -11,6 +11,7 @@
     selectedDatabase,
   } from "../../stores/connections";
   import { tabDataStore } from "../../stores/tabData";
+  import { getDefaultQuery } from "../../utils/defaultQueries";
   import {
     executeQuery,
     getDatabases,
@@ -42,7 +43,7 @@
   }
 
   $: tabData = $tabDataStore[tabId] || {
-    queryText: "SELECT * FROM table_name LIMIT 100;",
+    queryText: getDefaultQuery(selectedConn?.db_type || "MySQL"),
   };
 
   async function loadDatabases() {
@@ -308,7 +309,8 @@
 
   onMount(() => {
     editorView = new EditorView({
-      doc: tabData.queryText || "SELECT * FROM table_name LIMIT 100;",
+      doc:
+        tabData.queryText || getDefaultQuery(selectedConn?.db_type || "MySQL"),
       extensions: [
         basicSetup,
         drawSelection(),
