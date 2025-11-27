@@ -23,6 +23,15 @@ fn main() {
                 .build(),
         )
         .manage(connection::ConnectionStore::new())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                // Only shutdown when the main window closes
+                if window.label() == "main" {
+                    log::info!("🛑 [APP] Main window closing, shutting down bridge...");
+                    db::shutdown_bridge();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             connection::test_connection,
             connection::save_connection,

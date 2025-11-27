@@ -6,6 +6,7 @@ target/
 # Tauri
 src-tauri/target/
 src-tauri/Cargo.lock
+src-tauri/binaries/
 
 # Node.js / Frontend
 node_modules/
@@ -18,6 +19,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 *.local
+
+# Bridge build artifacts
+src-bridge/ignite-bundle.cjs
+src-bridge/ignite-sea.blob
+src-bridge/*.exe
+src-bridge/ignite
+src-bridge/.cache/
 
 # IDE
 .vscode/*

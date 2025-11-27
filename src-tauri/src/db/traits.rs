@@ -26,7 +26,8 @@ pub fn create_connection(db_type: &DatabaseType) -> Box<dyn DatabaseConnection> 
         DatabaseType::PostgreSQL => Box::new(crate::db::postgres::PostgresConnection::new()),
         DatabaseType::MongoDB => Box::new(crate::db::mongodb::MongoDBConnection::new()),
         DatabaseType::Redis => Box::new(crate::db::redis::RedisConnection::new()),
-        DatabaseType::Ignite => Box::new(crate::db::ignite::IgniteConnection::new()),
+        // Use Node.js bridge for Ignite (better compatibility)
+        DatabaseType::Ignite => Box::new(crate::db::ignite_node::IgniteConnection::new()),
         DatabaseType::MSSQL => Box::new(crate::db::mssql::MSSQLConnection::new()),
     }
 }

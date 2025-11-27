@@ -1,0 +1,6 @@
+{
+  "main": "ignite-bundle.cjs",
+  "output": "ignite-sea.blob",
+  "disableExperimentalSEAWarning": true,
+  "useCodeCache": true
+}
