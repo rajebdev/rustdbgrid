@@ -769,13 +769,16 @@
           >
             <div class="connection-icon-wrapper">
               {#if conn.db_type === "MySQL"}
-                <i class="si si-mysql tree-icon connection-icon"></i>
+                <span class="tree-icon connection-icon db-emoji">🐬</span>
               {:else if conn.db_type === "PostgreSQL"}
-                <i class="si si-postgresql tree-icon connection-icon"></i>
+                <span class="tree-icon connection-icon db-emoji">🐘</span>
               {:else if conn.db_type === "MongoDB"}
-                <i class="si si-mongodb tree-icon connection-icon"></i>
+                <span class="tree-icon connection-icon db-emoji">🍃</span>
               {:else if conn.db_type === "Redis"}
-                <i class="si si-redis tree-icon connection-icon"></i>
+                <i class="fas fa-database tree-icon connection-icon redis-icon"
+                ></i>
+              {:else if conn.db_type === "Ignite"}
+                <span class="tree-icon connection-icon db-emoji">🔥</span>
               {:else}
                 <i class="fas fa-server tree-icon connection-icon"></i>
               {/if}
@@ -1402,6 +1405,17 @@
     position: relative;
     display: inline-block;
     flex-shrink: 0;
+  }
+
+  /* Database emoji icons */
+  .db-emoji {
+    font-style: normal;
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .redis-icon {
+    color: #dc382d !important;
   }
 
   .connection-status-badge {

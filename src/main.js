@@ -1,6 +1,5 @@
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
-import "simple-icons-font/font/simple-icons.min.css";
 import "./app.css";
 import App from "./App.svelte";
 import { attachConsole } from "@tauri-apps/plugin-log";

@@ -231,15 +231,15 @@
           <div class="mb-3">
             <label class="form-label" for="dbType">Database Type</label>
             <select
-              class="form-select"
+              class="form-select db-type-select"
               id="dbType"
               bind:value={formData.db_type}
             >
-              <option value="MySQL">MySQL</option>
-              <option value="PostgreSQL">PostgreSQL</option>
-              <option value="MongoDB">MongoDB</option>
-              <option value="Redis">Redis</option>
-              <option value="Ignite">Apache Ignite</option>
+              <option value="MySQL">🐬 MySQL</option>
+              <option value="PostgreSQL">🐘 PostgreSQL</option>
+              <option value="MongoDB">🍃 MongoDB</option>
+              <option value="Redis">📕 Redis</option>
+              <option value="Ignite">🔥 Apache Ignite</option>
             </select>
           </div>
 
@@ -371,5 +371,13 @@
 
   .auto-save-notice i {
     color: #28a745;
+  }
+
+  .db-type-select {
+    font-size: 15px;
+  }
+
+  .db-type-select option {
+    padding: 8px;
   }
 </style>
