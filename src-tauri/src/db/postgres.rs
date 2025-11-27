@@ -2,10 +2,253 @@ use crate::db::traits::DatabaseConnection;
 use crate::models::{connection::*, query_result::*, schema::*};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use sqlx::postgres::PgRow;
 use sqlx::{Column as SqlxColumn, PgPool, Row, TypeInfo};
 use std::collections::HashMap;
 use std::time::Instant;
+use uuid::Uuid;
+
+/// Extract value from a PostgreSQL row based on type name
+fn extract_pg_value(row: &PgRow, idx: usize, base_type: &str, is_array: bool) -> serde_json::Value {
+    macro_rules! try_get {
+        ($t:ty) => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<$t>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else {
+                if let Ok(v) = row.try_get::<$t, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            }
+        };
+        ($t:ty, $fmt:expr) => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<$t>, _>(idx) {
+                    let formatted: Vec<String> = v.iter().map(|x| format!($fmt, x)).collect();
+                    return serde_json::json!(formatted);
+                }
+            } else {
+                if let Ok(v) = row.try_get::<$t, _>(idx) {
+                    return serde_json::json!(format!($fmt, v));
+                }
+            }
+        };
+    }
+
+    match base_type {
+        // Date/Time types
+        "timestamp" => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<NaiveDateTime>, _>(idx) {
+                    let formatted: Vec<String> = v
+                        .iter()
+                        .map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
+                        .collect();
+                    return serde_json::json!(formatted);
+                }
+            } else if let Ok(v) = row.try_get::<NaiveDateTime, _>(idx) {
+                return serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string());
+            }
+        }
+        "timestamptz" => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<DateTime<Utc>>, _>(idx) {
+                    let formatted: Vec<String> = v
+                        .iter()
+                        .map(|d| d.format("%Y-%m-%d %H:%M:%S %Z").to_string())
+                        .collect();
+                    return serde_json::json!(formatted);
+                }
+            } else if let Ok(v) = row.try_get::<DateTime<Utc>, _>(idx) {
+                return serde_json::json!(v.format("%Y-%m-%d %H:%M:%S %Z").to_string());
+            } else if let Ok(v) = row.try_get::<NaiveDateTime, _>(idx) {
+                return serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string());
+            }
+        }
+        "date" => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<NaiveDate>, _>(idx) {
+                    let formatted: Vec<String> =
+                        v.iter().map(|d| d.format("%Y-%m-%d").to_string()).collect();
+                    return serde_json::json!(formatted);
+                }
+            } else if let Ok(v) = row.try_get::<NaiveDate, _>(idx) {
+                return serde_json::json!(v.format("%Y-%m-%d").to_string());
+            }
+        }
+        "time" => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<NaiveTime>, _>(idx) {
+                    let formatted: Vec<String> =
+                        v.iter().map(|t| t.format("%H:%M:%S").to_string()).collect();
+                    return serde_json::json!(formatted);
+                }
+            } else if let Ok(v) = row.try_get::<NaiveTime, _>(idx) {
+                return serde_json::json!(v.format("%H:%M:%S").to_string());
+            }
+        }
+        "timetz" => {
+            try_get!(String);
+        }
+        "interval" => {
+            // Interval tidak support array dengan mudah
+            if !is_array {
+                if let Ok(v) = row.try_get::<sqlx::postgres::types::PgInterval, _>(idx) {
+                    return serde_json::json!(format!(
+                        "{} mons {} days {} µs",
+                        v.months, v.days, v.microseconds
+                    ));
+                }
+            }
+        }
+
+        // Integer types
+        "int2" | "smallint" | "smallserial" => {
+            try_get!(i16);
+        }
+        "int4" | "int" | "integer" | "serial" => {
+            try_get!(i32);
+        }
+        "int8" | "bigint" | "bigserial" => {
+            try_get!(i64);
+        }
+        "oid" => {
+            if !is_array {
+                if let Ok(v) = row.try_get::<sqlx::postgres::types::Oid, _>(idx) {
+                    return serde_json::json!(v.0);
+                }
+            }
+            try_get!(i32);
+        }
+
+        // Floating point types
+        "float4" | "real" => {
+            try_get!(f32);
+        }
+        "float8" | "double precision" => {
+            try_get!(f64);
+        }
+
+        // Numeric/Decimal
+        "numeric" | "decimal" => {
+            try_get!(String);
+            if !is_array {
+                if let Ok(v) = row.try_get::<f64, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            }
+        }
+
+        // Money type
+        "money" => {
+            if !is_array {
+                if let Ok(v) = row.try_get::<sqlx::postgres::types::PgMoney, _>(idx) {
+                    return serde_json::json!(format!("${:.2}", v.0 as f64 / 100.0));
+                }
+            }
+        }
+
+        // Boolean type
+        "bool" | "boolean" => {
+            try_get!(bool);
+        }
+
+        // String types
+        "text" | "varchar" | "char" | "bpchar" | "name" | "citext" | "unknown" | "xml" => {
+            try_get!(String);
+        }
+
+        // UUID type
+        "uuid" => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<Uuid>, _>(idx) {
+                    let formatted: Vec<String> = v.iter().map(|u| u.to_string()).collect();
+                    return serde_json::json!(formatted);
+                }
+            } else if let Ok(v) = row.try_get::<Uuid, _>(idx) {
+                return serde_json::json!(v.to_string());
+            }
+        }
+
+        // JSON types
+        "json" | "jsonb" => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<serde_json::Value>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else if let Ok(v) = row.try_get::<serde_json::Value, _>(idx) {
+                return v;
+            }
+        }
+
+        // Binary data
+        "bytea" => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<Vec<u8>>, _>(idx) {
+                    let formatted: Vec<String> = v
+                        .iter()
+                        .map(|b| format!("[BYTEA {} bytes]", b.len()))
+                        .collect();
+                    return serde_json::json!(formatted);
+                }
+            } else if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
+                return serde_json::json!(format!("[BYTEA {} bytes]", v.len()));
+            }
+        }
+
+        // Network types
+        "inet" | "cidr" | "macaddr" | "macaddr8" => {
+            try_get!(String);
+        }
+
+        // Bit string types
+        "bit" | "varbit" => {
+            try_get!(String);
+        }
+
+        // Geometric types
+        "point" | "line" | "lseg" | "box" | "path" | "polygon" | "circle" => {
+            return serde_json::json!(format!("[{} geometry]", base_type.to_uppercase()));
+        }
+
+        // Range types
+        "int4range" | "int8range" | "numrange" | "tsrange" | "tstzrange" | "daterange" => {
+            return serde_json::json!(format!("[{} range]", base_type));
+        }
+
+        // Fallback
+        _ => {
+            if is_array {
+                if let Ok(v) = row.try_get::<Vec<String>, _>(idx) {
+                    return serde_json::json!(v);
+                }
+            } else {
+                if let Ok(v) = row.try_get::<i64, _>(idx) {
+                    return serde_json::json!(v);
+                }
+                if let Ok(v) = row.try_get::<i32, _>(idx) {
+                    return serde_json::json!(v);
+                }
+                if let Ok(v) = row.try_get::<f64, _>(idx) {
+                    return serde_json::json!(v);
+                }
+                if let Ok(v) = row.try_get::<bool, _>(idx) {
+                    return serde_json::json!(v);
+                }
+                if let Ok(v) = row.try_get::<String, _>(idx) {
+                    return serde_json::json!(v);
+                }
+                if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
+                    return serde_json::json!(format!("[Binary {} bytes]", v.len()));
+                }
+            }
+        }
+    }
+
+    serde_json::Value::Null
+}
 
 pub struct PostgresConnection {
     pool: Option<PgPool>,
@@ -87,43 +330,22 @@ impl DatabaseConnection for PostgresConnection {
                 let col_info = &row.columns()[i];
                 let type_name = col_info.type_info().name();
 
-                let value = if type_name == "TIMESTAMP" || type_name == "TIMESTAMPTZ" {
-                    if let Ok(v) = row.try_get::<NaiveDateTime, _>(i) {
-                        serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string())
-                    } else {
-                        serde_json::Value::Null
-                    }
-                } else if type_name == "DATE" {
-                    if let Ok(v) = row.try_get::<NaiveDate, _>(i) {
-                        serde_json::json!(v.format("%Y-%m-%d").to_string())
-                    } else {
-                        serde_json::Value::Null
-                    }
-                } else if type_name == "TIME" {
-                    if let Ok(v) = row.try_get::<NaiveTime, _>(i) {
-                        serde_json::json!(v.format("%H:%M:%S").to_string())
-                    } else {
-                        serde_json::Value::Null
-                    }
-                } else if let Ok(v) = row.try_get::<i64, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<i32, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<i16, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<f64, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<f32, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<bool, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<String, _>(i) {
-                    serde_json::json!(v)
-                } else if let Ok(v) = row.try_get::<Vec<u8>, _>(i) {
-                    serde_json::json!(format!("[BYTEA {} bytes]", v.len()))
+                // Check if array type (can be _typename or TYPENAME[])
+                let (is_array, base_type_owned);
+                if let Some(stripped) = type_name.strip_prefix('_') {
+                    // Format: _varchar, _int4, etc.
+                    is_array = true;
+                    base_type_owned = stripped.to_string();
+                } else if let Some(stripped) = type_name.strip_suffix("[]") {
+                    // Format: VARCHAR[], INT4[], etc. - convert to lowercase for matching
+                    is_array = true;
+                    base_type_owned = stripped.to_lowercase();
                 } else {
-                    serde_json::Value::Null
-                };
+                    is_array = false;
+                    base_type_owned = type_name.to_lowercase();
+                }
+
+                let value = extract_pg_value(&row, i, &base_type_owned, is_array);
                 row_map.insert(col.clone(), value);
             }
             result_rows.push(row_map);

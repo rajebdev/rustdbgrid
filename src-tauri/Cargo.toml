@@ -32,6 +32,8 @@ sqlx = { version = "0.8", features = [
     "postgres",
     "sqlite",
     "chrono",
+    "uuid",
+    "json",
 ] }
 mongodb = "3.1"
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }

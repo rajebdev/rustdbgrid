@@ -8,6 +8,7 @@
     executeQueryWithFilters,
     executeQuery,
   } from "../../utils/tauri";
+  import ArrayCell from "./ArrayCell.svelte";
 
   export let data = null;
   export let tabId = null;
@@ -330,6 +331,19 @@
     if (value === null || value === undefined) {
       return "NULL";
     }
+    if (Array.isArray(value)) {
+      // Format array nicely: [item1, item2, ...]
+      if (value.length === 0) {
+        return "[]";
+      }
+      // For arrays of primitives, show comma-separated
+      const formatted = value.map((item) => {
+        if (item === null) return "NULL";
+        if (typeof item === "object") return JSON.stringify(item);
+        return String(item);
+      });
+      return `[${formatted.join(", ")}]`;
+    }
     if (typeof value === "object") {
       return JSON.stringify(value);
     }
@@ -633,10 +647,17 @@
 
   // Inline editing functions
   function startEdit(rowIndex, column, currentValue) {
-    const valueStr =
-      currentValue === null || currentValue === undefined
-        ? ""
-        : String(currentValue);
+    let valueStr;
+    if (currentValue === null || currentValue === undefined) {
+      valueStr = "";
+    } else if (Array.isArray(currentValue)) {
+      // Format array as JSON for editing
+      valueStr = JSON.stringify(currentValue);
+    } else if (typeof currentValue === "object") {
+      valueStr = JSON.stringify(currentValue);
+    } else {
+      valueStr = String(currentValue);
+    }
 
     // Check if the value is longer than 500px (estimate ~70 characters for typical width)
     // or if it contains newlines (multi-line text)
@@ -1072,17 +1093,23 @@
                 {#each displayData.columns as column}
                   {@const isEdited =
                     editedRows.has(index) && editedRows.get(index).has(column)}
+                  {@const cellValue = row[column]}
+                  {@const isArrayValue = Array.isArray(cellValue)}
                   <td
-                    class="{row[column] === null || row[column] === undefined
+                    class="{cellValue === null || cellValue === undefined
                       ? 'null-value fst-italic'
-                      : ''} {isNumericColumn(column)
+                      : ''} {isNumericColumn(column) && !isArrayValue
                       ? 'text-end font-monospace'
                       : ''} {editingCell?.rowIndex === index &&
                     editingCell?.column === column
                       ? 'editing'
-                      : ''} {isEdited ? 'edited-cell' : ''}"
-                    title={formatValue(row[column])}
-                    on:dblclick={() => startEdit(index, column, row[column])}
+                      : ''} {isEdited ? 'edited-cell' : ''} {isArrayValue
+                      ? 'array-cell-td'
+                      : ''}"
+                    title={isArrayValue
+                      ? `Array with ${cellValue.length} items`
+                      : formatValue(cellValue)}
+                    on:dblclick={() => startEdit(index, column, cellValue)}
                   >
                     {#if editingCell?.rowIndex === index && editingCell?.column === column}
                       <input
@@ -1099,8 +1126,10 @@
                         on:blur={finishEdit}
                         use:focusInput
                       />
+                    {:else if isArrayValue}
+                      <ArrayCell value={cellValue} />
                     {:else}
-                      {formatValue(row[column])}
+                      {formatValue(cellValue)}
                     {/if}
                   </td>
                 {/each}
@@ -1743,5 +1772,11 @@
 
   .json-content::-webkit-scrollbar-thumb:hover {
     background: #a0a0a0;
+  }
+
+  /* Array cell styling */
+  .array-cell-td {
+    vertical-align: top;
+    min-width: 150px;
   }
 </style>
