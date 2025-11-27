@@ -55,8 +55,9 @@ export function useKeyboardShortcuts(handlers) {
       }
       // F5 or Ctrl/Cmd + Enter: Execute Query
       else if (
-        event.key === "F5" ||
-        ((event.ctrlKey || event.metaKey) && event.key === "Enter")
+        // event.key === "F5" ||
+        (event.ctrlKey || event.metaKey) &&
+        event.key === "Enter"
       ) {
         event.preventDefault();
         handlers.execute?.();
