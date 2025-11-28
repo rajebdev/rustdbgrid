@@ -290,10 +290,19 @@ impl IgniteConnection {
         for arg in &args {
             command.arg(arg);
         }
+        command.env("IGNITE_BRIDGE_PIPE", &*PIPE_NAME);
+        command.stdout(std::process::Stdio::inherit());
+        command.stderr(std::process::Stdio::inherit());
+
+        // On Windows, hide the console window
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
         let child = command
-            .env("IGNITE_BRIDGE_PIPE", &*PIPE_NAME)
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
             .spawn()
             .map_err(|e| anyhow!("Failed to start Ignite bridge: {}", e))?;
 
