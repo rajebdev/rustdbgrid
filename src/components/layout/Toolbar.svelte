@@ -37,21 +37,21 @@
     title="Execute SQL (F5 / Ctrl+Enter)"
     on:click={() => handleAction("execute")}
   >
-    <i class="fas fa-play" style="color: #4caf50;"></i>
+    <i class="fas fa-play icon-success"></i>
   </button>
   <button
     class="toolbar-btn"
     title="Execute Script (Ctrl+Shift+Enter)"
     on:click={() => handleAction("executeScript")}
   >
-    <i class="fas fa-play-circle" style="color: #4caf50;"></i>
+    <i class="fas fa-play-circle icon-success"></i>
   </button>
   <button
     class="toolbar-btn"
     title="Stop"
     on:click={() => handleAction("stop")}
   >
-    <i class="fas fa-stop" style="color: #f44336;"></i>
+    <i class="fas fa-stop icon-danger"></i>
   </button>
   <div class="toolbar-divider"></div>
   <button
@@ -121,5 +121,13 @@
     height: 24px;
     background: var(--border-color);
     margin: 0 6px;
+  }
+
+  .icon-success {
+    color: var(--accent-green);
+  }
+
+  .icon-danger {
+    color: var(--accent-red);
   }
 </style>

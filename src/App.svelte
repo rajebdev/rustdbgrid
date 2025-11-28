@@ -22,6 +22,7 @@
     handleOpenTableTab,
   } from "./handlers/menuHandlers";
   import { initializeApplication } from "./services/appService";
+  import { initializeTheme, toggleTheme } from "./services/themeService";
 
   // UI State
   let showSidebar = true;
@@ -111,6 +112,7 @@
     nextTab: () => tabStore.nextTab(),
     previousTab: () => tabStore.previousTab(),
     showKeyboardShortcuts: handleShowKeyboardShortcuts,
+    toggleTheme: toggleTheme,
   });
 
   // Window resize handling
@@ -140,6 +142,9 @@
   });
 
   onMount(async () => {
+    // Initialize theme system first
+    await initializeTheme();
+
     await initializeApplication();
   });
 

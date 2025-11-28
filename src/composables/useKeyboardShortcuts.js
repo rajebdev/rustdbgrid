@@ -99,6 +99,15 @@ export function useKeyboardShortcuts(handlers) {
         event.preventDefault();
         handlers.previousTab?.();
       }
+      // Ctrl/Cmd + Shift + T: Toggle Theme
+      else if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key === "T"
+      ) {
+        event.preventDefault();
+        handlers.toggleTheme?.();
+      }
       // Ctrl/Cmd + K then Ctrl/Cmd + S: Keyboard Shortcuts
       else if ((event.ctrlKey || event.metaKey) && event.key === "k") {
         event.preventDefault();

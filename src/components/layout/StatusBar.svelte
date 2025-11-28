@@ -7,6 +7,8 @@
     isSaving,
   } from "../../stores/connections";
   import { tabDataStore } from "../../stores/tabData";
+  import { themePreference } from "../../stores/theme";
+  import { toggleTheme } from "../../services/themeService";
   import { getStorageInfo } from "../../utils/tauri";
 
   export let activeTabId = null;
@@ -25,6 +27,18 @@
     }
   }
 
+  function getThemeIcon(preference) {
+    if (preference === "light") return "fa-sun";
+    if (preference === "dark") return "fa-moon";
+    return "fa-desktop";
+  }
+
+  function getThemeLabel(preference) {
+    if (preference === "light") return "Light";
+    if (preference === "dark") return "Dark";
+    return "Auto";
+  }
+
   // Reactive statement: reload storage info when saving completes
   $: if (!$isSaving) {
     loadStorageInfo();
@@ -34,7 +48,7 @@
 </script>
 
 <div
-  class="d-flex justify-content-between align-items-center bg-light border-top px-2 py-1"
+  class="status-bar d-flex justify-content-between align-items-center border-top px-2 py-1"
   style="height: 28px; font-size: 11px;"
 >
   <div class="d-flex align-items-center gap-2">
@@ -45,7 +59,7 @@
           style="width: 8px; height: 8px;"
         ></span>
         <div class="d-flex align-items-center gap-1">
-          <strong class="text-dark">{$activeConnection.name}</strong>
+          <strong>{$activeConnection.name}</strong>
           <span class="text-muted">·</span>
           <span class="text-secondary">{$activeConnection.db_type}</span>
           <span class="text-muted">·</span>
@@ -66,7 +80,7 @@
       <span class="vr"></span>
       <div class="d-flex align-items-center gap-1">
         <i class="fas fa-database text-secondary"></i>
-        <span class="text-dark">{$selectedDatabase.name}</span>
+        <span>{$selectedDatabase.name}</span>
       </div>
     {/if}
 
@@ -74,7 +88,7 @@
       <span class="vr"></span>
       <div class="d-flex align-items-center gap-1">
         <i class="fas fa-table text-secondary"></i>
-        <span class="text-dark">{$selectedTable.name}</span>
+        <span>{$selectedTable.name}</span>
       </div>
     {/if}
   </div>
@@ -83,14 +97,14 @@
     {#if currentTabData?.queryResult}
       <div class="d-flex align-items-center gap-1">
         <i class="fas fa-list text-secondary"></i>
-        <span class="text-dark">
+        <span>
           {currentTabData.queryResult.rows.length} rows
         </span>
       </div>
       <span class="vr"></span>
       <div class="d-flex align-items-center gap-1">
         <i class="fas fa-columns text-secondary"></i>
-        <span class="text-dark">
+        <span>
           {currentTabData.queryResult.columns.length} columns
         </span>
       </div>
@@ -107,14 +121,50 @@
       >
         {#if $isSaving}
           <i class="fas fa-spinner fa-spin text-primary"></i>
-          <span class="text-dark">Saving...</span>
+          <span>Saving...</span>
         {:else}
           <i class="fas fa-save text-success"></i>
-          <span class="text-dark"
-            >{storageInfo.exists ? "Saved" : "Not saved"}</span
-          >
+          <span>{storageInfo.exists ? "Saved" : "Not saved"}</span>
         {/if}
       </div>
     {/if}
+
+    <!-- Theme Toggle -->
+    <span class="vr"></span>
+    <button
+      class="theme-toggle d-flex align-items-center gap-1"
+      on:click={toggleTheme}
+      title="Theme: {getThemeLabel($themePreference)} (click to cycle)"
+    >
+      <i class="fas {getThemeIcon($themePreference)} pb-1"></i>
+      <span>{getThemeLabel($themePreference)}</span>
+    </button>
   </div>
 </div>
+
+<style>
+  .status-bar {
+    background: var(--bg-toolbar);
+    color: var(--text-primary);
+  }
+
+  .theme-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    transition: all 0.15s ease;
+  }
+
+  .theme-toggle:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+  }
+
+  .theme-toggle i {
+    font-size: 10px;
+  }
+</style>

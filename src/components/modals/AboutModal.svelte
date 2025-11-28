@@ -21,8 +21,7 @@
       <div class="modal-content">
         <div class="modal-body text-center pt-4">
           <div class="mb-4">
-            <i class="fas fa-database text-primary" style="font-size: 64px;"
-            ></i>
+            <i class="fas fa-database text-primary about-icon"></i>
             <h3 class="mt-3 mb-1 fw-bold">RustDBGrid</h3>
             <p class="text-muted mb-0">v1.0.0</p>
           </div>
@@ -77,3 +76,14 @@
   </div>
   <div class="modal-backdrop fade show"></div>
 {/if}
+
+<style>
+  .about-icon {
+    font-size: 64px;
+  }
+
+  .modal-content {
+    background: var(--bg-modal);
+    color: var(--text-primary);
+  }
+</style>

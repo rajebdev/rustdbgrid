@@ -6,7 +6,7 @@ mod db;
 mod models;
 mod utils;
 
-use commands::{connection, export, logging, query, schema};
+use commands::{connection, export, logging, query, schema, settings};
 
 fn main() {
     tauri::Builder::default()
@@ -68,6 +68,11 @@ fn main() {
             export::copy_schema,
             export::copy_data,
             logging::log_from_frontend,
+            settings::get_settings,
+            settings::save_settings,
+            settings::update_setting,
+            settings::get_theme,
+            settings::set_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

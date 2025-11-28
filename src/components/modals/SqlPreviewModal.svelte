@@ -41,7 +41,7 @@
           </div>
 
           <pre
-            class="bg-dark text-light p-3 rounded"
+            class="sql-preview-code p-3 rounded"
             style="max-height: 400px; overflow-y: auto;"><code
               >{previewSql}</code
             ></pre>
@@ -65,3 +65,13 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .sql-preview-code {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 0.875rem;
+  }
+</style>

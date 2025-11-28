@@ -156,3 +156,52 @@
     </div>
   </div>
 {/if}
+
+<style>
+  /* Filter Modal Table - Dark Mode Support */
+  .modal-content .table {
+    --bs-table-bg: transparent;
+    --bs-table-hover-bg: var(--hover-bg);
+    background-color: transparent;
+    color: var(--text-primary);
+  }
+
+  .modal-content .table > tbody > tr {
+    background-color: transparent;
+  }
+
+  .modal-content .table > tbody > tr:hover {
+    background-color: var(--hover-bg);
+  }
+
+  .modal-content .table td {
+    border-color: var(--border-light);
+    color: var(--text-primary);
+  }
+
+  .modal-content .table .form-check-label {
+    color: var(--text-primary);
+  }
+
+  /* Checkbox Dark Mode Support */
+  .modal-content .form-check-input {
+    background-color: var(--bg-input);
+    border-color: var(--border-color);
+  }
+
+  .modal-content .form-check-input:checked {
+    background-color: var(--accent-blue);
+    border-color: var(--accent-blue);
+  }
+
+  .modal-content .form-check-input:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 0.2rem var(--focus-ring);
+  }
+
+  /* Scrollable container border */
+  .modal-body .border.rounded {
+    border-color: var(--border-color) !important;
+    background-color: var(--bg-secondary);
+  }
+</style>

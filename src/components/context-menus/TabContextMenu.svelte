@@ -131,7 +131,7 @@
 
 <style>
   .context-menu-item:hover:not(:disabled) {
-    background-color: #e9ecef;
+    background-color: var(--hover-bg);
   }
 
   .context-menu-item:disabled {
@@ -142,5 +142,6 @@
   .context-menu-item {
     cursor: pointer;
     transition: background-color 0.1s;
+    color: var(--text-primary);
   }
 </style>

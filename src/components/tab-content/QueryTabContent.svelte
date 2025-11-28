@@ -43,7 +43,7 @@
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <!-- svelte-ignore a11y-no-static-element-interactions -->
     <div
-      class="bg-body-tertiary border-top border-bottom editor-resize-handle"
+      class="editor-resize-handle border-top border-bottom"
       style="height: 6px; cursor: row-resize;"
       on:mousedown={handleEditorMouseDown}
       role="separator"
@@ -64,15 +64,16 @@
 <style>
   .editor-resize-handle {
     display: block;
+    background: var(--bg-tertiary);
     transition: background-color 0.2s;
   }
 
   .editor-resize-handle:hover {
-    background-color: #0d6efd !important;
+    background-color: var(--accent-blue) !important;
   }
 
   .editor-resize-handle:focus {
-    outline: 2px solid #0d6efd;
+    outline: 2px solid var(--accent-blue);
     outline-offset: -2px;
   }
 

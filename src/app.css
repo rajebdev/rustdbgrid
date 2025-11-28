@@ -1,35 +1,224 @@
 @import 'bootstrap/dist/css/bootstrap.min.css';
 @import '@fortawesome/fontawesome-free/css/all.min.css';
 
+/* ============================================
+   THEME SYSTEM - CSS CUSTOM PROPERTIES
+   ============================================ */
+
 :root {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
-  font-size: 13px; /* Base font size lebih kecil dari default browser (16px) */
+  font-size: 13px;
   line-height: 1.4;
   
-  /* DBeaver color scheme - Light theme */
+  /* Color scheme hint for browser UI */
+  color-scheme: light dark;
+}
+
+/* ============================================
+   LIGHT THEME (Default)
+   ============================================ */
+:root,
+[data-theme="light"] {
+  /* Background colors */
   --bg-primary: #f5f5f5;
   --bg-secondary: #ffffff;
   --bg-tertiary: #fafafa;
   --bg-toolbar: #e8e8e8;
   --bg-sidebar: #f9f9f9;
+  --bg-input: #ffffff;
+  --bg-modal: #ffffff;
+  --bg-dropdown: #ffffff;
+  --bg-tooltip: #333333;
+  
+  /* Border colors */
   --border-color: #d0d0d0;
   --border-light: #e0e0e0;
+  --border-focus: #2196F3;
+  
+  /* Text colors */
   --text-primary: #333333;
   --text-secondary: #666666;
   --text-muted: #999999;
+  --text-inverse: #ffffff;
+  --text-link: #2196F3;
+  
+  /* Accent colors */
   --accent-blue: #2196F3;
   --accent-blue-hover: #1976D2;
+  --accent-blue-light: #e3f2fd;
   --accent-green: #4caf50;
+  --accent-green-light: #e8f5e9;
   --accent-red: #f44336;
+  --accent-red-light: #ffebee;
+  --accent-yellow: #ff9800;
+  --accent-yellow-light: #fff3e0;
+  --accent-purple: #9c27b0;
+  --accent-purple-light: #f3e5f5;
+  --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --accent-number-bg: rgba(255, 255, 255, 0.2);
+  
+  /* Interactive states */
   --selected-bg: #e3f2fd;
   --selected-border: #2196F3;
   --hover-bg: #f0f0f0;
+  --active-bg: #e0e0e0;
+  --focus-ring: rgba(33, 150, 243, 0.25);
+  
+  /* Component-specific */
   --tab-active-bg: #ffffff;
   --tab-inactive-bg: #e8e8e8;
+  --tab-hover-bg: #f0f0f0;
   --grid-header-bg: #f5f5f5;
   --grid-border: #dddddd;
+  --grid-row-even: #ffffff;
+  --grid-row-odd: #fafafa;
+  --grid-row-hover: #f5f5f5;
+  --grid-row-selected: #e3f2fd;
+  
+  /* Scrollbar */
+  --scrollbar-track: #f5f5f5;
+  --scrollbar-thumb: #c0c0c0;
+  --scrollbar-thumb-hover: #a0a0a0;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.15);
+  --shadow-dropdown: 0 2px 8px rgba(0, 0, 0, 0.15);
+  
+  /* Code editor */
+  --editor-bg: #ffffff;
+  --editor-text: #333333;
+  --editor-gutter-bg: #f5f5f5;
+  --editor-gutter-text: #999999;
+  --editor-line-active: #e3f2fd;
+  --editor-selection: #add6ff;
+  --editor-cursor: #2196F3;
+  
+  /* Syntax highlighting - Light */
+  --syntax-keyword: #0000ff;
+  --syntax-string: #a31515;
+  --syntax-number: #098658;
+  --syntax-comment: #008000;
+  --syntax-function: #795e26;
+  --syntax-variable: #001080;
+  --syntax-operator: #000000;
+  --syntax-type: #267f99;
+  
+  /* Status colors */
+  --status-success: #4caf50;
+  --status-warning: #ff9800;
+  --status-error: #f44336;
+  --status-info: #2196F3;
+  
+  /* Button close filter */
+  --btn-close-filter: invert(0);
 }
+
+/* ============================================
+   DARK THEME
+   ============================================ */
+[data-theme="dark"] {
+  /* Background colors */
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-tertiary: #2d2d2d;
+  --bg-toolbar: #333333;
+  --bg-sidebar: #252526;
+  --bg-input: #3c3c3c;
+  --bg-modal: #2d2d2d;
+  --bg-dropdown: #2d2d2d;
+  --bg-tooltip: #ffffff;
+  
+  /* Border colors */
+  --border-color: #404040;
+  --border-light: #4a4a4a;
+  --border-focus: #0078d4;
+  
+  /* Text colors */
+  --text-primary: #cccccc;
+  --text-secondary: #a0a0a0;
+  --text-muted: #808080;
+  --text-inverse: #1e1e1e;
+  --text-link: #3794ff;
+  
+  /* Accent colors */
+  --accent-blue: #0078d4;
+  --accent-blue-hover: #106ebe;
+  --accent-blue-light: #264f78;
+  --accent-green: #4ec9b0;
+  --accent-green-light: #264d3d;
+  --accent-red: #f14c4c;
+  --accent-red-light: #5a1d1d;
+  --accent-yellow: #dcdcaa;
+  --accent-yellow-light: #4d4d2d;
+  --accent-purple: #c586c0;
+  --accent-purple-light: #4d264d;
+  --accent-gradient: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+  --accent-number-bg: rgba(255, 255, 255, 0.15);
+  
+  /* Interactive states */
+  --selected-bg: #264f78;
+  --selected-border: #0078d4;
+  --hover-bg: #2a2d2e;
+  --active-bg: #3c3c3c;
+  --focus-ring: rgba(0, 120, 212, 0.35);
+  
+  /* Component-specific */
+  --tab-active-bg: #1e1e1e;
+  --tab-inactive-bg: #2d2d2d;
+  --tab-hover-bg: #3c3c3c;
+  --grid-header-bg: #333333;
+  --grid-border: #404040;
+  --grid-row-even: #252526;
+  --grid-row-odd: #2d2d2d;
+  --grid-row-hover: #3c3c3c;
+  --grid-row-selected: #264f78;
+  
+  /* Scrollbar */
+  --scrollbar-track: #2d2d2d;
+  --scrollbar-thumb: #5a5a5a;
+  --scrollbar-thumb-hover: #6e6e6e;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-dropdown: 0 2px 8px rgba(0, 0, 0, 0.4);
+  
+  /* Code editor */
+  --editor-bg: #1e1e1e;
+  --editor-text: #d4d4d4;
+  --editor-gutter-bg: #252526;
+  --editor-gutter-text: #858585;
+  --editor-line-active: #282828;
+  --editor-selection: #264f78;
+  --editor-cursor: #aeafad;
+  
+  /* Syntax highlighting - Dark (VS Code-like) */
+  --syntax-keyword: #569cd6;
+  --syntax-string: #ce9178;
+  --syntax-number: #b5cea8;
+  --syntax-comment: #6a9955;
+  --syntax-function: #dcdcaa;
+  --syntax-variable: #9cdcfe;
+  --syntax-operator: #d4d4d4;
+  --syntax-type: #4ec9b0;
+  
+  /* Status colors */
+  --status-success: #4ec9b0;
+  --status-warning: #dcdcaa;
+  --status-error: #f14c4c;
+  --status-info: #3794ff;
+  
+  /* Button close filter */
+  --btn-close-filter: invert(1);
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
 
 * {
   box-sizing: border-box;
@@ -41,7 +230,7 @@ body {
   min-height: 100vh;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 13px; /* Ensure body inherits smaller font */
+  font-size: 13px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -77,36 +266,73 @@ body {
   background: var(--bg-secondary);
 }
 
-/* Bootstrap overrides for light theme */
-.form-control {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
+/* ============================================
+   BOOTSTRAP OVERRIDES
+   ============================================ */
+
+.form-control,
+.form-control-sm {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
   font-size: 13px;
 }
 
-.form-control:focus {
-  background: var(--bg-secondary);
-  border-color: var(--accent-blue);
-  color: var(--text-primary);
-  box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25);
+.form-control:focus,
+.form-control-sm:focus {
+  background: var(--bg-input) !important;
+  border-color: var(--accent-blue) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 0 0 0.2rem var(--focus-ring) !important;
+}
+
+.form-control::placeholder,
+.form-control-sm::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.form-control:disabled,
+.form-control[readonly] {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-secondary) !important;
 }
 
 .form-select {
-  background: var(--bg-secondary);
+  background: var(--bg-input);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   font-size: 13px;
 }
 
 .form-select:focus {
-  background: var(--bg-secondary);
+  background: var(--bg-input);
   border-color: var(--accent-blue);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 0.2rem var(--focus-ring);
+}
+
+/* Checkbox styling */
+.form-check-input {
+  background-color: var(--bg-input);
+  border-color: var(--border-color);
+}
+
+.form-check-input:checked {
+  background-color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+.form-check-input:focus {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 0.2rem var(--focus-ring);
+}
+
+.form-check-label {
   color: var(--text-primary);
 }
 
 .modal-content {
-  background: var(--bg-secondary);
+  background: var(--bg-modal);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
 }
@@ -124,67 +350,389 @@ body {
 .btn-primary {
   background: var(--accent-blue);
   border-color: var(--accent-blue);
+  color: var(--text-inverse);
 }
 
 .btn-primary:hover {
   background: var(--accent-blue-hover);
   border-color: var(--accent-blue-hover);
+  color: var(--text-inverse);
+}
+
+.btn-primary:focus {
+  box-shadow: 0 0 0 0.2rem var(--focus-ring);
 }
 
 .btn-secondary {
-  background: #6c757d;
-  border-color: #6c757d;
-  color: #fff;
-}
-
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-
-::-webkit-scrollbar-track {
   background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
 }
 
-::-webkit-scrollbar-thumb {
-  background: #c0c0c0;
-  border-radius: 6px;
+.btn-secondary:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-color);
+  color: var(--text-primary);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #a0a0a0;
+.btn-success {
+  background: var(--accent-green);
+  border-color: var(--accent-green);
 }
 
+.btn-danger {
+  background: var(--accent-red);
+  border-color: var(--accent-red);
+}
+
+.btn-outline-secondary {
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.btn-outline-secondary:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* Badge styling for dark mode */
+[data-theme="dark"] .badge.bg-info {
+  background-color: var(--accent-blue) !important;
+  color: white !important;
+}
+
+[data-theme="dark"] .badge.bg-secondary {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .badge.bg-success {
+  background-color: var(--accent-green) !important;
+}
+
+[data-theme="dark"] .badge.bg-danger {
+  background-color: var(--accent-red) !important;
+}
+
+[data-theme="dark"] .badge.bg-warning {
+  background-color: var(--accent-yellow) !important;
+  color: var(--text-inverse) !important;
+}
+
+[data-theme="dark"] .badge.bg-primary {
+  background-color: var(--accent-blue) !important;
+}
+
+/* Override btn-outline-primary for dark mode */
+[data-theme="dark"] .btn-outline-primary {
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+[data-theme="dark"] .btn-outline-primary:hover {
+  background-color: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: white;
+}
+
+/* Override .text-primary for dark mode */
+[data-theme="dark"] .text-primary {
+  color: var(--accent-blue) !important;
+}
+
+/* Override shadow-sm for dark mode */
+[data-theme="dark"] .shadow-sm {
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* Override rounded for dark mode borders */
+[data-theme="dark"] .rounded {
+  border-color: var(--border-color) !important;
+}
+
+/* Override Bootstrap bg-body classes for dark mode */
+[data-theme="dark"] .bg-body {
+  background-color: var(--bg-secondary) !important;
+}
+
+[data-theme="dark"] .bg-body-secondary {
+  background-color: var(--bg-tertiary) !important;
+}
+
+[data-theme="dark"] .bg-body-tertiary {
+  background-color: var(--bg-sidebar) !important;
+}
+
+[data-theme="dark"] .bg-primary-subtle {
+  background-color: var(--accent-blue-light) !important;
+}
+
+/* Close button */
 .btn-close {
-  filter: invert(1);
+  filter: var(--btn-close-filter);
 }
 
-/* Custom scrollbar */
+/* Card styling */
+.card {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+.card-header {
+  background: var(--bg-tertiary);
+  border-bottom-color: var(--border-light);
+}
+
+/* Table styling */
+.table {
+  color: var(--text-primary);
+}
+
+.table-bordered {
+  border-color: var(--grid-border);
+}
+
+.table > thead {
+  background: var(--grid-header-bg);
+}
+
+.table > tbody > tr:nth-child(even) {
+  background: var(--grid-row-even);
+}
+
+.table > tbody > tr:nth-child(odd) {
+  background: var(--grid-row-odd);
+}
+
+.table > tbody > tr:hover {
+  background: var(--grid-row-hover);
+}
+
+/* Nav tabs */
+.nav-tabs {
+  border-bottom-color: var(--border-color);
+}
+
+.nav-tabs .nav-link {
+  color: var(--text-secondary);
+}
+
+.nav-tabs .nav-link:hover {
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.nav-tabs .nav-link.active {
+  background: var(--bg-secondary);
+  border-color: var(--border-color) var(--border-color) var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Alert styling */
+.alert-info {
+  background: var(--accent-blue-light);
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+
+.alert-success {
+  background: var(--accent-green-light);
+  border-color: var(--accent-green);
+  color: var(--text-primary);
+}
+
+.alert-warning {
+  background: var(--accent-yellow-light);
+  border-color: var(--accent-yellow);
+  color: var(--text-primary);
+}
+
+.alert-danger {
+  background: var(--accent-red-light);
+  border-color: var(--accent-red);
+  color: var(--text-primary);
+}
+
+/* ============================================
+   SCROLLBAR STYLING
+   ============================================ */
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Webkit scrollbar (Chrome, Safari, Edge) */
 ::-webkit-scrollbar {
   width: 12px;
   height: 12px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #424242;
+  background: var(--scrollbar-thumb);
   border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4e4e4e;
+  background: var(--scrollbar-thumb-hover);
 }
 
-/* Utilities */
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+/* ============================================
+   UTILITIES
+   ============================================ */
+
 .text-muted {
+  color: var(--text-muted) !important;
+}
+
+.text-secondary {
   color: var(--text-secondary) !important;
 }
 
-/* Remove default focus outline, we'll use our own */
+/* Override Bootstrap text-dark for dark mode */
+[data-theme="dark"] .text-dark {
+  color: var(--text-primary) !important;
+}
+
+/* Override Bootstrap bg-light and bg-white for dark mode */
+[data-theme="dark"] .bg-light {
+  background-color: var(--bg-tertiary) !important;
+}
+
+[data-theme="dark"] .bg-white {
+  background-color: var(--bg-secondary) !important;
+}
+
+/* Override border color */
+[data-theme="dark"] .border,
+[data-theme="dark"] .border-bottom,
+[data-theme="dark"] .border-top,
+[data-theme="dark"] .border-start,
+[data-theme="dark"] .border-end {
+  border-color: var(--border-color) !important;
+}
+
+/* ============================================
+   SIDEBAR TABLE/COLLECTION/IGNITE ITEMS - DARK MODE
+   ============================================ */
+
+/* Sidebar table background in dark mode */
+[data-theme="dark"] .sidebar-content .table {
+  --bs-table-bg: transparent;
+  --bs-table-hover-bg: var(--hover-bg);
+  background-color: transparent !important;
+}
+
+[data-theme="dark"] .sidebar-content .table > tbody > tr {
+  background-color: transparent !important;
+}
+
+/* Sidebar table items - ensure text color in dark mode */
+[data-theme="dark"] .sidebar-content .table-item-row .btn {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .sidebar-content .table-item-row .btn:hover {
+  background-color: var(--hover-bg) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .sidebar-content .table-item-row .text-secondary {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .sidebar-content .table-item-row .badge.bg-light {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-muted) !important;
+}
+
+/* Sidebar table hover state in dark mode */
+[data-theme="dark"] .sidebar-content .table-hover > tbody > tr:hover {
+  background-color: var(--hover-bg) !important;
+}
+
+[data-theme="dark"] .sidebar-content .table-hover > tbody > tr:hover .btn {
+  color: var(--text-primary) !important;
+}
+
+/* Sidebar table active state in dark mode */
+[data-theme="dark"] .sidebar-content .table-item-row.table-active {
+  background-color: var(--selected-bg) !important;
+}
+
+[data-theme="dark"] .sidebar-content .table-item-row.table-active .btn {
+  color: var(--accent-blue) !important;
+}
+
+[data-theme="dark"] .sidebar-content .table-item-row.table-active .badge {
+  background-color: var(--accent-blue-light) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Sidebar table icons in dark mode */
+[data-theme="dark"] .sidebar-content .fa-table,
+[data-theme="dark"] .sidebar-content .fa-layer-group,
+[data-theme="dark"] .sidebar-content .fa-server {
+  color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] .sidebar-content .table-item-row:hover .fa-table,
+[data-theme="dark"] .sidebar-content .table-item-row:hover .fa-layer-group,
+[data-theme="dark"] .sidebar-content .table-item-row:hover .fa-server {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .sidebar-content .table-item-row.table-active .fa-table,
+[data-theme="dark"] .sidebar-content .table-item-row.table-active .fa-layer-group,
+[data-theme="dark"] .sidebar-content .table-item-row.table-active .fa-server {
+  color: var(--accent-blue) !important;
+}
+
+/* Sidebar chevron icons in table rows */
+[data-theme="dark"] .sidebar-content .table-item-row .fa-chevron-right {
+  color: var(--text-muted) !important;
+}
+
+/* Sidebar table name text in dark mode */
+[data-theme="dark"] .sidebar-content .table-item-row .text-truncate {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .sidebar-content .table-item-row:hover .text-truncate {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .sidebar-content .table-item-row.table-active .text-truncate {
+  color: var(--accent-blue) !important;
+}
+
+.text-primary-custom {
+  color: var(--text-primary) !important;
+}
+
+.bg-primary-custom {
+  background: var(--bg-primary) !important;
+}
+
+.bg-secondary-custom {
+  background: var(--bg-secondary) !important;
+}
+
+.border-custom {
+  border-color: var(--border-color) !important;
+}
+
+/* Remove default focus outline */
 button:focus,
 input:focus,
 select:focus,
@@ -192,20 +740,39 @@ textarea:focus {
   outline: none;
 }
 
-/* Animation for smooth transitions */
+/* ============================================
+   THEME TRANSITIONS
+   ============================================ */
+
+/* No transitions for theme changes - using overlay instead */
 * {
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: none;
 }
 
-/* Exclude table elements from transitions to prevent scroll glitches */
-table,
-table *,
-.table-wrapper,
-.table-wrapper * {
-  transition: none !important;
+/* Only allow transitions for interactive elements (hover, focus) */
+button, input, select, a, .btn {
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-button, input, select {
-  transition: all 0.15s ease;
+/* ============================================
+   THEME INDICATOR ICON STYLES
+   ============================================ */
+
+.theme-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+}
+
+/* Hide/show icons based on theme */
+[data-theme="light"] .theme-icon-dark,
+[data-theme="dark"] .theme-icon-light {
+  display: none;
+}
+
+[data-theme="light"] .theme-icon-light,
+[data-theme="dark"] .theme-icon-dark {
+  display: inline-flex;
 }
 

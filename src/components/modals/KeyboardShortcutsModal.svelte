@@ -126,6 +126,12 @@
                   <span>Close Tab</span>
                   <kbd class="kbd-shortcut">Ctrl+W</kbd>
                 </div>
+                <div
+                  class="list-group-item d-flex justify-content-between align-items-center border-0 px-0"
+                >
+                  <span>Toggle Theme</span>
+                  <kbd class="kbd-shortcut">Ctrl+Shift+T</kbd>
+                </div>
               </div>
             </div>
 
@@ -177,13 +183,13 @@
 
 <style>
   .kbd-shortcut {
-    background-color: #f0f0f0;
-    border: 1px solid #ccc;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 2px 8px;
     font-size: 11px;
     font-family: "Consolas", "Monaco", monospace;
-    color: #666;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    color: var(--text-secondary);
+    box-shadow: var(--shadow-sm);
   }
 </style>

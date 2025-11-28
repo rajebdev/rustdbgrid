@@ -74,7 +74,7 @@
 
   .resize-handle:hover,
   .resize-handle.resizing {
-    background-color: #0d6efd;
+    background-color: var(--accent-blue);
   }
 
   .resize-handle::before {
@@ -95,7 +95,7 @@
     border-radius: 0 4px 4px 0;
     padding: 8px 6px;
     font-size: 12px;
-    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-md);
     border-left: none;
   }
 

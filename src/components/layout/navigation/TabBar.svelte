@@ -255,7 +255,7 @@
 
 <div
   bind:this={tabBarContainer}
-  class="tab-bar d-flex bg-body-secondary border-bottom"
+  class="tab-bar d-flex border-bottom"
   style="height: 32px; overflow: visible; user-select: none; flex-shrink: 0; position: relative; z-index: 100;"
 >
   {#if tabs.length === 0}
@@ -322,7 +322,7 @@
 
           {#if showOverflowMenu}
             <div
-              class="overflow-menu position-absolute bg-body border shadow-sm"
+              class="overflow-menu position-absolute border shadow-sm"
               style="top: 100%; right: 0; min-width: 220px; max-width: 320px; max-height: 400px; overflow-y: auto; z-index: 99999;"
             >
               {#each overflowTabs as tab (tab.id)}
@@ -395,14 +395,14 @@
 <style>
   /* Tab Bar Container */
   .tab-bar {
-    background: #dee2e6;
+    background: var(--tab-inactive-bg);
   }
 
   /* Tab Item */
   .tab-item {
     height: 32px;
     border: none;
-    border-right: 1px solid rgba(0, 0, 0, 0.08);
+    border-right: 1px solid var(--border-light);
     background: transparent;
     transition: all 0.15s ease;
     position: relative;
@@ -411,7 +411,7 @@
   }
 
   .tab-item:hover {
-    background: rgba(255, 255, 255, 0.4);
+    background: var(--tab-hover-bg);
   }
 
   .tab-item:focus {
@@ -420,8 +420,8 @@
 
   /* Active Tab */
   .tab-item.tab-active {
-    background: var(--bs-body-bg);
-    box-shadow: inset 0 2px 0 0 var(--bs-primary);
+    background: var(--tab-active-bg);
+    box-shadow: inset 0 2px 0 0 var(--accent-blue);
     margin-top: 0;
     z-index: 10;
   }
@@ -433,33 +433,42 @@
     left: 0;
     right: 0;
     height: 1px;
-    background: var(--bs-body-bg);
+    background: var(--tab-active-bg);
     z-index: 11;
   }
 
   /* Tab Icon */
   .tab-icon {
-    opacity: 0.5;
-    transition: opacity 0.15s;
+    color: var(--text-muted);
+    opacity: 0.7;
+    transition:
+      opacity 0.15s,
+      color 0.15s;
+  }
+
+  .tab-item:hover .tab-icon {
+    color: var(--text-secondary);
+    opacity: 0.85;
   }
 
   .tab-active .tab-icon {
-    opacity: 0.7;
+    color: var(--accent-blue);
+    opacity: 1;
   }
 
   /* Tab Title */
   .tab-title {
-    color: var(--bs-secondary);
+    color: var(--text-secondary);
     transition: color 0.15s;
   }
 
   .tab-active .tab-title {
-    color: var(--bs-body-color);
+    color: var(--text-primary);
   }
 
   /* Modified Indicator */
   .modified-indicator {
-    color: var(--bs-primary);
+    color: var(--accent-blue);
     flex-shrink: 0;
     margin-left: -2px;
   }
@@ -468,7 +477,7 @@
   .tab-close-btn {
     opacity: 0.35;
     transition: all 0.15s;
-    color: var(--bs-secondary);
+    color: var(--text-secondary);
     flex-shrink: 0;
   }
 
@@ -479,39 +488,52 @@
 
   .tab-close-btn:hover {
     opacity: 1 !important;
-    background-color: rgba(0, 0, 0, 0.1) !important;
+    background-color: var(--hover-bg) !important;
     border-radius: 2px;
     transform: scale(1.05);
   }
 
   .tab-close-btn:active {
-    background-color: rgba(0, 0, 0, 0.12) !important;
+    background-color: var(--active-bg) !important;
   }
 
   /* Overflow Button */
   .overflow-btn {
-    color: var(--bs-secondary);
+    color: var(--text-secondary);
     transition: all 0.2s;
   }
 
   .overflow-btn:hover {
-    background-color: rgba(0, 0, 0, 0.05) !important;
-    color: var(--bs-body-color);
+    background-color: var(--hover-bg) !important;
+    color: var(--text-primary);
   }
 
   /* Overflow Menu */
   .overflow-menu {
     border-radius: 4px;
     margin-top: 4px;
+    background: var(--bg-dropdown);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-dropdown);
+    color: var(--text-primary);
   }
 
   .overflow-menu-item {
     cursor: pointer;
     transition: background-color 0.15s;
+    color: var(--text-primary);
+  }
+
+  .overflow-menu-item i.fas:not(.fa-times) {
+    color: var(--text-muted);
   }
 
   .overflow-menu-item:hover {
-    background-color: rgba(0, 0, 0, 0.04) !important;
+    background-color: var(--hover-bg) !important;
+  }
+
+  .overflow-menu-item:hover i.fas:not(.fa-times) {
+    color: var(--text-secondary);
   }
 
   .overflow-menu-item:last-child {
@@ -521,6 +543,7 @@
   .overflow-menu-item button {
     opacity: 0;
     transition: opacity 0.2s;
+    color: var(--text-secondary);
   }
 
   .overflow-menu-item:hover button {
@@ -529,7 +552,7 @@
 
   .overflow-menu-item button:hover {
     opacity: 1 !important;
-    background-color: rgba(0, 0, 0, 0.08) !important;
+    background-color: var(--hover-bg) !important;
     border-radius: 3px;
   }
 </style>

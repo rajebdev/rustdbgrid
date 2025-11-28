@@ -1097,7 +1097,7 @@
       <p class="fs-5">Loading filtered data...</p>
     </div>
   {:else if displayData && displayData.rows.length > 0}
-    <div class="d-flex align-items-center gap-2 p-2 bg-light border-bottom">
+    <div class="d-flex align-items-center gap-2 p-2 data-header border-bottom">
       <!-- Query Display -->
       {#if finalQuery || executedQuery}
         <div
@@ -1111,7 +1111,7 @@
             <span>Query:</span>
           </div>
           <div
-            class="text-truncate bg-white px-2 py-1 border rounded flex-grow-1"
+            class="text-truncate query-display px-2 py-1 border rounded flex-grow-1"
             title={finalQuery || executedQuery}
             style="min-width: 0;"
           >
@@ -1372,7 +1372,7 @@
   <!-- Sticky footer untuk menampilkan info rows/columns/time -->
   {#if displayData}
     <div
-      class="sticky-bottom bg-light border-top shadow-sm"
+      class="sticky-bottom data-footer border-top shadow-sm"
       style="position: sticky; bottom: 0; z-index: 10;"
     >
       <div class="d-flex align-items-center gap-2 p-2">
@@ -1440,9 +1440,24 @@
 />
 
 <style>
+  /* Data header and footer styling */
+  .data-header {
+    background: var(--bg-tertiary);
+  }
+
+  .data-footer {
+    background: var(--bg-tertiary);
+  }
+
+  .query-display {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-color: var(--border-color) !important;
+  }
+
   /* Null value styling */
   .null-value {
-    color: #6c757d;
+    color: var(--text-muted);
   }
 
   /* Column header styling */
@@ -1466,7 +1481,7 @@
   }
 
   .sort-button:hover {
-    color: #0d6efd;
+    color: var(--accent-blue);
   }
 
   .sort-icon {
@@ -1482,16 +1497,16 @@
     background: none;
     padding: 0.25rem 0.5rem;
     cursor: pointer;
-    color: #6c757d;
+    color: var(--text-muted);
     font-size: 0.875rem;
   }
 
   .filter-icon-button:hover {
-    color: #0d6efd;
+    color: var(--accent-blue);
   }
 
   .filter-icon-button.active {
-    color: #0d6efd;
+    color: var(--accent-blue);
   }
 
   .column-name {
@@ -1505,6 +1520,8 @@
     overflow: auto;
     height: 100%;
     scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
   /* Custom scrollbar for table container - vertical scrollbar starts below header */
@@ -1514,26 +1531,26 @@
   }
 
   .table-container::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: var(--scrollbar-track);
   }
 
   .table-container::-webkit-scrollbar-thumb {
-    background: #c0c0c0;
+    background: var(--scrollbar-thumb);
     border-radius: 4px;
   }
 
   .table-container::-webkit-scrollbar-thumb:hover {
-    background: #a0a0a0;
+    background: var(--scrollbar-thumb-hover);
   }
 
   /* Vertical scrollbar track - add top margin to start below header area */
   .table-container::-webkit-scrollbar-track:vertical {
-    margin-top: 72px; /* Height of header row including filter input */
+    margin-top: 62px !important; /* Height of header row including filter input */
   }
 
   /* Horizontal scrollbar track - add left margin to start after row number column */
   .table-container::-webkit-scrollbar-track:horizontal {
-    margin-left: 36px; /* Width of row number column */
+    margin-left: 36px !important; /* Width of row number column */
   }
 
   /* Make sticky header extend over the scrollbar gutter */
@@ -1541,7 +1558,7 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    background-color: #f8f9fa;
+    background-color: var(--grid-header-bg);
     box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
   }
 
@@ -1556,7 +1573,8 @@
   }
 
   .data-table thead th {
-    background-color: #f8f9fa;
+    background-color: var(--grid-header-bg);
+    color: var(--text-primary);
   }
 
   /* Ensure table cells truncate properly */
@@ -1566,7 +1584,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     padding: 2px 0.5rem 0 0.5rem;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--grid-border);
     border-left: none;
     border-top: none;
     max-width: 500px;
@@ -1579,23 +1597,23 @@
     position: sticky;
     left: 0;
     z-index: 5;
-    background-color: #f8f9fa !important;
+    background-color: var(--grid-header-bg) !important;
     min-width: 36px;
     max-width: 36px;
     width: 36px;
     text-align: center;
     font-size: 11px;
-    color: #6c757d;
-    border-left: 1px solid #dee2e6;
-    border-right: 1px solid #dee2e6;
+    color: var(--text-muted);
+    border-left: 1px solid var(--grid-border);
+    border-right: 1px solid var(--grid-border);
     box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.15);
   }
 
   .data-table .row-number-header {
     z-index: 15;
     font-weight: 600;
-    color: #495057;
-    border-top: 1px solid #dee2e6;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--grid-border);
   }
 
   /* Fixed row height to prevent layout shifts */
@@ -1603,21 +1621,22 @@
     height: 24px;
   }
 
-  /* Striped rows - alternating light blue */
+  /* Striped rows - alternating */
   .data-table tbody tr.row-even,
   .data-table tbody tr.row-even td:not(.row-number-cell) {
-    background-color: #f0f7ff !important;
+    background-color: var(--grid-row-even) !important;
   }
 
   .data-table tbody tr.row-odd,
   .data-table tbody tr.row-odd td:not(.row-number-cell) {
-    background-color: #ffffff !important;
+    background-color: var(--grid-row-odd) !important;
   }
 
   .data-table tbody td {
     height: 24px;
     line-height: 1.5;
     font-size: 12px;
+    color: var(--text-primary);
   }
 
   /* Inline editing styles */
@@ -1627,42 +1646,45 @@
   }
 
   .data-table tbody td:not(.row-number-cell):hover {
-    background-color: #e3f2fd;
+    background-color: var(--grid-row-hover) !important;
   }
 
   .data-table tbody td.editing {
     padding: 2px;
-    background-color: #fff3cd;
+    background-color: var(--accent-yellow-light) !important;
   }
 
   .data-table tbody td.editing input {
     width: 100%;
     height: 100%;
-    border: 2px solid #ffc107;
+    border: 2px solid var(--accent-yellow);
     padding: 0.25rem;
+    background: var(--bg-input);
+    color: var(--text-primary);
   }
 
   .data-table tbody tr.edited-row {
-    background-color: #f8d7da;
+    background-color: var(--accent-red-light) !important;
   }
 
   .data-table tbody tr.edited-row:hover {
-    background-color: #f1aeb5;
+    background-color: var(--accent-red-light) !important;
+    filter: brightness(0.95);
   }
 
   .data-table tbody tr.edited-row td {
-    color: #842029;
+    color: var(--accent-red);
   }
 
   .data-table tbody td.edited-cell {
-    background-color: #f8d7da;
-    color: #842029;
-    border: 2px solid #dc3545;
+    background-color: var(--accent-red-light) !important;
+    color: var(--accent-red);
+    border: 2px solid var(--accent-red);
     font-weight: 500;
   }
 
   .data-table tbody td.edited-cell:hover {
-    background-color: #f1aeb5;
+    filter: brightness(0.95);
   }
 
   /* Disable all animations and transitions */
@@ -1684,7 +1706,7 @@
     position: relative;
     overflow: auto;
     height: 100%;
-    background-color: #f8f9fa;
+    background-color: var(--bg-tertiary);
   }
 
   .json-list {
@@ -1694,15 +1716,15 @@
   }
 
   .json-item {
-    background: white;
-    border: 1px solid #dee2e6;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 0.375rem;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
   }
 
   .json-item-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--accent-gradient);
     color: white;
     padding: 0.5rem 1rem;
     font-weight: 600;
@@ -1713,7 +1735,7 @@
   }
 
   .json-item-number {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--accent-number-bg);
     padding: 0.125rem 0.5rem;
     border-radius: 0.25rem;
     font-family: monospace;
@@ -1722,12 +1744,12 @@
   .json-content {
     margin: 0;
     padding: 1rem;
-    background-color: #ffffff;
+    background-color: var(--bg-secondary);
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 0.875rem;
     line-height: 1.5;
     overflow-x: auto;
-    color: #2d3748;
+    color: var(--text-primary);
     border: none;
   }
 
@@ -1736,16 +1758,16 @@
   }
 
   .json-content::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: var(--scrollbar-track);
   }
 
   .json-content::-webkit-scrollbar-thumb {
-    background: #c0c0c0;
+    background: var(--scrollbar-thumb);
     border-radius: 4px;
   }
 
   .json-content::-webkit-scrollbar-thumb:hover {
-    background: #a0a0a0;
+    background: var(--scrollbar-thumb-hover);
   }
 
   /* Array cell styling */

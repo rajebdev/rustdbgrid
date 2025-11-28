@@ -11,7 +11,9 @@
     selectedDatabase,
   } from "../../stores/connections";
   import { tabDataStore } from "../../stores/tabData";
+  import { activeTheme } from "../../stores/theme";
   import { getDefaultQuery } from "../../utils/defaultQueries";
+  import { getEditorTheme } from "../../services/themeService";
   import {
     executeQuery,
     getDatabases,
@@ -30,6 +32,15 @@
   let loadingDatabases = false;
   let tables = [];
   let schema = {};
+  let currentTheme = null;
+
+  // Subscribe to theme changes
+  $: if ($activeTheme && $activeTheme !== currentTheme) {
+    currentTheme = $activeTheme;
+    if (editorView) {
+      updateEditorExtensions();
+    }
+  }
 
   // Subscribe to active connection changes
   $: if ($activeConnection) {
@@ -241,53 +252,7 @@
         override: [createAutocompletions()],
       }),
       EditorView.lineWrapping,
-      EditorView.theme({
-        "&": {
-          backgroundColor: "#ffffff",
-          color: "#333333",
-          height: "100%",
-        },
-        ".cm-content": {
-          fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
-          fontSize: "13px",
-          padding: "8px 0",
-          caretColor: "#2196F3",
-        },
-        ".cm-line": {
-          padding: "0 8px",
-        },
-        ".cm-gutters": {
-          backgroundColor: "#f5f5f5",
-          color: "#999999",
-          border: "none",
-          borderRight: "1px solid #e0e0e0",
-        },
-        ".cm-activeLineGutter": {
-          backgroundColor: "#e3f2fd",
-        },
-        ".cm-selectionBackground": {
-          backgroundColor: "#add6ff !important",
-        },
-        "&.cm-focused .cm-selectionBackground": {
-          backgroundColor: "#add6ff !important",
-        },
-        "::selection": {
-          backgroundColor: "#add6ff",
-        },
-        ".cm-cursor, .cm-dropCursor": {
-          borderLeftColor: "#2196F3",
-          borderLeftWidth: "2px",
-        },
-        ".cm-tooltip-autocomplete": {
-          backgroundColor: "#ffffff",
-          border: "1px solid #ccc",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-        },
-        ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
-          backgroundColor: "#0d6efd",
-          color: "#ffffff",
-        },
-      }),
+      EditorView.theme(getEditorTheme($activeTheme)),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           const text = update.state.doc.toString();
@@ -320,53 +285,7 @@
           override: [createAutocompletions()],
         }),
         EditorView.lineWrapping,
-        EditorView.theme({
-          "&": {
-            backgroundColor: "#ffffff",
-            color: "#333333",
-            height: "100%",
-          },
-          ".cm-content": {
-            fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
-            fontSize: "13px",
-            padding: "8px 0",
-            caretColor: "#2196F3",
-          },
-          ".cm-line": {
-            padding: "0 8px",
-          },
-          ".cm-gutters": {
-            backgroundColor: "#f5f5f5",
-            color: "#999999",
-            border: "none",
-            borderRight: "1px solid #e0e0e0",
-          },
-          ".cm-activeLineGutter": {
-            backgroundColor: "#e3f2fd",
-          },
-          ".cm-selectionBackground": {
-            backgroundColor: "#add6ff !important",
-          },
-          "&.cm-focused .cm-selectionBackground": {
-            backgroundColor: "#add6ff !important",
-          },
-          "::selection": {
-            backgroundColor: "#add6ff",
-          },
-          ".cm-cursor, .cm-dropCursor": {
-            borderLeftColor: "#2196F3",
-            borderLeftWidth: "2px",
-          },
-          ".cm-tooltip-autocomplete": {
-            backgroundColor: "#ffffff",
-            border: "1px solid #ccc",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-          },
-          ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
-            backgroundColor: "#0d6efd",
-            color: "#ffffff",
-          },
-        }),
+        EditorView.theme(getEditorTheme($activeTheme)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const text = update.state.doc.toString();
@@ -501,7 +420,7 @@
 <div class="sql-editor-container h-100 d-flex flex-column">
   <!-- Connection and Database Selector Bar -->
   <div
-    class="d-flex align-items-center justify-content-between bg-white border-bottom px-3 py-2"
+    class="editor-toolbar d-flex align-items-center justify-content-between border-bottom px-3 py-2"
     style="min-height: 45px; gap: 12px;"
   >
     <div class="d-flex align-items-center gap-3 flex-grow-1">
@@ -603,9 +522,14 @@
     -ms-user-select: text;
   }
 
+  .editor-toolbar {
+    background: var(--bg-secondary);
+  }
+
   .editor-wrapper {
     overflow: auto;
     position: relative;
+    background: var(--editor-bg);
   }
 
   .sql-editor-container :global(.cm-editor) {

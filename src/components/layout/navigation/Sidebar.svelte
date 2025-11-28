@@ -716,11 +716,11 @@
   }
 </script>
 
-<div class="d-flex flex-column h-100 bg-body-tertiary text-dark">
-  <div class="p-3 pb-2 border-bottom bg-body">
+<div class="sidebar-container d-flex flex-column h-100">
+  <div class="sidebar-header p-3 pb-2 border-bottom">
     <div class="d-flex align-items-center justify-content-between mb-2">
       <h6
-        class="text-uppercase text-secondary mb-0"
+        class="text-uppercase mb-0 sidebar-title"
         style="font-size: 11px; font-weight: 600; letter-spacing: 0.5px;"
       >
         <i class="fas fa-network-wired me-2"></i>
@@ -746,7 +746,7 @@
     </div>
   </div>
 
-  <div class="flex-grow-1 overflow-auto p-1" style="scrollbar-width: thin;">
+  <div class="sidebar-content flex-grow-1 overflow-auto p-1">
     {#if filteredConnections.length === 0}
       <p class="text-muted small p-3">No connections found</p>
     {/if}
@@ -1610,6 +1610,42 @@
 {/if}
 
 <style>
+  /* Sidebar container styles */
+  .sidebar-container {
+    background: var(--bg-sidebar);
+    color: var(--text-primary);
+  }
+
+  .sidebar-header {
+    background: var(--bg-tertiary);
+  }
+
+  .sidebar-title {
+    color: var(--text-secondary);
+  }
+
+  .sidebar-content {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+
+  .sidebar-content::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .sidebar-content::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+
+  .sidebar-content::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 4px;
+  }
+
+  .sidebar-content::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+  }
+
   /* Tree structure styles - keeping custom tree functionality */
   .tree-item {
     user-select: none;
@@ -1624,7 +1660,7 @@
   .tree-toggle {
     background: transparent;
     border: none;
-    color: #6c757d;
+    color: var(--text-muted);
     padding: 2px;
     cursor: pointer;
     width: 20px;
@@ -1638,8 +1674,8 @@
   }
 
   .tree-toggle:hover {
-    background: #e9ecef;
-    color: #212529;
+    background: var(--hover-bg);
+    color: var(--text-primary);
   }
 
   .tree-label {
@@ -1649,7 +1685,7 @@
     gap: 4px;
     background: transparent;
     border: none;
-    color: #212529;
+    color: var(--text-primary);
     padding: 2px 8px;
     cursor: pointer;
     font-size: 12px;
@@ -1661,12 +1697,12 @@
   }
 
   .tree-label:hover {
-    background: #e9ecef;
+    background: var(--hover-bg);
   }
 
   .tree-label.active {
-    background: #cfe2ff;
-    color: #0d6efd;
+    background: var(--selected-bg);
+    color: var(--accent-blue);
     font-weight: 500;
   }
 
@@ -1675,7 +1711,7 @@
     width: 16px;
     text-align: center;
     flex-shrink: 0;
-    color: #6c757d;
+    color: var(--text-muted);
   }
 
   .connection-icon {
@@ -1697,7 +1733,7 @@
   }
 
   .redis-icon {
-    color: #dc382d !important;
+    color: var(--accent-red) !important;
   }
 
   .connection-status-badge {
@@ -1705,13 +1741,13 @@
     bottom: -2px;
     left: -2px;
     font-size: 8px;
-    color: #198754;
-    background: white;
+    color: var(--accent-green);
+    background: var(--bg-secondary);
     border-radius: 50%;
   }
 
   .tree-label.active .tree-icon {
-    color: #0d6efd;
+    color: var(--accent-blue);
   }
 
   .tree-text {
@@ -1722,29 +1758,29 @@
 
   .connection-details {
     font-size: 12px;
-    color: #6c757d;
+    color: var(--text-muted);
     font-weight: normal;
     margin-left: 8px;
     flex-shrink: 0;
   }
 
   .tree-label.active .connection-details {
-    color: #0a58ca;
+    color: var(--accent-blue-hover);
   }
 
   .tree-badge {
     font-size: 10px;
     padding: 2px 6px;
-    background: #f8f9fa;
+    background: var(--bg-tertiary);
     border-radius: 3px;
-    color: #6c757d;
+    color: var(--text-muted);
     font-weight: 500;
     flex-shrink: 0;
     margin-left: auto;
   }
 
   .tree-label.active .tree-badge {
-    background: #b6d4fe;
+    background: var(--accent-blue-light);
   }
 
   .tree-children {
@@ -1757,7 +1793,7 @@
     gap: 4px;
     padding: 2px 8px;
     font-size: 11px;
-    color: #6c757d;
+    color: var(--text-muted);
     font-weight: 600;
     line-height: 1.5;
     flex: 1;
@@ -1769,12 +1805,12 @@
   }
 
   .tree-section-header:hover {
-    background: #e9ecef;
+    background: var(--hover-bg);
   }
 
   .tree-section-header.active {
-    background: #cfe2ff;
-    color: #0d6efd;
+    background: var(--selected-bg);
+    color: var(--accent-blue);
   }
 
   .tree-section-header i {
@@ -1797,7 +1833,7 @@
 
   /* Loading spinner animation */
   .fa-spinner {
-    color: #0d6efd;
+    color: var(--accent-blue);
     animation: spin 1s linear infinite;
   }
 
@@ -1812,6 +1848,6 @@
 
   /* Custom styles for table item active state */
   .table-item-row.table-active .badge {
-    background-color: #b6d4fe !important;
+    background-color: var(--accent-blue-light) !important;
   }
 </style>

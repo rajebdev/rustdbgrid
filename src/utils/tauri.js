@@ -135,3 +135,24 @@ export async function getTableData(
 export async function getStorageInfo() {
   return await invoke("get_storage_info");
 }
+
+// Settings commands
+export async function getSettings() {
+  return await invoke("get_settings");
+}
+
+export async function saveSettings(settings) {
+  return await invoke("save_settings", { settings });
+}
+
+export async function updateSetting(key, value) {
+  return await invoke("update_setting", { key, value });
+}
+
+export async function getTheme() {
+  return await invoke("get_theme");
+}
+
+export async function setTheme(theme) {
+  return await invoke("set_theme", { theme });
+}

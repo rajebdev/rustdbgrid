@@ -186,10 +186,10 @@
 <style>
   .context-menu {
     position: fixed;
-    background: white;
-    border: 1px solid #dee2e6;
+    background: var(--bg-dropdown);
+    border: 1px solid var(--border-color);
     border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-dropdown);
     z-index: 10000;
     min-width: 240px;
     padding: 4px;
@@ -206,7 +206,7 @@
     width: 100%;
     border: none;
     background: transparent;
-    color: #212529;
+    color: var(--text-primary);
     text-align: left;
     font-family: inherit;
     font-size: 12px;
@@ -215,7 +215,7 @@
   }
 
   .menu-item:hover {
-    background: #f8f9fa;
+    background: var(--hover-bg);
   }
 
   .menu-item i:first-child {
@@ -231,9 +231,9 @@
   .menu-item .shortcut {
     font-size: 10px;
     padding: 2px 6px;
-    background: #e9ecef;
+    background: var(--bg-tertiary);
     border-radius: 3px;
-    color: #6c757d;
+    color: var(--text-muted);
     font-family: monospace;
     margin-left: auto;
   }
@@ -244,21 +244,21 @@
 
   .submenu-arrow {
     font-size: 10px;
-    color: #adb5bd;
+    color: var(--text-muted);
     margin-left: auto;
   }
 
   .menu-item.delete-item {
-    color: #dc3545;
+    color: var(--accent-red);
   }
 
   .menu-item.delete-item:hover {
-    background: #fff5f5;
+    background: var(--accent-red-light);
   }
 
   .menu-separator {
     height: 1px;
-    background: #dee2e6;
+    background: var(--border-light);
     margin: 4px 0;
   }
 </style>

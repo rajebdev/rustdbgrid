@@ -209,10 +209,10 @@
 <style>
   .context-menu {
     position: fixed;
-    background: white;
-    border: 1px solid #dee2e6;
+    background: var(--bg-dropdown);
+    border: 1px solid var(--border-color);
     border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-dropdown);
     z-index: 10000;
     min-width: 240px;
     padding: 4px;
@@ -232,7 +232,7 @@
     padding: 6px 12px;
     background: transparent;
     border: none;
-    color: #212529;
+    color: var(--text-primary);
     cursor: pointer;
     text-align: left;
     border-radius: 4px;
@@ -242,21 +242,21 @@
   }
 
   .context-menu-item:hover:not(:disabled) {
-    background: #f8f9fa;
+    background: var(--hover-bg);
   }
 
   .context-menu-item:disabled {
-    color: #adb5bd;
+    color: var(--text-muted);
     cursor: not-allowed;
     opacity: 0.6;
   }
 
   .context-menu-item.text-danger {
-    color: #dc3545;
+    color: var(--danger-color);
   }
 
   .context-menu-item.text-danger:hover:not(:disabled) {
-    background: #fff5f5;
+    background: var(--danger-bg-subtle);
   }
 
   .context-menu-item i:first-child {
@@ -272,9 +272,9 @@
   .context-menu-item kbd {
     font-size: 10px;
     padding: 2px 6px;
-    background: #e9ecef;
+    background: var(--bg-tertiary);
     border-radius: 3px;
-    color: #6c757d;
+    color: var(--text-secondary);
     font-family: monospace;
     margin-left: auto;
   }
@@ -285,13 +285,13 @@
 
   .context-menu-item-with-arrow i.fa-chevron-right {
     font-size: 10px;
-    color: #adb5bd;
+    color: var(--text-muted);
     margin-left: auto;
   }
 
   .context-menu-divider {
     height: 1px;
-    background: #dee2e6;
+    background: var(--border-color);
     margin: 4px 0;
   }
 </style>

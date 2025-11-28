@@ -399,12 +399,12 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: #6c757d;
+    color: var(--text-muted);
     margin-right: auto;
   }
 
   .auto-save-notice i {
-    color: #28a745;
+    color: var(--accent-green);
   }
 
   .db-type-select {
@@ -413,5 +413,29 @@
 
   .db-type-select option {
     padding: 8px;
+  }
+
+  .form-label {
+    color: var(--text-primary);
+  }
+
+  .form-check-label {
+    color: var(--text-primary);
+  }
+
+  /* Checkbox Dark Mode Support */
+  .form-check-input {
+    background-color: var(--bg-input);
+    border-color: var(--border-color);
+  }
+
+  .form-check-input:checked {
+    background-color: var(--accent-blue);
+    border-color: var(--accent-blue);
+  }
+
+  .form-check-input:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 0.2rem var(--focus-ring);
   }
 </style>

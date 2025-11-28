@@ -1,5 +1,11 @@
 <script>
   import { createEventDispatcher } from "svelte";
+  import { themePreference, activeTheme } from "../../stores/theme";
+  import {
+    setLightTheme,
+    setDarkTheme,
+    setAutoTheme,
+  } from "../../services/themeService";
 
   const dispatch = createEventDispatcher();
 
@@ -15,6 +21,13 @@
 
   function handleAction(action) {
     dispatch(action);
+    closeMenu();
+  }
+
+  function handleThemeChange(theme) {
+    if (theme === "light") setLightTheme();
+    else if (theme === "dark") setDarkTheme();
+    else setAutoTheme();
     closeMenu();
   }
 </script>
@@ -112,7 +125,7 @@
             class="dropdown-item"
             on:click={() => handleAction("toggleSidebar")}
           >
-            <i class="fas fa-sidebar"></i> Toggle Sidebar
+            <i class="fas fa-columns"></i> Toggle Sidebar
             <span class="shortcut">Ctrl+B</span>
           </button>
           <button
@@ -122,11 +135,53 @@
             <i class="fas fa-tools"></i> Toggle Toolbar
           </button>
           <div class="dropdown-divider"></div>
+          <div class="dropdown-submenu">
+            <button
+              class="dropdown-item submenu-trigger"
+              on:click|stopPropagation={() => {}}
+            >
+              <i class="fas fa-palette"></i> Theme
+              <i class="fas fa-chevron-right submenu-arrow"></i>
+            </button>
+            <div class="submenu">
+              <button
+                class="dropdown-item"
+                class:active={$themePreference === "light"}
+                on:click={() => handleThemeChange("light")}
+              >
+                <i class="fas fa-sun"></i> Light
+                {#if $themePreference === "light"}
+                  <i class="fas fa-check check-icon"></i>
+                {/if}
+              </button>
+              <button
+                class="dropdown-item"
+                class:active={$themePreference === "dark"}
+                on:click={() => handleThemeChange("dark")}
+              >
+                <i class="fas fa-moon"></i> Dark
+                {#if $themePreference === "dark"}
+                  <i class="fas fa-check check-icon"></i>
+                {/if}
+              </button>
+              <button
+                class="dropdown-item"
+                class:active={$themePreference === "auto"}
+                on:click={() => handleThemeChange("auto")}
+              >
+                <i class="fas fa-desktop"></i> System
+                {#if $themePreference === "auto"}
+                  <i class="fas fa-check check-icon"></i>
+                {/if}
+              </button>
+            </div>
+          </div>
+          <div class="dropdown-divider"></div>
           <button
             class="dropdown-item"
             on:click={() => handleAction("viewColumns")}
           >
-            <i class="fas fa-columns"></i> View Columns
+            <i class="fas fa-table-columns"></i> View Columns
           </button>
         </div>
       {/if}
@@ -276,5 +331,47 @@
     font-size: 11px;
     color: var(--text-secondary);
     font-family: "Consolas", "Monaco", monospace;
+  }
+
+  /* Submenu styles */
+  .dropdown-submenu {
+    position: relative;
+  }
+
+  .submenu-trigger {
+    justify-content: flex-start;
+  }
+
+  .submenu-arrow {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    min-width: 160px;
+    padding: 4px 0;
+    box-shadow: var(--shadow-dropdown);
+    z-index: 1002;
+  }
+
+  .dropdown-submenu:hover .submenu {
+    display: block;
+  }
+
+  .dropdown-item.active {
+    background: var(--selected-bg);
+  }
+
+  .check-icon {
+    margin-left: auto;
+    color: var(--accent-blue);
   }
 </style>

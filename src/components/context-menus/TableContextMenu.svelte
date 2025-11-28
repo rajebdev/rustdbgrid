@@ -251,9 +251,10 @@
 <style>
   .context-menu {
     min-width: 250px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    border: 1px solid #dee2e6;
+    box-shadow: var(--shadow-dropdown);
+    border: 1px solid var(--border-color);
     padding: 4px 0;
+    background: var(--bg-dropdown);
   }
 
   .dropdown-item {
@@ -266,20 +267,20 @@
     text-align: left;
     display: flex;
     align-items: center;
-    color: #212529;
+    color: var(--text-primary);
   }
 
   .dropdown-item:hover {
-    background-color: #f8f9fa;
+    background-color: var(--hover-bg);
   }
 
   .dropdown-item:active {
-    background-color: #e9ecef;
+    background-color: var(--active-bg);
   }
 
   .dropdown-item.text-danger:hover {
-    background-color: #fee;
-    color: #dc3545;
+    background-color: var(--accent-red-light);
+    color: var(--accent-red);
   }
 
   .dropdown-item i {
@@ -290,7 +291,7 @@
   .dropdown-divider {
     height: 1px;
     margin: 4px 0;
-    background-color: #dee2e6;
+    background-color: var(--border-light);
     border: none;
   }
 
