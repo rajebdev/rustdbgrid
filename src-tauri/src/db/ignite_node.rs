@@ -188,7 +188,7 @@ pub fn shutdown_bridge() {
                 Ok(Some(_)) => {
                     log::info!("🛑 [IGNITE BRIDGE] Process exited gracefully");
                 }
-                Ok(None) => {
+                Ok(_) => {
                     // Still running, force kill
                     if let Err(e) = child.kill() {
                         log::warn!("🛑 [IGNITE BRIDGE] Failed to kill process: {}", e);
