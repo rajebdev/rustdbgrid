@@ -1,4 +1,5 @@
 <script>
+  import { onMount, afterUpdate, tick } from "svelte";
   import { tabDataStore } from "../../stores/tabData";
   import { buildPaginatedQuery } from "../../utils/defaultQueries";
   import {
@@ -29,7 +30,8 @@
   let columnFilters = {};
   let sortColumn = null;
   let sortDirection = "asc";
-  let tableWrapper;
+  let tableWrapper; // Body wrapper element
+  let headerWrapper; // Header wrapper element
   let showFilterModal = false;
   let filterModalColumn = null;
   let filterModalPosition = { top: 0, left: 0 };
@@ -429,6 +431,12 @@
     if (!tableWrapper || isRestoringScroll) return;
 
     const currentScrollTop = tableWrapper.scrollTop;
+    const currentScrollLeft = tableWrapper.scrollLeft;
+
+    // Sync horizontal scroll with header
+    if (headerWrapper) {
+      headerWrapper.scrollLeft = currentScrollLeft;
+    }
 
     // Check if scrolled near bottom (within 200px)
     const scrollHeight = tableWrapper.scrollHeight;
@@ -476,6 +484,62 @@
       }
     }, 150);
   }
+
+  // Sync column widths between header and body tables
+  async function syncColumnWidths() {
+    await tick(); // Wait for DOM update
+
+    if (!headerWrapper || !tableWrapper) return;
+
+    const headerTable = headerWrapper.querySelector("table");
+    const bodyTable = tableWrapper.querySelector("table");
+
+    if (!headerTable || !bodyTable) return;
+
+    const headerCells = headerTable.querySelectorAll("thead th");
+    const bodyCells = bodyTable.querySelectorAll("tbody tr:first-child td");
+
+    if (bodyCells.length === 0) return;
+
+    // Get body cell widths and apply to header cells
+    bodyCells.forEach((bodyCell, index) => {
+      if (headerCells[index]) {
+        const width = bodyCell.getBoundingClientRect().width;
+        headerCells[index].style.width = `${width}px`;
+        headerCells[index].style.minWidth = `${width}px`;
+        headerCells[index].style.maxWidth = `${width}px`;
+      }
+    });
+  }
+
+  // Sync widths after data changes
+  afterUpdate(() => {
+    if (viewMode === "grid" && displayData?.rows?.length > 0) {
+      syncColumnWidths();
+    }
+  });
+
+  // ResizeObserver to sync column widths on resize
+  let resizeObserver;
+  onMount(() => {
+    resizeObserver = new ResizeObserver(() => {
+      if (viewMode === "grid" && displayData?.rows?.length > 0) {
+        syncColumnWidths();
+      }
+    });
+
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  });
+
+  // Observe tableWrapper when it's available
+  $: if (tableWrapper && resizeObserver) {
+    resizeObserver.observe(tableWrapper);
+  }
+
   function formatValue(value) {
     if (value === null || value === undefined) {
       return "NULL";
@@ -1155,136 +1219,151 @@
     </div>
 
     {#if viewMode === "grid"}
-      <div
-        class="table-container flex-grow-1"
-        bind:this={tableWrapper}
-        on:scroll={handleScroll}
-      >
-        <table
-          class="table table-sm table-bordered data-table mb-0"
-          style="table-layout: auto;"
-        >
-          <thead>
-            <tr>
-              <th class="row-number-header">#</th>
-              {#each displayData.columns as column}
-                {@const isNumeric = isNumericColumn(column)}
-                <th>
-                  <div class="column-header">
-                    <button
-                      class="sort-button"
-                      on:click={() => handleSort(column)}
-                    >
-                      <span class="column-name">{column}</span>
-                      {#if sortColumn === column}
-                        <i
-                          class="fas fa-sort-{sortDirection === 'asc'
-                            ? 'up'
-                            : 'down'} sort-icon"
-                        ></i>
-                      {:else}
-                        <i class="fas fa-sort sort-icon inactive"></i>
-                      {/if}
-                    </button>
-                    <button
-                      class="filter-icon-button"
-                      class:active={columnFilters[column]}
-                      on:click={(e) => openFilterModal(column, e)}
-                      title="Filter column"
-                    >
-                      <i class="fas fa-filter"></i>
-                    </button>
-                  </div>
-                  <div class="p-1">
-                    <input
-                      type="text"
-                      class="form-control form-control-sm"
-                      placeholder="Type and press Enter..."
-                      on:keydown={(e) => handleFilterKeydown(column, e)}
-                      value={Array.isArray(columnFilters[column])
-                        ? `${columnFilters[column].length} selected`
-                        : columnFilters[column] || ""}
-                      readonly={Array.isArray(columnFilters[column])}
-                      title="Type text and press Enter to filter"
-                    />
-                  </div>
-                </th>
-              {/each}
-            </tr>
-          </thead>
-          <tbody>
-            {#each displayRows as row, index}
-              <tr
-                class="{editedRows.has(index) ? 'edited-row' : ''} {index %
-                  2 ===
-                0
-                  ? 'row-even'
-                  : 'row-odd'}"
-              >
-                <td class="row-number-cell">{index + 1}</td>
+      <div class="table-container flex-grow-1">
+        <!-- Fixed Header Table -->
+        <div class="table-header-wrapper" bind:this={headerWrapper}>
+          <table
+            class="table table-sm table-bordered data-table header-table mb-0"
+            style="table-layout: auto;"
+          >
+            <thead>
+              <tr>
+                <th class="row-number-header">#</th>
                 {#each displayData.columns as column}
-                  {@const isEdited =
-                    editedRows.has(index) && editedRows.get(index).has(column)}
-                  {@const cellValue = row[column]}
-                  {@const isArrayValue = Array.isArray(cellValue)}
-                  <td
-                    class="{cellValue === null || cellValue === undefined
-                      ? 'null-value fst-italic'
-                      : ''} {isNumericColumn(column) && !isArrayValue
-                      ? 'text-end font-monospace'
-                      : ''} {editingCell?.rowIndex === index &&
-                    editingCell?.column === column
-                      ? 'editing'
-                      : ''} {isEdited ? 'edited-cell' : ''} {isArrayValue
-                      ? 'array-cell-td'
-                      : ''}"
-                    title={isArrayValue
-                      ? `Array with ${cellValue.length} items`
-                      : formatValue(cellValue)}
-                    on:dblclick={() => startEdit(index, column, cellValue)}
-                  >
-                    {#if editingCell?.rowIndex === index && editingCell?.column === column}
+                  {@const isNumeric = isNumericColumn(column)}
+                  <th>
+                    <div class="column-header">
+                      <button
+                        class="sort-button"
+                        on:click={() => handleSort(column)}
+                      >
+                        <span class="column-name">{column}</span>
+                        {#if sortColumn === column}
+                          <i
+                            class="fas fa-sort-{sortDirection === 'asc'
+                              ? 'up'
+                              : 'down'} sort-icon"
+                          ></i>
+                        {:else}
+                          <i class="fas fa-sort sort-icon inactive"></i>
+                        {/if}
+                      </button>
+                      <button
+                        class="filter-icon-button"
+                        class:active={columnFilters[column]}
+                        on:click={(e) => openFilterModal(column, e)}
+                        title="Filter column"
+                      >
+                        <i class="fas fa-filter"></i>
+                      </button>
+                    </div>
+                    <div class="p-1">
                       <input
                         type="text"
                         class="form-control form-control-sm"
-                        bind:value={editingValue}
-                        on:keydown={(e) => {
-                          if (e.key === "Enter") {
-                            finishEdit();
-                          } else if (e.key === "Escape") {
-                            cancelEdit();
-                          }
-                        }}
-                        on:blur={finishEdit}
-                        use:focusInput
+                        placeholder="Type and press Enter..."
+                        on:keydown={(e) => handleFilterKeydown(column, e)}
+                        value={Array.isArray(columnFilters[column])
+                          ? `${columnFilters[column].length} selected`
+                          : columnFilters[column] || ""}
+                        readonly={Array.isArray(columnFilters[column])}
+                        title="Type text and press Enter to filter"
                       />
-                    {:else if isArrayValue}
-                      <ArrayCell value={cellValue} />
-                    {:else}
-                      {formatValue(cellValue)}
-                    {/if}
-                  </td>
+                    </div>
+                  </th>
                 {/each}
               </tr>
-            {/each}
-          </tbody>
-        </table>
+            </thead>
+          </table>
+        </div>
 
-        {#if isLoadingMore}
-          <div class="text-center py-3 bg-light">
-            <i class="fas fa-spinner fa-spin text-primary"></i>
-            <span class="ms-2 text-muted">Loading more data...</span>
-          </div>
-        {/if}
+        <!-- Scrollable Body Table -->
+        <div
+          class="table-body-wrapper"
+          bind:this={tableWrapper}
+          on:scroll={handleScroll}
+        >
+          <table
+            class="table table-sm table-bordered data-table body-table mb-0"
+            style="table-layout: auto;"
+          >
+            <tbody>
+              {#each displayRows as row, index}
+                <tr
+                  class="{editedRows.has(index) ? 'edited-row' : ''} {index %
+                    2 ===
+                  0
+                    ? 'row-even'
+                    : 'row-odd'}"
+                >
+                  <td class="row-number-cell">{index + 1}</td>
+                  {#each displayData.columns as column}
+                    {@const isEdited =
+                      editedRows.has(index) &&
+                      editedRows.get(index).has(column)}
+                    {@const cellValue = row[column]}
+                    {@const isArrayValue = Array.isArray(cellValue)}
+                    <td
+                      class="{cellValue === null || cellValue === undefined
+                        ? 'null-value fst-italic'
+                        : ''} {isNumericColumn(column) && !isArrayValue
+                        ? 'text-end font-monospace'
+                        : ''} {editingCell?.rowIndex === index &&
+                      editingCell?.column === column
+                        ? 'editing'
+                        : ''} {isEdited ? 'edited-cell' : ''} {isArrayValue
+                        ? 'array-cell-td'
+                        : ''}"
+                      title={isArrayValue
+                        ? `Array with ${cellValue.length} items`
+                        : formatValue(cellValue)}
+                      on:dblclick={() => startEdit(index, column, cellValue)}
+                    >
+                      {#if editingCell?.rowIndex === index && editingCell?.column === column}
+                        <input
+                          type="text"
+                          class="form-control form-control-sm"
+                          bind:value={editingValue}
+                          on:keydown={(e) => {
+                            if (e.key === "Enter") {
+                              finishEdit();
+                            } else if (e.key === "Escape") {
+                              cancelEdit();
+                            }
+                          }}
+                          on:blur={finishEdit}
+                          use:focusInput
+                        />
+                      {:else if isArrayValue}
+                        <ArrayCell value={cellValue} />
+                      {:else}
+                        {formatValue(cellValue)}
+                      {/if}
+                    </td>
+                  {/each}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
 
-        {#if !hasMoreData && displayRows.length > 0}
-          <div class="text-center py-3 text-muted small bg-light">
-            <i class="fas fa-check-circle"></i>
-            <span class="ms-2"
-              >All data loaded ({displayRows.length.toLocaleString()} rows)</span
+          {#if isLoadingMore}
+            <div class="text-center py-3 bg-light loading-indicator">
+              <i class="fas fa-spinner fa-spin text-primary"></i>
+              <span class="ms-2 text-muted">Loading more data...</span>
+            </div>
+          {/if}
+
+          {#if !hasMoreData && displayRows.length > 0}
+            <div
+              class="text-center py-3 text-muted small bg-light loading-indicator"
             >
-          </div>
-        {/if}
+              <i class="fas fa-check-circle"></i>
+              <span class="ms-2"
+                >All data loaded ({displayRows.length.toLocaleString()} rows)</span
+              >
+            </div>
+          {/if}
+        </div>
       </div>
     {:else}
       <!-- JSON View -->
@@ -1514,52 +1593,81 @@
     font-size: 12px;
   }
 
-  /* Table container with custom scrollbar positioning */
+  /* Table container - flex column to stack header and body */
   .table-container {
+    --scrollbar-size: 8px;
     position: relative;
-    overflow: auto;
+    overflow: hidden;
     height: 100%;
-    scrollbar-gutter: stable;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Fixed header wrapper - scrollable but hide scrollbar */
+  .table-header-wrapper {
+    flex-shrink: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    background-color: var(--grid-header-bg);
+    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+    padding-right: calc(
+      0.5rem + var(--scrollbar-size)
+    ); /* Compensate for body scrollbar */
+  }
+
+  /* Hide scrollbar for header wrapper - WebKit */
+  .table-header-wrapper::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Scrollable body wrapper */
+  .table-body-wrapper {
+    flex: 1;
+    overflow: auto;
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
-  /* Custom scrollbar for table container - vertical scrollbar starts below header */
-  .table-container::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  /* Custom scrollbar for body wrapper */
+  .table-body-wrapper::-webkit-scrollbar {
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
   }
 
-  .table-container::-webkit-scrollbar-track {
+  .table-body-wrapper::-webkit-scrollbar-track {
     background: var(--scrollbar-track);
   }
 
-  .table-container::-webkit-scrollbar-thumb {
+  .table-body-wrapper::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
     border-radius: 4px;
   }
 
-  .table-container::-webkit-scrollbar-thumb:hover {
+  .table-body-wrapper::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
   }
 
-  /* Vertical scrollbar track - add top margin to start below header area */
-  .table-container::-webkit-scrollbar-track:vertical {
-    margin-top: 62px !important; /* Height of header row including filter input */
+  /* Header and body tables - consistent styling */
+  .data-table.header-table,
+  .data-table.body-table {
+    table-layout: auto;
+    margin: 0;
+    width: auto;
+    min-width: 100%;
   }
 
-  /* Horizontal scrollbar track - add left margin to start after row number column */
-  .table-container::-webkit-scrollbar-track:horizontal {
-    margin-left: 36px !important; /* Width of row number column */
-  }
-
-  /* Make sticky header extend over the scrollbar gutter */
-  .table-container .data-table thead {
-    position: sticky;
-    top: 0;
-    z-index: 10;
+  .data-table.header-table thead th {
     background-color: var(--grid-header-bg);
-    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
+    color: var(--text-primary);
+  }
+
+  /* Loading indicator inside scroll area */
+  .loading-indicator {
+    position: sticky;
+    left: 0;
   }
 
   /* Optimize table rendering */
