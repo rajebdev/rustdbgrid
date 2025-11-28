@@ -138,6 +138,18 @@ async function main() {
   const stats = fs.statSync(finalPath);
   const sizeMB = (stats.size / 1024 / 1024).toFixed(1);
 
+  // 9. Update tauri.conf.json to include only the current platform's sidecar as resource
+  console.log("\n📝 Updating tauri.conf.json with resource...");
+  const tauriConfPath = path.join(ROOT_DIR, "src-tauri", "tauri.conf.json");
+  const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, "utf-8"));
+
+  // Set the resources for the current platform only
+  tauriConf.bundle.resources = {};
+  tauriConf.bundle.resources[`binaries/${sidecarName}`] = sidecarName;
+
+  fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + "\n");
+  console.log(`   Added resource: binaries/${sidecarName}`);
+
   console.log(`\n✅ Build complete!`);
   console.log(`   Output: ${finalPath}`);
   console.log(`   Size: ${sizeMB} MB\n`);

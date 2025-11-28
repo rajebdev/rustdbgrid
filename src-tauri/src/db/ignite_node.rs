@@ -239,8 +239,10 @@ impl IgniteConnection {
         let sidecar_name = "ignite-x86_64-pc-windows-msvc.exe";
         #[cfg(target_os = "linux")]
         let sidecar_name = "ignite-x86_64-unknown-linux-gnu";
-        #[cfg(target_os = "macos")]
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         let sidecar_name = "ignite-aarch64-apple-darwin";
+        #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+        let sidecar_name = "ignite-x86_64-apple-darwin";
 
         // Try multiple locations for sidecar (resources folder for bundled app, or same dir)
         let possible_sidecar_paths = [

@@ -36,12 +36,7 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "resources": {
-      "binaries/ignite-x86_64-pc-windows-msvc.exe": "ignite-x86_64-pc-windows-msvc.exe",
-      "binaries/ignite-x86_64-unknown-linux-gnu": "ignite-x86_64-unknown-linux-gnu",
-      "binaries/ignite-aarch64-apple-darwin": "ignite-aarch64-apple-darwin"
-    }
+    ]
   },
   "plugins": {
     "shell": {
