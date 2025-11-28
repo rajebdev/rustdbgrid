@@ -242,11 +242,17 @@ impl IgniteConnection {
         #[cfg(target_os = "macos")]
         let sidecar_name = "ignite-aarch64-apple-darwin";
 
-        let sidecar_path = exe_dir.join(sidecar_name);
+        // Try multiple locations for sidecar (resources folder for bundled app, or same dir)
+        let possible_sidecar_paths = [
+            exe_dir.join(sidecar_name),                   // Same directory as exe
+            exe_dir.join("resources").join(sidecar_name), // resources subfolder (Tauri bundle)
+        ];
+
+        let sidecar_path = possible_sidecar_paths.iter().find(|p| p.exists()).cloned();
 
         // Try sidecar first (production), fallback to node (dev mode)
-        let (cmd, args): (std::path::PathBuf, Vec<String>) = if sidecar_path.exists() {
-            (sidecar_path, vec![])
+        let (cmd, args): (std::path::PathBuf, Vec<String>) = if let Some(path) = sidecar_path {
+            (path, vec![])
         } else {
             // Dev mode: try multiple possible locations for the bridge script
             let possible_paths = [
