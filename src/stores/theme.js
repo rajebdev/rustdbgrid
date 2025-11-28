@@ -149,7 +149,7 @@ export function applyTheme(theme) {
       width: 100%;
       height: 100%;
       background: ${theme === "dark" ? "#1e1e1e" : "#f5f5f5"};
-      z-index: 99999;
+      z-index: 9999;
       opacity: 1;
       transition: opacity 0.15s ease-out;
       pointer-events: none;
