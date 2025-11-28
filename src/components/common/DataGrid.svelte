@@ -1,7 +1,5 @@
 <script>
-  import { onMount, onDestroy } from "svelte";
   import { tabDataStore } from "../../stores/tabData";
-  import { activeConnection } from "../../stores/connections";
   import { buildPaginatedQuery } from "../../utils/defaultQueries";
   import {
     getFilterValues,
@@ -10,6 +8,9 @@
     getTableData,
   } from "../../utils/tauri";
   import ArrayCell from "./ArrayCell.svelte";
+  import SqlPreviewModal from "../modals/SqlPreviewModal.svelte";
+  import FilterModal from "../modals/FilterModal.svelte";
+  import CellEditorModal from "../modals/CellEditorModal.svelte";
 
   export let data = null;
   export let tabId = null;
@@ -558,19 +559,18 @@
     }
   }
 
-  function updateFilter(column, value) {
-    // This function is kept for compatibility but filters are applied via modal
-    // Text input is now read-only when array filter is active
-  }
+  function applyColumnFilter(event) {
+    // Handle event from FilterModal component or direct call
+    const column = event?.detail?.column || filterModalColumn;
+    const selected =
+      event?.detail?.selectedValues || selectedFilterValues[column];
 
-  function applyColumnFilter() {
-    if (!filterModalColumn) return;
+    if (!column) return;
 
-    const selected = selectedFilterValues[filterModalColumn];
     if (selected && selected.size > 0) {
-      columnFilters[filterModalColumn] = Array.from(selected);
+      columnFilters[column] = Array.from(selected);
     } else {
-      delete columnFilters[filterModalColumn];
+      delete columnFilters[column];
     }
 
     columnFilters = { ...columnFilters };
@@ -585,11 +585,14 @@
     reloadDataWithFilters();
   }
 
-  function clearColumnFilter() {
-    if (!filterModalColumn) return;
+  function clearColumnFilter(event) {
+    // Handle event from FilterModal component or direct call
+    const column = event?.detail?.column || filterModalColumn;
 
-    delete columnFilters[filterModalColumn];
-    delete selectedFilterValues[filterModalColumn];
+    if (!column) return;
+
+    delete columnFilters[column];
+    delete selectedFilterValues[column];
     columnFilters = { ...columnFilters };
     selectedFilterValues = { ...selectedFilterValues };
 
@@ -700,40 +703,6 @@
       values.add(formatValue(row[column]));
     });
     return Array.from(values).sort();
-  }
-
-  function toggleFilterValue(column, value) {
-    if (!selectedFilterValues[column]) {
-      selectedFilterValues[column] = new Set();
-    }
-
-    if (selectedFilterValues[column].has(value)) {
-      selectedFilterValues[column].delete(value);
-    } else {
-      selectedFilterValues[column].add(value);
-    }
-    selectedFilterValues = { ...selectedFilterValues };
-  }
-
-  function selectAllFilterValues() {
-    if (!filterModalColumn) return;
-    const cacheKey = `${filterModalColumn}_${filterSearchQuery || ""}`;
-    const values =
-      filterValuesCache[cacheKey] || getDistinctValues(filterModalColumn);
-    const filtered = filterSearchQuery
-      ? values.filter((v) =>
-          v.toLowerCase().includes(filterSearchQuery.toLowerCase())
-        )
-      : values;
-
-    selectedFilterValues[filterModalColumn] = new Set(filtered);
-    selectedFilterValues = { ...selectedFilterValues };
-  }
-
-  function deselectAllFilterValues() {
-    if (!filterModalColumn) return;
-    selectedFilterValues[filterModalColumn] = new Set();
-    selectedFilterValues = { ...selectedFilterValues };
   }
 
   function clearAllFilters() {
@@ -1129,24 +1098,30 @@
     </div>
   {:else if displayData && displayData.rows.length > 0}
     <div class="d-flex align-items-center gap-2 p-2 bg-light border-bottom">
-      <span class="badge bg-primary">
-        <i class="fas fa-table"></i>
-        {#if totalRows > displayRows.length}
-          Rows: {displayRows.length.toLocaleString()} of {totalRows.toLocaleString()}
-        {:else}
-          Rows: {displayRows.length.toLocaleString()}
-        {/if}
-      </span>
-      <span class="badge bg-info">
-        <i class="fas fa-columns"></i> Columns: {displayData.columns.length}
-      </span>
-      <span class="badge bg-secondary">
-        <i class="fas fa-clock"></i>
-        {displayData.execution_time}ms
-      </span>
+      <!-- Query Display -->
+      {#if finalQuery || executedQuery}
+        <div
+          class="d-flex align-items-center gap-2 font-monospace small flex-grow-1"
+          style="min-width: 0;"
+        >
+          <div
+            class="d-flex align-items-center gap-1 text-primary fw-semibold flex-shrink-0"
+          >
+            <i class="fas fa-code"></i>
+            <span>Query:</span>
+          </div>
+          <div
+            class="text-truncate bg-white px-2 py-1 border rounded flex-grow-1"
+            title={finalQuery || executedQuery}
+            style="min-width: 0;"
+          >
+            {finalQuery || executedQuery}
+          </div>
+        </div>
+      {/if}
 
       <!-- View Mode Toggle -->
-      <div class="btn-group ms-auto" role="group">
+      <div class="btn-group flex-shrink-0" role="group">
         <button
           type="button"
           class="btn btn-sm {viewMode === 'grid'
@@ -1170,7 +1145,10 @@
       </div>
 
       {#if Object.keys(columnFilters).length > 0}
-        <button class="btn btn-sm btn-danger" on:click={clearAllFilters}>
+        <button
+          class="btn btn-sm btn-danger flex-shrink-0"
+          on:click={clearAllFilters}
+        >
           <i class="fas fa-times"></i> Clear filters
         </button>
       {/if}
@@ -1186,10 +1164,9 @@
           class="table table-sm table-bordered data-table mb-0"
           style="table-layout: auto;"
         >
-          <thead
-            style="background-color: #e7f1ff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);"
-          >
+          <thead>
             <tr>
+              <th class="row-number-header">#</th>
               {#each displayData.columns as column}
                 {@const isNumeric = isNumericColumn(column)}
                 <th>
@@ -1237,7 +1214,14 @@
           </thead>
           <tbody>
             {#each displayRows as row, index}
-              <tr class={editedRows.has(index) ? "edited-row" : ""}>
+              <tr
+                class="{editedRows.has(index) ? 'edited-row' : ''} {index %
+                  2 ===
+                0
+                  ? 'row-even'
+                  : 'row-odd'}"
+              >
+                <td class="row-number-cell">{index + 1}</td>
                 {#each displayData.columns as column}
                   {@const isEdited =
                     editedRows.has(index) && editedRows.get(index).has(column)}
@@ -1385,314 +1369,77 @@
     </div>
   {/if}
 
-  <!-- Sticky footer untuk menampilkan final query -->
-  {#if finalQuery || executedQuery}
+  <!-- Sticky footer untuk menampilkan info rows/columns/time -->
+  {#if displayData}
     <div
       class="sticky-bottom bg-light border-top shadow-sm"
       style="position: sticky; bottom: 0; z-index: 10;"
     >
-      <div class="d-flex align-items-center gap-2 p-2 font-monospace small">
-        <div
-          class="d-flex align-items-center gap-2 text-primary fw-semibold"
-          style="min-width: 80px;"
-        >
-          <i class="fas fa-code"></i>
-          <span>Query:</span>
-        </div>
-        <div
-          class="flex-grow-1 text-truncate bg-white px-2 py-1 border rounded"
-          title={finalQuery || executedQuery}
-        >
-          {finalQuery || executedQuery}
-        </div>
+      <div class="d-flex align-items-center gap-2 p-2">
+        <span class="badge bg-primary">
+          <i class="fas fa-table"></i>
+          {#if totalRows > displayRows.length}
+            Rows: {displayRows.length.toLocaleString()} of {totalRows.toLocaleString()}
+          {:else}
+            Rows: {displayRows.length.toLocaleString()}
+          {/if}
+        </span>
+        <span class="badge bg-info">
+          <i class="fas fa-columns"></i> Columns: {displayData.columns.length}
+        </span>
+        <span class="badge bg-secondary">
+          <i class="fas fa-clock"></i>
+          {displayData.execution_time}ms
+        </span>
       </div>
     </div>
   {/if}
 </div>
 
 <!-- SQL Preview Modal -->
-{#if showSqlPreview}
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="modal-backdrop show" on:click={closeSqlPreview}></div>
-  <div class="modal d-block" tabindex="-1">
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div
-      class="modal-dialog modal-lg modal-dialog-centered"
-      on:click|stopPropagation
-    >
-      <div class="modal-content">
-        <div class="modal-header bg-primary text-white">
-          <h5 class="modal-title">
-            <i class="fas fa-code"></i> Preview SQL Update
-          </h5>
-          <button
-            type="button"
-            class="btn-close btn-close-white"
-            on:click={closeSqlPreview}
-            aria-label="Close"
-          ></button>
-        </div>
+<SqlPreviewModal
+  show={showSqlPreview}
+  {pendingUpdates}
+  {previewSql}
+  on:close={closeSqlPreview}
+  on:execute={executeUpdates}
+/>
 
-        <div class="modal-body">
-          <div class="alert alert-info">
-            <i class="fas fa-info-circle"></i>
-            <strong>{pendingUpdates.length}</strong> update(s) will be executed:
-          </div>
-
-          <pre
-            class="bg-dark text-light p-3 rounded"
-            style="max-height: 400px; overflow-y: auto;"><code
-              >{previewSql}</code
-            ></pre>
-
-          <div class="alert alert-warning mt-3">
-            <i class="fas fa-exclamation-triangle"></i>
-            <strong>Warning:</strong> This action cannot be undone. Please review
-            the SQL carefully before executing.
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            on:click={closeSqlPreview}
-          >
-            <i class="fas fa-times"></i> Cancel
-          </button>
-          <button
-            type="button"
-            class="btn btn-success"
-            on:click={executeUpdates}
-          >
-            <i class="fas fa-play"></i> Execute
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
-
-{#if showFilterModal && filterModalColumn}
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="modal-backdrop show" on:click={closeFilterModal}></div>
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="modal d-block" tabindex="-1" on:click={closeFilterModal}>
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div
-      class="modal-dialog"
-      style="position: fixed; top: {filterModalPosition.top}px; left: {filterModalPosition.left}px; margin: 0;"
-      on:click|stopPropagation
-    >
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">
-            <i class="fas fa-filter"></i> Filter: {filterModalColumn}
-          </h5>
-          <button
-            type="button"
-            class="btn-close"
-            on:click={closeFilterModal}
-            aria-label="Close"
-          ></button>
-        </div>
-
-        <div class="modal-body">
-          <input
-            type="text"
-            class="form-control mb-3"
-            placeholder="Search values..."
-            bind:value={filterSearchQuery}
-          />
-
-          <div class="d-flex gap-2 mb-2">
-            <button
-              class="btn btn-sm btn-outline-primary flex-fill"
-              on:click={selectAllFilterValues}
-            >
-              <i class="fas fa-check-double"></i> Select All
-            </button>
-            <button
-              class="btn btn-sm btn-outline-secondary flex-fill"
-              on:click={deselectAllFilterValues}
-            >
-              <i class="fas fa-times"></i> Deselect All
-            </button>
-          </div>
-
-          <div
-            class="border rounded"
-            style="max-height: 300px; overflow-y: auto;"
-          >
-            {#if loadingFilterValues}
-              <div
-                class="d-flex flex-column align-items-center justify-content-center p-4 text-primary"
-              >
-                <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
-                <span>Loading values...</span>
-              </div>
-            {:else}
-              {@const cacheKey = `${filterModalColumn}_${filterSearchQuery || ""}`}
-              {@const availableValues =
-                filterValuesCache[cacheKey] ||
-                getDistinctValues(filterModalColumn)}
-              <table class="table table-sm table-hover mb-0">
-                <tbody>
-                  {#each availableValues as value}
-                    <tr>
-                      <td class="text-center" style="width: 40px;">
-                        <input
-                          class="form-check-input"
-                          type="checkbox"
-                          id="filter-{value}"
-                          checked={selectedFilterValues[filterModalColumn]?.has(
-                            value
-                          ) || false}
-                          on:change={() =>
-                            toggleFilterValue(filterModalColumn, value)}
-                        />
-                      </td>
-                      <td>
-                        <label
-                          class="form-check-label w-100 mb-0"
-                          for="filter-{value}"
-                          title={value}
-                          style="cursor: pointer;"
-                        >
-                          {value}
-                        </label>
-                      </td>
-                    </tr>
-                  {:else}
-                    <tr>
-                      <td colspan="2" class="text-center p-4 text-muted">
-                        <i class="fas fa-info-circle fa-2x mb-2"></i>
-                        <div>No values found</div>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            {/if}
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button class="btn btn-primary" on:click={applyColumnFilter}>
-            <i class="fas fa-check"></i> Apply
-          </button>
-          <button class="btn btn-danger" on:click={clearColumnFilter}>
-            <i class="fas fa-eraser"></i> Clear
-          </button>
-          <button class="btn btn-secondary" on:click={closeFilterModal}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
+<!-- Filter Modal -->
+<FilterModal
+  show={showFilterModal}
+  column={filterModalColumn}
+  position={filterModalPosition}
+  selectedValues={selectedFilterValues[filterModalColumn] || new Set()}
+  availableValues={filterValuesCache[
+    `${filterModalColumn}_${filterSearchQuery || ""}`
+  ] || getDistinctValues(filterModalColumn)}
+  loading={loadingFilterValues}
+  searchQuery={filterSearchQuery}
+  on:close={closeFilterModal}
+  on:apply={applyColumnFilter}
+  on:clear={clearColumnFilter}
+  on:search={(e) => (filterSearchQuery = e.detail.query)}
+  on:selectionChange={(e) => {
+    selectedFilterValues[e.detail.column] = e.detail.selectedValues;
+    selectedFilterValues = { ...selectedFilterValues };
+  }}
+/>
 
 <!-- Popup Editor Modal for Long Content -->
-{#if showPopupEditor && popupEditingCell}
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="modal-backdrop show" on:click={closePopupEditor}></div>
-  <div class="modal d-block" tabindex="-1">
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div
-      class="modal-dialog modal-lg modal-dialog-centered"
-      on:click|stopPropagation
-    >
-      <div class="modal-content">
-        <div class="modal-header bg-primary text-white">
-          <h5 class="modal-title">
-            <i class="fas fa-edit"></i> Edit Cell Value
-          </h5>
-          <button
-            type="button"
-            class="btn-close btn-close-white"
-            on:click={closePopupEditor}
-            aria-label="Close"
-          ></button>
-        </div>
-
-        <div class="modal-body">
-          <div class="mb-2">
-            <strong>Column:</strong>
-            <span class="badge bg-info">{popupEditingCell.column}</span>
-            <strong class="ms-3">Row:</strong>
-            <span class="badge bg-info">{popupEditingCell.rowIndex + 1}</span>
-          </div>
-          <textarea
-            class="form-control font-monospace"
-            rows="15"
-            bind:value={popupEditorValue}
-            placeholder="Enter value..."
-            style="resize: vertical; min-height: 200px;"
-            on:keydown={(e) => {
-              if (e.key === "Escape") {
-                closePopupEditor();
-              } else if (e.key === "Enter" && e.ctrlKey) {
-                e.preventDefault();
-                savePopupEdit();
-              }
-            }}
-            use:focusInput
-          ></textarea>
-          <div class="form-text mt-2">
-            <i class="fas fa-info-circle"></i> Press Ctrl+Enter to save, Escape to
-            cancel
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            on:click={closePopupEditor}
-          >
-            <i class="fas fa-times"></i> Cancel
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            on:click={savePopupEdit}
-          >
-            <i class="fas fa-check"></i> Save
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
+<CellEditorModal
+  show={showPopupEditor}
+  value={popupEditorValue}
+  column={popupEditingCell?.column}
+  rowIndex={popupEditingCell?.rowIndex}
+  on:close={closePopupEditor}
+  on:save={(e) => {
+    popupEditorValue = e.detail.value;
+    savePopupEdit();
+  }}
+/>
 
 <style>
-  /* Custom scrollbar styling */
-  .table-container::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
-  }
-
-  .table-container::-webkit-scrollbar-track {
-    background: #f8f9fa;
-  }
-
-  .table-container::-webkit-scrollbar-thumb {
-    background: #c0c0c0;
-    border-radius: 6px;
-  }
-
-  .table-container::-webkit-scrollbar-thumb:hover {
-    background: #a0a0a0;
-  }
-
   /* Null value styling */
   .null-value {
     color: #6c757d;
@@ -1749,18 +1496,59 @@
 
   .column-name {
     font-weight: 600;
+    font-size: 12px;
   }
 
-  /* Table container */
+  /* Table container with custom scrollbar positioning */
   .table-container {
     position: relative;
     overflow: auto;
     height: 100%;
+    scrollbar-gutter: stable;
+  }
+
+  /* Custom scrollbar for table container - vertical scrollbar starts below header */
+  .table-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .table-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+
+  .table-container::-webkit-scrollbar-thumb {
+    background: #c0c0c0;
+    border-radius: 4px;
+  }
+
+  .table-container::-webkit-scrollbar-thumb:hover {
+    background: #a0a0a0;
+  }
+
+  /* Vertical scrollbar track - add top margin to start below header area */
+  .table-container::-webkit-scrollbar-track:vertical {
+    margin-top: 72px; /* Height of header row including filter input */
+  }
+
+  /* Horizontal scrollbar track - add left margin to start after row number column */
+  .table-container::-webkit-scrollbar-track:horizontal {
+    margin-left: 36px; /* Width of row number column */
+  }
+
+  /* Make sticky header extend over the scrollbar gutter */
+  .table-container .data-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #f8f9fa;
+    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
   }
 
   /* Optimize table rendering */
   .data-table {
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     table-layout: auto;
     margin: 0;
     width: auto;
@@ -1768,8 +1556,7 @@
   }
 
   .data-table thead th {
-    position: relative;
-    background-color: #e7f1ff;
+    background-color: #f8f9fa;
   }
 
   /* Ensure table cells truncate properly */
@@ -1778,30 +1565,69 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 0.5rem;
+    padding: 2px 0.5rem 0 0.5rem;
     border: 1px solid #dee2e6;
+    border-left: none;
+    border-top: none;
     max-width: 500px;
     min-width: 100px;
   }
 
+  /* Row number column - sticky left */
+  .data-table .row-number-header,
+  .data-table .row-number-cell {
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    background-color: #f8f9fa !important;
+    min-width: 36px;
+    max-width: 36px;
+    width: 36px;
+    text-align: center;
+    font-size: 11px;
+    color: #6c757d;
+    border-left: 1px solid #dee2e6;
+    border-right: 1px solid #dee2e6;
+    box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.15);
+  }
+
+  .data-table .row-number-header {
+    z-index: 15;
+    font-weight: 600;
+    color: #495057;
+    border-top: 1px solid #dee2e6;
+  }
+
   /* Fixed row height to prevent layout shifts */
   .data-table tbody tr {
-    height: 32px;
+    height: 24px;
+  }
+
+  /* Striped rows - alternating light blue */
+  .data-table tbody tr.row-even,
+  .data-table tbody tr.row-even td:not(.row-number-cell) {
+    background-color: #f0f7ff !important;
+  }
+
+  .data-table tbody tr.row-odd,
+  .data-table tbody tr.row-odd td:not(.row-number-cell) {
+    background-color: #ffffff !important;
   }
 
   .data-table tbody td {
-    height: 32px;
-    line-height: 1.2;
+    height: 24px;
+    line-height: 1.5;
+    font-size: 12px;
   }
 
   /* Inline editing styles */
-  .data-table tbody td {
+  .data-table tbody td:not(.row-number-cell) {
     cursor: pointer;
     transition: background-color 0.15s ease;
   }
 
-  .data-table tbody td:hover {
-    background-color: #f8f9fa;
+  .data-table tbody td:not(.row-number-cell):hover {
+    background-color: #e3f2fd;
   }
 
   .data-table tbody td.editing {

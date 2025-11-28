@@ -27,12 +27,6 @@
             <i class="fas fa-keyboard me-2"></i>
             Keyboard Shortcuts
           </h5>
-          <button
-            type="button"
-            class="btn-close"
-            on:click={close}
-            aria-label="Close"
-          ></button>
         </div>
         <div class="modal-body">
           <div class="row g-4">

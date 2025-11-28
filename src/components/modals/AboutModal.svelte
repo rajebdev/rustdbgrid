@@ -19,15 +19,7 @@
   >
     <div class="modal-dialog modal-dialog-centered" role="document">
       <div class="modal-content">
-        <div class="modal-header border-0 pb-0">
-          <button
-            type="button"
-            class="btn-close"
-            on:click={close}
-            aria-label="Close"
-          ></button>
-        </div>
-        <div class="modal-body text-center pt-0">
+        <div class="modal-body text-center pt-4">
           <div class="mb-4">
             <i class="fas fa-database text-primary" style="font-size: 64px;"
             ></i>

@@ -184,8 +184,6 @@
           <i class="fas fa-plug"></i>
           {connection ? "Edit Connection" : "New Connection"}
         </h5>
-        <button type="button" title="" class="btn-close" on:click={handleClose}
-        ></button>
       </div>
 
       <div class="modal-body">
