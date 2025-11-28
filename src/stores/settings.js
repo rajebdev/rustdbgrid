@@ -13,6 +13,7 @@ const defaultSettings = {
   editor_autocomplete: true,
   grid_page_size: 100,
   grid_row_numbers: true,
+  grid_scroll_step: 24, // Scroll step in pixels (0 = use browser default)
   confirm_delete: true,
   auto_connect: false,
   last_connection_id: null,

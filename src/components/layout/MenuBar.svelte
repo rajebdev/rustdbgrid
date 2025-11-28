@@ -249,7 +249,7 @@
     align-items: center;
     background: var(--bg-toolbar);
     border-bottom: 1px solid var(--border-color);
-    height: 32px;
+    height: 24px;
     padding: 0;
     user-select: none;
     position: relative;
@@ -271,8 +271,8 @@
     background: transparent;
     border: none;
     color: var(--text-primary);
-    padding: 6px 12px;
-    font-size: 13px;
+    padding: 3px 10px;
+    font-size: 12px;
     cursor: pointer;
     transition: background-color 0.15s;
     font-weight: 400;

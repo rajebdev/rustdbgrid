@@ -85,8 +85,8 @@
     gap: 2px;
     background: var(--bg-toolbar);
     border-bottom: 1px solid var(--border-color);
-    height: 36px;
-    padding: 0 12px;
+    height: 28px;
+    padding: 0 8px;
     user-select: none;
   }
 
@@ -94,16 +94,16 @@
     background: transparent;
     border: none;
     color: var(--text-secondary);
-    padding: 6px 10px;
-    font-size: 16px;
+    padding: 4px 6px;
+    font-size: 13px;
     cursor: pointer;
     transition: all 0.15s;
-    border-radius: 4px;
+    border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 32px;
-    height: 28px;
+    min-width: 24px;
+    height: 22px;
   }
 
   .toolbar-btn:hover {
@@ -118,9 +118,9 @@
 
   .toolbar-divider {
     width: 1px;
-    height: 24px;
+    height: 16px;
     background: var(--border-color);
-    margin: 0 6px;
+    margin: 0 4px;
   }
 
   .icon-success {

@@ -1,6 +1,7 @@
 <script>
   import { onMount, afterUpdate, tick } from "svelte";
   import { tabDataStore } from "../../stores/tabData";
+  import { settings } from "../../stores/settings";
   import { buildPaginatedQuery } from "../../utils/defaultQueries";
   import {
     getFilterValues,
@@ -32,6 +33,7 @@
   let sortDirection = "asc";
   let tableWrapper; // Body wrapper element
   let headerWrapper; // Header wrapper element
+  let rowNumbersWrapper; // Row numbers wrapper element
   let showFilterModal = false;
   let filterModalColumn = null;
   let filterModalPosition = { top: 0, left: 0 };
@@ -427,6 +429,29 @@
   let lastScrollTop = 0;
   let lastLoadTriggeredAt = 0; // Track last time load was triggered
 
+  // Custom wheel handler for configurable scroll step
+  function handleWheel(event) {
+    const scrollStep = $settings.grid_scroll_step || 0;
+
+    // If scroll step is 0 or not set, use browser default
+    if (!scrollStep || scrollStep <= 0) return;
+
+    // Prevent default scroll behavior
+    event.preventDefault();
+
+    // Calculate scroll direction and apply custom step
+    const direction = event.deltaY > 0 ? 1 : -1;
+    const scrollAmount = direction * scrollStep;
+
+    if (tableWrapper) {
+      tableWrapper.scrollTop += scrollAmount;
+      // Also sync row numbers if present
+      if (rowNumbersWrapper) {
+        rowNumbersWrapper.scrollTop = tableWrapper.scrollTop;
+      }
+    }
+  }
+
   function handleScroll() {
     if (!tableWrapper || isRestoringScroll) return;
 
@@ -436,6 +461,11 @@
     // Sync horizontal scroll with header
     if (headerWrapper) {
       headerWrapper.scrollLeft = currentScrollLeft;
+    }
+
+    // Sync vertical scroll with row numbers column
+    if (rowNumbersWrapper) {
+      rowNumbersWrapper.scrollTop = currentScrollTop;
     }
 
     // Check if scrolled near bottom (within 200px)
@@ -1220,149 +1250,168 @@
 
     {#if viewMode === "grid"}
       <div class="table-container flex-grow-1">
-        <!-- Fixed Header Table -->
-        <div class="table-header-wrapper" bind:this={headerWrapper}>
-          <table
-            class="table table-sm table-bordered data-table header-table mb-0"
-            style="table-layout: auto;"
-          >
-            <thead>
-              <tr>
-                <th class="row-number-header">#</th>
-                {#each displayData.columns as column}
-                  {@const isNumeric = isNumericColumn(column)}
-                  <th>
-                    <div class="column-header">
-                      <button
-                        class="sort-button"
-                        on:click={() => handleSort(column)}
-                      >
-                        <span class="column-name">{column}</span>
-                        {#if sortColumn === column}
-                          <i
-                            class="fas fa-sort-{sortDirection === 'asc'
-                              ? 'up'
-                              : 'down'} sort-icon"
-                          ></i>
-                        {:else}
-                          <i class="fas fa-sort sort-icon inactive"></i>
-                        {/if}
-                      </button>
-                      <button
-                        class="filter-icon-button"
-                        class:active={columnFilters[column]}
-                        on:click={(e) => openFilterModal(column, e)}
-                        title="Filter column"
-                      >
-                        <i class="fas fa-filter"></i>
-                      </button>
-                    </div>
-                    <div class="p-1">
-                      <input
-                        type="text"
-                        class="form-control form-control-sm"
-                        placeholder="Type and press Enter..."
-                        on:keydown={(e) => handleFilterKeydown(column, e)}
-                        value={Array.isArray(columnFilters[column])
-                          ? `${columnFilters[column].length} selected`
-                          : columnFilters[column] || ""}
-                        readonly={Array.isArray(columnFilters[column])}
-                        title="Type text and press Enter to filter"
-                      />
-                    </div>
-                  </th>
-                {/each}
-              </tr>
-            </thead>
-          </table>
+        <!-- Row numbers column (fixed, no horizontal scroll) -->
+        <div class="row-numbers-column">
+          <div class="row-number-header-cell">#</div>
+          <div class="row-numbers-body" bind:this={rowNumbersWrapper}>
+            {#each displayRows as row, index}
+              <div
+                class="row-number-cell"
+                class:row-even={index % 2 === 0}
+                class:row-odd={index % 2 !== 0}
+              >
+                {index + 1}
+              </div>
+            {/each}
+          </div>
         </div>
 
-        <!-- Scrollable Body Table -->
-        <div
-          class="table-body-wrapper"
-          bind:this={tableWrapper}
-          on:scroll={handleScroll}
-        >
-          <table
-            class="table table-sm table-bordered data-table body-table mb-0"
-            style="table-layout: auto;"
-          >
-            <tbody>
-              {#each displayRows as row, index}
-                <tr
-                  class="{editedRows.has(index) ? 'edited-row' : ''} {index %
-                    2 ===
-                  0
-                    ? 'row-even'
-                    : 'row-odd'}"
-                >
-                  <td class="row-number-cell">{index + 1}</td>
+        <!-- Main data area (horizontal + vertical scroll) -->
+        <div class="data-area">
+          <!-- Fixed Header Table -->
+          <div class="table-header-wrapper" bind:this={headerWrapper}>
+            <table
+              class="table table-sm table-bordered data-table header-table mb-0"
+              style="table-layout: auto;"
+            >
+              <thead>
+                <tr>
                   {#each displayData.columns as column}
-                    {@const isEdited =
-                      editedRows.has(index) &&
-                      editedRows.get(index).has(column)}
-                    {@const cellValue = row[column]}
-                    {@const isArrayValue = Array.isArray(cellValue)}
-                    <td
-                      class="{cellValue === null || cellValue === undefined
-                        ? 'null-value fst-italic'
-                        : ''} {isNumericColumn(column) && !isArrayValue
-                        ? 'text-end font-monospace'
-                        : ''} {editingCell?.rowIndex === index &&
-                      editingCell?.column === column
-                        ? 'editing'
-                        : ''} {isEdited ? 'edited-cell' : ''} {isArrayValue
-                        ? 'array-cell-td'
-                        : ''}"
-                      title={isArrayValue
-                        ? `Array with ${cellValue.length} items`
-                        : formatValue(cellValue)}
-                      on:dblclick={() => startEdit(index, column, cellValue)}
-                    >
-                      {#if editingCell?.rowIndex === index && editingCell?.column === column}
+                    {@const isNumeric = isNumericColumn(column)}
+                    <th>
+                      <div class="column-header">
+                        <button
+                          class="sort-button"
+                          on:click={() => handleSort(column)}
+                        >
+                          <span class="column-name">{column}</span>
+                          {#if sortColumn === column}
+                            <i
+                              class="fas fa-sort-{sortDirection === 'asc'
+                                ? 'up'
+                                : 'down'} sort-icon"
+                            ></i>
+                          {:else}
+                            <i class="fas fa-sort sort-icon inactive"></i>
+                          {/if}
+                        </button>
+                        <button
+                          class="filter-icon-button"
+                          class:active={columnFilters[column]}
+                          on:click={(e) => openFilterModal(column, e)}
+                          title="Filter column"
+                        >
+                          <i class="fas fa-filter"></i>
+                        </button>
+                      </div>
+                      <div class="p-1">
                         <input
                           type="text"
                           class="form-control form-control-sm"
-                          bind:value={editingValue}
-                          on:keydown={(e) => {
-                            if (e.key === "Enter") {
-                              finishEdit();
-                            } else if (e.key === "Escape") {
-                              cancelEdit();
-                            }
-                          }}
-                          on:blur={finishEdit}
-                          use:focusInput
+                          placeholder="Type and press Enter..."
+                          on:keydown={(e) => handleFilterKeydown(column, e)}
+                          value={Array.isArray(columnFilters[column])
+                            ? `${columnFilters[column].length} selected`
+                            : columnFilters[column] || ""}
+                          readonly={Array.isArray(columnFilters[column])}
+                          title="Type text and press Enter to filter"
                         />
-                      {:else if isArrayValue}
-                        <ArrayCell value={cellValue} />
-                      {:else}
-                        {formatValue(cellValue)}
-                      {/if}
-                    </td>
+                      </div>
+                    </th>
                   {/each}
                 </tr>
-              {/each}
-            </tbody>
-          </table>
+              </thead>
+            </table>
+          </div>
 
-          {#if isLoadingMore}
-            <div class="text-center py-3 bg-light loading-indicator">
-              <i class="fas fa-spinner fa-spin text-primary"></i>
-              <span class="ms-2 text-muted">Loading more data...</span>
-            </div>
-          {/if}
-
-          {#if !hasMoreData && displayRows.length > 0}
-            <div
-              class="text-center py-3 text-muted small bg-light loading-indicator"
+          <!-- Scrollable Body Table -->
+          <div
+            id="table-body"
+            class="table-body-wrapper"
+            bind:this={tableWrapper}
+            on:scroll={handleScroll}
+            on:wheel={handleWheel}
+          >
+            <table
+              class="table table-sm table-bordered data-table body-table mb-0"
+              style="table-layout: auto;"
             >
-              <i class="fas fa-check-circle"></i>
-              <span class="ms-2"
-                >All data loaded ({displayRows.length.toLocaleString()} rows)</span
+              <tbody>
+                {#each displayRows as row, index}
+                  <tr
+                    class="{editedRows.has(index) ? 'edited-row' : ''} {index %
+                      2 ===
+                    0
+                      ? 'row-even'
+                      : 'row-odd'}"
+                  >
+                    {#each displayData.columns as column}
+                      {@const isEdited =
+                        editedRows.has(index) &&
+                        editedRows.get(index).has(column)}
+                      {@const cellValue = row[column]}
+                      {@const isArrayValue = Array.isArray(cellValue)}
+                      <td
+                        class="{cellValue === null || cellValue === undefined
+                          ? 'null-value fst-italic'
+                          : ''} {isNumericColumn(column) && !isArrayValue
+                          ? 'text-end font-monospace'
+                          : ''} {editingCell?.rowIndex === index &&
+                        editingCell?.column === column
+                          ? 'editing'
+                          : ''} {isEdited ? 'edited-cell' : ''} {isArrayValue
+                          ? 'array-cell-td'
+                          : ''}"
+                        title={isArrayValue
+                          ? `Array with ${cellValue.length} items`
+                          : formatValue(cellValue)}
+                        on:dblclick={() => startEdit(index, column, cellValue)}
+                      >
+                        {#if editingCell?.rowIndex === index && editingCell?.column === column}
+                          <input
+                            type="text"
+                            class="form-control form-control-sm"
+                            bind:value={editingValue}
+                            on:keydown={(e) => {
+                              if (e.key === "Enter") {
+                                finishEdit();
+                              } else if (e.key === "Escape") {
+                                cancelEdit();
+                              }
+                            }}
+                            on:blur={finishEdit}
+                            use:focusInput
+                          />
+                        {:else if isArrayValue}
+                          <ArrayCell value={cellValue} />
+                        {:else}
+                          {formatValue(cellValue)}
+                        {/if}
+                      </td>
+                    {/each}
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+
+            {#if isLoadingMore}
+              <div class="text-center py-3 bg-light loading-indicator">
+                <i class="fas fa-spinner fa-spin text-primary"></i>
+                <span class="ms-2 text-muted">Loading more data...</span>
+              </div>
+            {/if}
+
+            {#if !hasMoreData && displayRows.length > 0}
+              <div
+                class="text-center py-3 text-muted small bg-light loading-indicator"
               >
-            </div>
-          {/if}
+                <i class="fas fa-check-circle"></i>
+                <span class="ms-2"
+                  >All data loaded ({displayRows.length.toLocaleString()} rows)</span
+                >
+              </div>
+            {/if}
+          </div>
         </div>
       </div>
     {:else}
@@ -1454,7 +1503,7 @@
       class="sticky-bottom data-footer border-top shadow-sm"
       style="position: sticky; bottom: 0; z-index: 10;"
     >
-      <div class="d-flex align-items-center gap-2 p-2">
+      <div class="d-flex align-items-center justify-content-end gap-2 p-2">
         <span class="badge bg-primary">
           <i class="fas fa-table"></i>
           {#if totalRows > displayRows.length}
@@ -1613,9 +1662,6 @@
     z-index: 10;
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE/Edge */
-    padding-right: calc(
-      0.5rem + var(--scrollbar-size)
-    ); /* Compensate for body scrollbar */
   }
 
   /* Hide scrollbar for header wrapper - WebKit */
@@ -1631,7 +1677,7 @@
     scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
-  /* Custom scrollbar for body wrapper */
+  /* Custom scrollbar styling */
   .table-body-wrapper::-webkit-scrollbar {
     width: var(--scrollbar-size);
     height: var(--scrollbar-size);
@@ -1648,6 +1694,11 @@
 
   .table-body-wrapper::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
+  }
+
+  /* Corner between scrollbars */
+  .table-body-wrapper::-webkit-scrollbar-corner {
+    background: var(--scrollbar-track);
   }
 
   /* Header and body tables - consistent styling */
@@ -1699,29 +1750,73 @@
     min-width: 100px;
   }
 
-  /* Row number column - sticky left */
-  .data-table .row-number-header,
-  .data-table .row-number-cell {
-    position: sticky;
+  /* Row numbers column - separate from data area */
+  .row-numbers-column {
+    position: absolute;
     left: 0;
-    z-index: 5;
-    background-color: var(--grid-header-bg) !important;
-    min-width: 36px;
-    max-width: 36px;
+    top: 0;
+    bottom: 0;
     width: 36px;
-    text-align: center;
-    font-size: 11px;
-    color: var(--text-muted);
-    border-left: 1px solid var(--grid-border);
+    display: flex;
+    flex-direction: column;
+    z-index: 20;
+    background-color: var(--grid-header-bg);
     border-right: 1px solid var(--grid-border);
     box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.15);
   }
 
-  .data-table .row-number-header {
-    z-index: 15;
+  .row-number-header-cell {
+    height: auto;
+    min-height: 62px; /* Match header height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-weight: 600;
+    font-size: 11px;
     color: var(--text-secondary);
-    border-top: 1px solid var(--grid-border);
+    background-color: var(--grid-header-bg);
+    border-bottom: 1px solid var(--grid-border);
+    flex-shrink: 0;
+  }
+
+  .row-numbers-body {
+    flex: 1;
+    overflow: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .row-numbers-body::-webkit-scrollbar {
+    display: none;
+  }
+
+  .row-number-cell {
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--grid-border);
+  }
+
+  .row-number-cell.row-even {
+    background-color: var(--grid-row-even);
+  }
+
+  .row-number-cell.row-odd {
+    background-color: var(--grid-row-odd);
+  }
+
+  /* Data area - main scrollable content */
+  .data-area {
+    position: absolute;
+    left: 36px; /* After row numbers column */
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   /* Fixed row height to prevent layout shifts */
@@ -1731,12 +1826,12 @@
 
   /* Striped rows - alternating */
   .data-table tbody tr.row-even,
-  .data-table tbody tr.row-even td:not(.row-number-cell) {
+  .data-table tbody tr.row-even td {
     background-color: var(--grid-row-even) !important;
   }
 
   .data-table tbody tr.row-odd,
-  .data-table tbody tr.row-odd td:not(.row-number-cell) {
+  .data-table tbody tr.row-odd td {
     background-color: var(--grid-row-odd) !important;
   }
 
@@ -1748,7 +1843,7 @@
   }
 
   /* Inline editing styles */
-  .data-table tbody td:not(.row-number-cell) {
+  .data-table tbody td {
     cursor: pointer;
     transition: background-color 0.15s ease;
   }

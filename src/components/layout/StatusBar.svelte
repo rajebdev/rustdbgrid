@@ -49,7 +49,7 @@
 
 <div
   class="status-bar d-flex justify-content-between align-items-center border-top px-2 py-1"
-  style="height: 28px; font-size: 11px;"
+  style="height: 24px; font-size: 10px;"
 >
   <div class="d-flex align-items-center gap-2">
     <div class="d-flex align-items-center gap-1">

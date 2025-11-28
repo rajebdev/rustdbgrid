@@ -256,7 +256,7 @@
 <div
   bind:this={tabBarContainer}
   class="tab-bar d-flex border-bottom"
-  style="height: 32px; overflow: visible; user-select: none; flex-shrink: 0; position: relative; z-index: 100;"
+  style="height: 26px; overflow: visible; user-select: none; flex-shrink: 0; position: relative; z-index: 100;"
 >
   {#if tabs.length === 0}
     <!-- Empty state, no message -->
@@ -400,7 +400,7 @@
 
   /* Tab Item */
   .tab-item {
-    height: 32px;
+    height: 26px;
     border: none;
     border-right: 1px solid var(--border-light);
     background: transparent;

@@ -717,13 +717,13 @@
 </script>
 
 <div class="sidebar-container d-flex flex-column h-100">
-  <div class="sidebar-header p-3 pb-2 border-bottom">
-    <div class="d-flex align-items-center justify-content-between mb-2">
+  <div class="sidebar-header border-bottom">
+    <div class="d-flex align-items-center justify-content-between mb-1">
       <h6
         class="text-uppercase mb-0 sidebar-title"
-        style="font-size: 11px; font-weight: 600; letter-spacing: 0.5px;"
+        style="font-size: 10px; font-weight: 600; letter-spacing: 0.5px;"
       >
-        <i class="fas fa-network-wired me-2"></i>
+        <i class="fas fa-network-wired me-1"></i>
         Connections
       </h6>
     </div>
@@ -733,12 +733,12 @@
         class="form-control form-control-sm flex-grow-1"
         placeholder="Search connection or database"
         bind:value={searchQuery}
-        style="font-size: 12px;"
+        style="font-size: 11px; height: 22px; padding: 2px 8px;"
       />
       <button
         class="btn btn-sm btn-success"
         on:click={openNewConnectionModal}
-        style="font-size: 12px; padding: 4px 8px;"
+        style="font-size: 11px; padding: 2px 6px; height: 22px;"
         title="Add Connection"
       >
         <i class="fas fa-plus"></i>
@@ -753,7 +753,7 @@
 
     {#each filteredConnections as conn (conn.id)}
       <div class="tree-item">
-        <div class="tree-node connection-node">
+        <div class="tree-node">
           <button
             class="tree-toggle"
             on:click={() => toggleConnection(conn)}
@@ -1618,6 +1618,12 @@
 
   .sidebar-header {
     background: var(--bg-tertiary);
+    height: 66px; /* tabbar (26px) + datagrid header (24px) + toolbar area */
+    min-height: 66px;
+    padding: 5px 12px !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
 
   .sidebar-title {
@@ -1819,10 +1825,6 @@
     text-align: center;
   }
 
-  .connection-node {
-    padding-left: 8px;
-  }
-
   .database-node {
     padding-left: 8px;
   }
@@ -1849,5 +1851,56 @@
   /* Custom styles for table item active state */
   .table-item-row.table-active .badge {
     background-color: var(--accent-blue-light) !important;
+  }
+
+  /* Table/Collection/Cache item row styling - consistent with tree structure */
+  .table-item-row {
+    background: transparent !important;
+  }
+
+  .table-item-row:hover {
+    background: var(--hover-bg) !important;
+  }
+
+  .table-item-row.table-active {
+    background: var(--selected-bg) !important;
+  }
+
+  .table-item-row td {
+    background: transparent !important;
+  }
+
+  /* Table/Collection/Cache item button styling - consistent with tree-label */
+  .table-item-row .btn.text-start {
+    color: var(--text-primary) !important;
+    background: transparent !important;
+  }
+
+  .table-item-row .btn.text-start:hover {
+    background: transparent !important;
+  }
+
+  .table-item-row.table-active .btn.text-start {
+    color: var(--accent-blue) !important;
+    font-weight: 500;
+  }
+
+  /* Icon color for table items - consistent with tree-icon */
+  .table-item-row .fa-table,
+  .table-item-row .fa-server,
+  .table-item-row .fa-layer-group {
+    color: var(--text-muted) !important;
+  }
+
+  .table-item-row.table-active .fa-table,
+  .table-item-row.table-active .fa-server,
+  .table-item-row.table-active .fa-layer-group {
+    color: var(--accent-blue) !important;
+  }
+
+  /* Chevron button styling */
+  .table-item-row .btn.text-secondary {
+    color: var(--text-muted) !important;
+    background: transparent !important;
   }
 </style>
