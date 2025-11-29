@@ -54,6 +54,7 @@
   let loadingProcedures = {};
   let loadingTriggers = {};
   let loadingEvents = {};
+  let loadingSchemas = {}; // Track loading state for schema object counts
   // Store counts for MySQL objects (loaded when database expands)
   let dbObjectCounts = {}; // { 'connId-dbName': { views: n, indexes: n, procedures: n, triggers: n, events: n } }
   // Cache for MySQL objects data (loaded when database expands)
@@ -373,12 +374,12 @@
     }
   }
 
-  function toggleSchema(connId, dbName, schemaName) {
+  async function toggleSchema(connId, dbName, schemaName) {
     const key = `${connId}-${dbName}-${schemaName}`;
     if (expandedSchemas[key]) {
       delete expandedSchemas[key];
+      expandedSchemas = { ...expandedSchemas };
     } else {
-      expandedSchemas[key] = true;
       // Set active connection and database when expanding schema
       const conn = $connections.find((c) => c.id === connId);
       const dbData = expandedDatabases[`${connId}-${dbName}`];
@@ -388,8 +389,60 @@
       if (dbData?.database) {
         selectedDatabase.set(dbData.database);
       }
+
+      // Load counts for PostgreSQL/MSSQL schema objects if not already loaded
+      if (conn && (conn.db_type === "PostgreSQL" || conn.db_type === "MSSQL")) {
+        // Check if data is already cached
+        const hasData = cachedSchemaViews[key] !== undefined;
+
+        if (!hasData) {
+          // Set loading state
+          loadingSchemas[key] = true;
+          loadingSchemas = { ...loadingSchemas };
+
+          try {
+            // Load all object types for this schema in parallel
+            const [viewsData, indexesData, proceduresData, triggersData] =
+              await Promise.all([
+                getViews(conn, dbName, schemaName),
+                getIndexes(conn, dbName, schemaName),
+                getProcedures(conn, dbName, schemaName),
+                getTriggers(conn, dbName, schemaName),
+              ]);
+
+            // Cache the schema-specific data
+            cachedSchemaViews[key] = viewsData || [];
+            cachedSchemaIndexes[key] = indexesData || [];
+            cachedSchemaProcedures[key] = proceduresData || [];
+            cachedSchemaTriggers[key] = triggersData || [];
+
+            // Trigger reactivity
+            cachedSchemaViews = { ...cachedSchemaViews };
+            cachedSchemaIndexes = { ...cachedSchemaIndexes };
+            cachedSchemaProcedures = { ...cachedSchemaProcedures };
+            cachedSchemaTriggers = { ...cachedSchemaTriggers };
+          } catch (error) {
+            console.error(
+              `Failed to load counts for schema ${schemaName}:`,
+              error
+            );
+            // Set empty caches on error
+            cachedSchemaViews[key] = [];
+            cachedSchemaIndexes[key] = [];
+            cachedSchemaProcedures[key] = [];
+            cachedSchemaTriggers[key] = [];
+          } finally {
+            // Clear loading state
+            loadingSchemas[key] = false;
+            loadingSchemas = { ...loadingSchemas };
+          }
+        }
+      }
+
+      // Expand schema AFTER data is loaded
+      expandedSchemas[key] = true;
+      expandedSchemas = { ...expandedSchemas };
     }
-    expandedSchemas = { ...expandedSchemas };
   }
 
   function toggleSchemasParent(connId, dbName) {
@@ -1361,13 +1414,17 @@
                                           schemaName
                                         )}
                                     >
-                                      <i
-                                        class="fas fa-chevron-{expandedSchemas[
-                                          `${conn.id}-${db.name}-${schemaName}`
-                                        ]
-                                          ? 'down'
-                                          : 'right'}"
-                                      ></i>
+                                      {#if loadingSchemas[`${conn.id}-${db.name}-${schemaName}`]}
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                      {:else}
+                                        <i
+                                          class="fas fa-chevron-{expandedSchemas[
+                                            `${conn.id}-${db.name}-${schemaName}`
+                                          ]
+                                            ? 'down'
+                                            : 'right'}"
+                                        ></i>
+                                      {/if}
                                     </button>
                                     <button
                                       class="tree-section-header"
@@ -2012,13 +2069,17 @@
                                 on:click={() =>
                                   toggleSchema(conn.id, db.name, schemaName)}
                               >
-                                <i
-                                  class="fas fa-chevron-{expandedSchemas[
-                                    `${conn.id}-${db.name}-${schemaName}`
-                                  ]
-                                    ? 'down'
-                                    : 'right'}"
-                                ></i>
+                                {#if loadingSchemas[`${conn.id}-${db.name}-${schemaName}`]}
+                                  <i class="fas fa-spinner fa-spin"></i>
+                                {:else}
+                                  <i
+                                    class="fas fa-chevron-{expandedSchemas[
+                                      `${conn.id}-${db.name}-${schemaName}`
+                                    ]
+                                      ? 'down'
+                                      : 'right'}"
+                                  ></i>
+                                {/if}
                               </button>
                               <button
                                 class="tree-section-header"

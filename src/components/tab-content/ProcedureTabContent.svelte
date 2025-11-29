@@ -54,24 +54,13 @@
           sourceColumn = "Create Procedure";
         }
       } else if (connection.db_type === "PostgreSQL") {
-        // PostgreSQL uses prosrc for the source code
+        // PostgreSQL uses pg_get_functiondef for complete function definition
         const schemaName = procedure.schema || "public";
 
-        // Get the complete function/procedure definition
-        // Use LIKE to handle function overloading (same name with different parameters)
-        query = `SELECT 
-                   CASE 
-                     WHEN p.prokind = 'p' THEN 
-                       'CREATE OR REPLACE PROCEDURE ' || n.nspname || '.' || p.proname || 
-                       '(' || pg_get_function_arguments(p.oid) || ')' || E'\\n' ||
-                       'LANGUAGE ' || l.lanname || E'\\n' ||
-                       'AS $' || '$' || E'\\n' || p.prosrc || E'\\n' || '$' || '$;'
-                     ELSE
-                       pg_get_functiondef(p.oid)
-                   END as source
+        // Get the complete function/procedure definition using pg_get_functiondef
+        query = `SELECT pg_get_functiondef(p.oid) as source
                  FROM pg_proc p
                  JOIN pg_namespace n ON p.pronamespace = n.oid
-                 JOIN pg_language l ON p.prolang = l.oid
                  WHERE n.nspname = '${schemaName}' 
                    AND p.proname = '${procedure.name}'
                  ORDER BY p.oid
