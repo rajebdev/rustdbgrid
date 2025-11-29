@@ -616,6 +616,12 @@
   }
 
   function handleTableDoubleClick(table, connection, database) {
+    // Clear all active context highlights
+    activeContextConnection = null;
+    activeContextDatabase = null;
+    activeContextSchema = null;
+    activeContextTable = null;
+
     // Dispatch event untuk membuka tab baru dengan data tabel
     dispatch("openTableTab", {
       table,
@@ -625,6 +631,12 @@
   }
 
   function handleViewDoubleClick(view, connection, database) {
+    // Clear all active context highlights
+    activeContextConnection = null;
+    activeContextDatabase = null;
+    activeContextSchema = null;
+    activeContextTable = null;
+
     // Dispatch event untuk membuka tab baru dengan data view (sama seperti tabel)
     dispatch("openTableTab", {
       table: { name: view.name, schema: view.schema, isView: true },
@@ -639,6 +651,12 @@
     database,
     schemaName = null
   ) {
+    // Clear all active context highlights
+    activeContextConnection = null;
+    activeContextDatabase = null;
+    activeContextSchema = null;
+    activeContextTable = null;
+
     // Dispatch event untuk membuka tab baru dengan source procedure
     // Ensure schema is set in procedure object
     const procedureWithSchema = {
@@ -1211,8 +1229,7 @@
           </button>
           <button
             class="tree-label"
-            class:active={$activeConnection?.id === conn.id ||
-              activeContextConnection === conn.id}
+            class:active={activeContextConnection === conn.id}
             on:click={() => toggleConnection(conn)}
             on:contextmenu={(e) => handleConnectionContextMenu(e, conn)}
           >
@@ -1345,8 +1362,8 @@
                     </button>
                     <button
                       class="tree-label"
-                      class:active={$selectedDatabase?.name === db.name ||
-                        activeContextDatabase === `${conn.id}-${db.name}`}
+                      class:active={activeContextDatabase ===
+                        `${conn.id}-${db.name}`}
                       on:click={() => toggleDatabase(conn.id, db)}
                       on:contextmenu={(e) =>
                         handleDatabaseContextMenu(e, db, conn)}

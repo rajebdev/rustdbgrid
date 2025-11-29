@@ -424,6 +424,15 @@ body {
   background-color: var(--accent-blue) !important;
 }
 
+/* Context menu hover styling for dark mode */
+[data-theme="dark"] .context-menu-item:hover:not(:disabled) {
+  background-color: #3c3c3c !important;
+}
+
+[data-theme="dark"] .dropdown-item:hover:not(:disabled) {
+  background-color: #3c3c3c !important;
+}
+
 /* Override btn-outline-primary for dark mode */
 [data-theme="dark"] .btn-outline-primary {
   color: var(--accent-blue);
