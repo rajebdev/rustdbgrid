@@ -81,6 +81,7 @@ function createTabStore() {
           (t) =>
             t.type === "procedure" &&
             t.procedureInfo?.name === procedure.name &&
+            t.procedureInfo?.schema === procedure.schema &&
             t.procedureInfo?.database === database.name
         );
 
@@ -89,14 +90,22 @@ function createTabStore() {
           return currentTabs;
         }
 
-        // Create new tab
+        // Create new tab - include schema in display name for PostgreSQL/MSSQL
+        const displayName =
+          (connection.db_type === "PostgreSQL" ||
+            connection.db_type === "MSSQL") &&
+          procedure.schema
+            ? `${procedure.schema}.${procedure.name}`
+            : procedure.name;
+
         const newTab = {
           id: Date.now(),
-          title: `${database.name}.${procedure.name}`,
+          title: displayName,
           type: "procedure",
           modified: false,
           procedureInfo: {
             name: procedure.name,
+            schema: procedure.schema,
             procedure_type: procedure.procedure_type,
             database: database.name,
             connection: connection,

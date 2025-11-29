@@ -68,6 +68,7 @@
           <ProcedureTabContent
             procedure={{
               name: activeTab.procedureInfo.name,
+              schema: activeTab.procedureInfo.schema,
               procedure_type: activeTab.procedureInfo.procedure_type,
             }}
             database={{ name: activeTab.procedureInfo.database }}
