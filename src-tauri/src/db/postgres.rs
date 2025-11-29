@@ -713,7 +713,8 @@ impl DatabaseConnection for PostgresConnection {
                         WHEN p.prokind = 'f' THEN 'FUNCTION'
                         WHEN p.prokind = 'p' THEN 'PROCEDURE'
                         ELSE 'FUNCTION'
-                    END as type
+                    END as type,
+                    p.oid::text as oid
              FROM pg_proc p
              JOIN pg_namespace n ON p.pronamespace = n.oid
              WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') {}
@@ -729,10 +730,12 @@ impl DatabaseConnection for PostgresConnection {
                 let schema: String = row.try_get("schema").unwrap_or_default();
                 let name: String = row.try_get("name").unwrap_or_default();
                 let proc_type: String = row.try_get("type").unwrap_or_default();
+                let oid: String = row.try_get("oid").unwrap_or_default();
                 Procedure {
                     name,
                     schema: Some(schema),
                     procedure_type: Some(proc_type),
+                    oid: Some(oid),
                 }
             })
             .collect();

@@ -1864,7 +1864,7 @@
                                               style="padding-left: 8px;"
                                             >
                                               <tbody>
-                                                {#each expandedProcedures[`${conn.id}-${db.name}-${schemaName}`].procedures || [] as proc (`${schemaName}-${proc.name}`)}
+                                                {#each expandedProcedures[`${conn.id}-${db.name}-${schemaName}`].procedures || [] as proc (proc.oid || `${schemaName}-${proc.name}`)}
                                                   <tr
                                                     class="table-item-row"
                                                     style="cursor: pointer; line-height: 1.5;"
@@ -2502,7 +2502,7 @@
                                         style="padding-left: 8px;"
                                       >
                                         <tbody>
-                                          {#each expandedProcedures[`${conn.id}-${db.name}-${schemaName}`].procedures || [] as proc (`${schemaName}-${proc.name}`)}
+                                          {#each expandedProcedures[`${conn.id}-${db.name}-${schemaName}`].procedures || [] as proc (proc.oid || `${schemaName}-${proc.name}`)}
                                             <tr
                                               class="table-item-row"
                                               style="cursor: pointer; line-height: 1.5;"
@@ -3088,7 +3088,7 @@
                                   style="padding-left: 8px;"
                                 >
                                   <tbody>
-                                    {#each expandedProcedures[`${conn.id}-${db.name}`].procedures || [] as proc (proc.name)}
+                                    {#each expandedProcedures[`${conn.id}-${db.name}`].procedures || [] as proc (proc.oid || proc.name)}
                                       <tr
                                         class="table-item-row"
                                         style="cursor: pointer; line-height: 1.5;"

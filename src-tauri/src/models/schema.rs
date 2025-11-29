@@ -32,6 +32,7 @@ pub struct Procedure {
     pub name: String,
     pub schema: Option<String>,
     pub procedure_type: Option<String>,
+    pub oid: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

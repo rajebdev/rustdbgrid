@@ -607,6 +607,7 @@ impl DatabaseConnection for MSSQLConnection {
                         name: name_str.to_string(),
                         schema: Some(schema_str.to_string()),
                         procedure_type: Some(type_str.to_string()),
+                        oid: None,
                     });
                 }
             }

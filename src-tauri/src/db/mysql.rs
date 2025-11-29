@@ -98,6 +98,7 @@ impl MySQLConnection {
                     name,
                     schema: None,
                     procedure_type,
+                    oid: None,
                 }
             })
             .collect();
