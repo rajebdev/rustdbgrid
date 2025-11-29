@@ -12,20 +12,39 @@ pub async fn execute_query(
     state: State<'_, ConnectionStore>,
 ) -> Result<QueryResult, String> {
     let connection_id = config.id.clone();
+    
+    tracing::debug!("🔍 [QUERY] Executing query for connection: {}", connection_id);
+    tracing::debug!("🔍 [QUERY] Query: {}", query.chars().take(100).collect::<String>());
 
     // Check if already connected, if not connect first
     if !state.pool.is_connected(&connection_id).await {
+        tracing::info!("🔌 [QUERY] Connection not found in pool, connecting...");
         state.pool.connect(config).await?;
     }
 
     // Use connection from pool
     let query_clone = query.clone();
-    state
+    let result = state
         .pool
         .with_connection(&connection_id, |conn| {
             async move { conn.execute_query(&query_clone).await }.boxed()
         })
-        .await
+        .await;
+    
+    match &result {
+        Ok(res) => {
+            tracing::info!(
+                "✅ [QUERY] Query executed successfully. Rows: {}, Time: {:?}",
+                res.rows.len(),
+                res.execution_time
+            );
+        }
+        Err(e) => {
+            tracing::error!("❌ [QUERY] Query execution failed: {}", e);
+        }
+    }
+    
+    result
 }
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -92,13 +111,13 @@ pub async fn execute_query_with_filters(
     // Preserve database.table format for cross-database queries
     let cleaned_query = base_query.trim().to_uppercase();
 
-    log::info!(
+    tracing::info!(
         "🔍 [FILTER] Building query with filters for {:?}",
         config.db_type
     );
-    log::info!("🔍 [FILTER] base_query: {}", base_query);
-    log::info!("🔍 [FILTER] filters: {:?}", filters);
-    log::info!("🔍 [FILTER] sort_column: {:?}", sort_column);
+    tracing::info!("🔍 [FILTER] base_query: {}", base_query);
+    tracing::info!("🔍 [FILTER] filters: {:?}", filters);
+    tracing::info!("🔍 [FILTER] sort_column: {:?}", sort_column);
 
     // For MSSQL with complex pagination queries (ROW_NUMBER), extract the original table
     let table_name =
@@ -162,8 +181,8 @@ pub async fn execute_query_with_filters(
         && !table_name.contains("(")
         && !table_name.to_uppercase().contains("ROW_NUMBER");
 
-    log::info!("🔍 [FILTER] Extracted table_name: {}", table_name);
-    log::info!("🔍 [FILTER] use_direct_table: {}", use_direct_table);
+    tracing::info!("🔍 [FILTER] Extracted table_name: {}", table_name);
+    tracing::info!("🔍 [FILTER] use_direct_table: {}", use_direct_table);
 
     let mut query = if use_direct_table {
         format!("SELECT * FROM {}", table_name)
@@ -301,7 +320,7 @@ pub async fn execute_query_with_filters(
         }
     }
 
-    log::info!("🔍 [FILTER] Final query: {}", query);
+    tracing::info!("🔍 [FILTER] Final query: {}", query);
 
     let query_clone = query.clone();
     let mut result = state

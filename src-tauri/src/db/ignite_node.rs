@@ -139,7 +139,7 @@ struct BridgeColumn {
 pub fn shutdown_bridge() {
     use std::sync::atomic::Ordering;
 
-    log::info!("🛑 [IGNITE BRIDGE] Shutting down bridge...");
+    tracing::info!("🛑 [IGNITE BRIDGE] Shutting down bridge...");
 
     // Try to send shutdown command via IPC first (graceful shutdown)
     if SIDECAR_STARTED.load(Ordering::Relaxed) {
@@ -159,7 +159,7 @@ pub fn shutdown_bridge() {
                 let _ = pipe.write_all(&len.to_be_bytes());
                 let _ = pipe.write_all(request.as_bytes());
                 let _ = pipe.flush();
-                log::info!("🛑 [IGNITE BRIDGE] Sent shutdown command via IPC");
+                tracing::info!("🛑 [IGNITE BRIDGE] Sent shutdown command via IPC");
             }
         }
 
@@ -172,7 +172,7 @@ pub fn shutdown_bridge() {
                 let _ = stream.write_all(&len.to_be_bytes());
                 let _ = stream.write_all(request.as_bytes());
                 let _ = stream.flush();
-                log::info!("🛑 [IGNITE BRIDGE] Sent shutdown command via IPC");
+                tracing::info!("🛑 [IGNITE BRIDGE] Sent shutdown command via IPC");
             }
         }
     }
@@ -186,18 +186,18 @@ pub fn shutdown_bridge() {
             // Check if still running and kill if necessary
             match child.try_wait() {
                 Ok(Some(_)) => {
-                    log::info!("🛑 [IGNITE BRIDGE] Process exited gracefully");
+                    tracing::info!("🛑 [IGNITE BRIDGE] Process exited gracefully");
                 }
                 Ok(_) => {
                     // Still running, force kill
                     if let Err(e) = child.kill() {
-                        log::warn!("🛑 [IGNITE BRIDGE] Failed to kill process: {}", e);
+                        tracing::warn!("🛑 [IGNITE BRIDGE] Failed to kill process: {}", e);
                     } else {
-                        log::info!("🛑 [IGNITE BRIDGE] Process killed");
+                        tracing::info!("🛑 [IGNITE BRIDGE] Process killed");
                     }
                 }
                 Err(e) => {
-                    log::warn!("🛑 [IGNITE BRIDGE] Error checking process status: {}", e);
+                    tracing::warn!("🛑 [IGNITE BRIDGE] Error checking process status: {}", e);
                 }
             }
         }
@@ -205,7 +205,7 @@ pub fn shutdown_bridge() {
     }
 
     SIDECAR_STARTED.store(false, Ordering::Relaxed);
-    log::info!("🛑 [IGNITE BRIDGE] Bridge shutdown complete");
+    tracing::info!("🛑 [IGNITE BRIDGE] Bridge shutdown complete");
 }
 
 pub struct IgniteConnection {
@@ -228,6 +228,8 @@ impl IgniteConnection {
         if SIDECAR_STARTED.load(Ordering::Relaxed) {
             return Ok(());
         }
+        
+        tracing::info!("🚀 [IGNITE BRIDGE] Starting bridge sidecar...");
 
         // Get path to sidecar binary
         let exe_path = std::env::current_exe()?;
@@ -318,6 +320,7 @@ impl IgniteConnection {
         }
 
         SIDECAR_STARTED.store(true, Ordering::Relaxed);
+        tracing::info!("✅ [IGNITE BRIDGE] Bridge sidecar started successfully with pipe: {}", *PIPE_NAME);
         Ok(())
     }
 
@@ -391,7 +394,7 @@ impl IgniteConnection {
         }
 
         // Bridge not running - reset the flag so ensure_sidecar_running will start it
-        log::info!("🔄 [IGNITE BRIDGE] Bridge not responding, restarting...");
+        tracing::info!("🔄 [IGNITE BRIDGE] Bridge not responding, restarting...");
         SIDECAR_STARTED.store(false, std::sync::atomic::Ordering::Relaxed);
 
         // Start sidecar
@@ -401,7 +404,7 @@ impl IgniteConnection {
         for _ in 0..50 {
             tokio::time::sleep(Duration::from_millis(100)).await;
             if self.is_bridge_running().await {
-                log::info!("✅ [IGNITE BRIDGE] Bridge restarted successfully");
+                tracing::info!("✅ [IGNITE BRIDGE] Bridge restarted successfully");
                 return Ok(());
             }
         }
@@ -428,6 +431,8 @@ impl Drop for IgniteConnection {
 #[async_trait]
 impl DatabaseConnection for IgniteConnection {
     async fn connect(&mut self, config: &ConnectionConfig) -> Result<()> {
+        tracing::info!("🔌 [IGNITE] Connecting to Ignite cluster at {}:{}", config.host, config.port);
+        
         // Ensure bridge is running
         self.ensure_bridge_running().await?;
 
@@ -449,20 +454,22 @@ impl DatabaseConnection for IgniteConnection {
         let result = self.send_request(&request).await?;
 
         if !result.success {
-            return Err(anyhow!(result
-                .message
-                .unwrap_or("Connection failed".to_string())));
+            let err_msg = result.message.unwrap_or("Connection failed".to_string());
+            tracing::error!("❌ [IGNITE] Connection failed: {}", err_msg);
+            return Err(anyhow!(err_msg));
         }
 
         self.config = Some(config.clone());
-        self.connection_id = Some(connection_id);
+        self.connection_id = Some(connection_id.clone());
+        
+        tracing::info!("✅ [IGNITE] Successfully connected to Ignite cluster (ID: {})", connection_id);
 
         Ok(())
     }
 
     async fn disconnect(&mut self) -> Result<()> {
         if let Some(connection_id) = &self.connection_id {
-            log::info!(
+            tracing::info!(
                 "🔌 [IGNITE] Sending disconnect request to bridge for connection: {}",
                 connection_id
             );
@@ -484,19 +491,19 @@ impl DatabaseConnection for IgniteConnection {
             match self.send_request(&request).await {
                 Ok(response) => {
                     if response.success {
-                        log::info!(
+                        tracing::info!(
                             "✅ [IGNITE] Bridge confirmed disconnect for connection: {}",
                             connection_id
                         );
                     } else {
-                        log::warn!(
+                        tracing::warn!(
                             "⚠️ [IGNITE] Bridge disconnect returned failure for connection: {}",
                             connection_id
                         );
                     }
                 }
                 Err(e) => {
-                    log::warn!(
+                    tracing::warn!(
                         "⚠️ [IGNITE] Failed to send disconnect to bridge for connection {}: {}",
                         connection_id,
                         e
@@ -504,7 +511,7 @@ impl DatabaseConnection for IgniteConnection {
                 }
             }
         } else {
-            log::info!("🔌 [IGNITE] No connection_id to disconnect");
+            tracing::info!("🔌 [IGNITE] No connection_id to disconnect");
         }
 
         self.config = None;
@@ -575,7 +582,7 @@ impl DatabaseConnection for IgniteConnection {
                 }
             }
 
-            log::info!(
+            tracing::info!(
                 "🔥 [IGNITE] Executing SCAN: cache={:?}, limit={}, offset={}",
                 cache_name,
                 limit,

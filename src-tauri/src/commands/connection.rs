@@ -12,7 +12,7 @@ impl ConnectionStore {
     pub fn new() -> Self {
         // Load connections from file on initialization
         let connections = storage::load_connections().unwrap_or_else(|e| {
-            eprintln!("Failed to load connections: {}", e);
+            tracing::error!("Failed to load connections: {}", e);
             Vec::new()
         });
 
@@ -38,27 +38,41 @@ impl Default for ConnectionStore {
 
 #[tauri::command]
 pub async fn test_connection(config: ConnectionConfig) -> Result<ConnectionStatus, String> {
+    tracing::info!("🔌 [COMMAND] Testing connection to '{}' ({:?})", config.name, config.db_type);
+    
     let mut conn = crate::db::traits::create_connection(&config.db_type);
 
     match conn.connect(&config).await {
         Ok(_) => match conn.test_connection().await {
-            Ok(true) => Ok(ConnectionStatus {
-                success: true,
-                message: "Connection successful".to_string(),
-            }),
-            Ok(false) => Ok(ConnectionStatus {
-                success: false,
-                message: "Connection failed".to_string(),
-            }),
-            Err(e) => Ok(ConnectionStatus {
-                success: false,
-                message: format!("Connection test failed: {}", e),
-            }),
+            Ok(true) => {
+                tracing::info!("✅ [COMMAND] Connection test successful for '{}'", config.name);
+                Ok(ConnectionStatus {
+                    success: true,
+                    message: "Connection successful".to_string(),
+                })
+            },
+            Ok(false) => {
+                tracing::warn!("⚠️ [COMMAND] Connection test failed for '{}'", config.name);
+                Ok(ConnectionStatus {
+                    success: false,
+                    message: "Connection failed".to_string(),
+                })
+            },
+            Err(e) => {
+                tracing::error!("❌ [COMMAND] Connection test error for '{}': {}", config.name, e);
+                Ok(ConnectionStatus {
+                    success: false,
+                    message: format!("Connection test failed: {}", e),
+                })
+            },
         },
-        Err(e) => Ok(ConnectionStatus {
-            success: false,
-            message: format!("Connection failed: {}", e),
-        }),
+        Err(e) => {
+            tracing::error!("❌ [COMMAND] Failed to connect to '{}': {}", config.name, e);
+            Ok(ConnectionStatus {
+                success: false,
+                message: format!("Connection failed: {}", e),
+            })
+        },
     }
 }
 
@@ -67,17 +81,21 @@ pub async fn save_connection(
     config: ConnectionConfig,
     state: State<'_, ConnectionStore>,
 ) -> Result<(), String> {
+    tracing::info!("💾 [COMMAND] Saving connection: '{}' (ID: {})", config.name, config.id);
+    
     let mut connections = state.connections.lock().unwrap();
 
     // Remove existing connection with same ID if exists
     connections.retain(|c| c.id != config.id);
-    connections.push(config);
+    connections.push(config.clone());
 
     // Release the lock before saving
     drop(connections);
 
     // Save to file
     state.save_to_file()?;
+    
+    tracing::info!("✅ [COMMAND] Connection '{}' saved successfully", config.name);
 
     Ok(())
 }
@@ -95,6 +113,8 @@ pub async fn delete_connection(
     id: String,
     state: State<'_, ConnectionStore>,
 ) -> Result<(), String> {
+    tracing::info!("🗑️ [COMMAND] Deleting connection: {}", id);
+    
     // Disconnect from pool if connected
     let _ = state.pool.disconnect(&id).await;
 
@@ -106,6 +126,8 @@ pub async fn delete_connection(
 
     // Save to file
     state.save_to_file()?;
+    
+    tracing::info!("✅ [COMMAND] Connection {} deleted successfully", id);
 
     Ok(())
 }
@@ -115,7 +137,16 @@ pub async fn connect_to_database(
     config: ConnectionConfig,
     state: State<'_, ConnectionStore>,
 ) -> Result<(), String> {
-    state.pool.connect(config).await
+    tracing::info!("🔌 [COMMAND] Connecting to database: '{}'", config.name);
+    let result = state.pool.connect(config.clone()).await;
+    
+    if result.is_ok() {
+        tracing::info!("✅ [COMMAND] Successfully connected to database: '{}'", config.name);
+    } else {
+        tracing::error!("❌ [COMMAND] Failed to connect to database: '{}'", config.name);
+    }
+    
+    result
 }
 
 #[tauri::command]
@@ -123,7 +154,16 @@ pub async fn disconnect_from_database(
     connection_id: String,
     state: State<'_, ConnectionStore>,
 ) -> Result<(), String> {
-    state.pool.disconnect(&connection_id).await
+    tracing::info!("🔌 [COMMAND] Disconnecting from database: {}", connection_id);
+    let result = state.pool.disconnect(&connection_id).await;
+    
+    if result.is_ok() {
+        tracing::info!("✅ [COMMAND] Successfully disconnected from database: {}", connection_id);
+    } else {
+        tracing::error!("❌ [COMMAND] Failed to disconnect from database: {}", connection_id);
+    }
+    
+    result
 }
 
 #[tauri::command]

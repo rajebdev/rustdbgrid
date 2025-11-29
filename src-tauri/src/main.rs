@@ -9,42 +9,21 @@ mod utils;
 use commands::{connection, export, logging, query, schema, settings};
 
 fn main() {
+    // Initialize tracing logger
+    if let Err(e) = utils::tracing_logger::init_tracing() {
+        eprintln!("Failed to initialize tracing: {}", e);
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .targets([
-                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
-                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
-                        file_name: Some("rustdbgrid.log".into()),
-                    }),
-                ])
-                .level(log::LevelFilter::Debug)
-                .format(|out, message, record| {
-                    let now = chrono::Local::now();
-                    let timestamp = now.format("%Y-%m-%d %H:%M:%S%.3f");
-                    let target = record.target();
-                    let level = record.level();
-                    out.finish(format_args!(
-                        "[{}][{};{}][RUST][{}] {}",
-                        timestamp,
-                        target,
-                        record.line().map(|l| l.to_string()).unwrap_or_default(),
-                        level,
-                        message
-                    ))
-                })
-                .build(),
-        )
         .manage(connection::ConnectionStore::new())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 // Only shutdown when the main window closes
                 if window.label() == "main" {
-                    log::info!("🛑 [APP] Main window closing, shutting down bridge...");
+                    tracing::info!("🛑 [APP] Main window closing, shutting down bridge...");
                     db::shutdown_bridge();
                 }
             }
@@ -76,6 +55,8 @@ fn main() {
             export::copy_schema,
             export::copy_data,
             logging::log_from_frontend,
+            logging::log_from_bridge,
+            logging::get_log_info,
             settings::get_settings,
             settings::save_settings,
             settings::update_setting,

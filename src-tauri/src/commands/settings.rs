@@ -10,7 +10,14 @@ pub async fn get_settings() -> Result<AppSettings, String> {
 /// Save all settings
 #[command]
 pub async fn save_settings(settings: AppSettings) -> Result<(), String> {
-    settings::save_settings(&settings).map_err(|e| e.to_string())
+    tracing::info!("⚙️ [SETTINGS] Saving application settings");
+    let result = settings::save_settings(&settings).map_err(|e| e.to_string());
+    
+    if result.is_ok() {
+        tracing::info!("✅ [SETTINGS] Settings saved successfully");
+    }
+    
+    result
 }
 
 /// Update a single setting
@@ -29,7 +36,10 @@ pub async fn get_theme() -> Result<String, String> {
 /// Set theme setting
 #[command]
 pub async fn set_theme(theme: String) -> Result<(), String> {
-    let value = serde_json::Value::String(theme);
+    tracing::info!("🎨 [SETTINGS] Setting theme to: {}", theme);
+    let value = serde_json::Value::String(theme.clone());
     settings::update_setting("theme", value).map_err(|e| e.to_string())?;
+    
+    tracing::info!("✅ [SETTINGS] Theme set to '{}'", theme);
     Ok(())
 }
