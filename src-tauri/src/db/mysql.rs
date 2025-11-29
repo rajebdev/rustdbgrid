@@ -445,23 +445,36 @@ impl DatabaseConnection for MySQLConnection {
         self.execute_query(&query).await
     }
 
-    async fn get_views(&mut self, database: &str) -> Result<Vec<View>> {
+    async fn get_views(&mut self, database: &str, _schema: Option<&str>) -> Result<Vec<View>> {
+        // MySQL tidak menggunakan schema parameter, hanya database
         self.get_views_impl(database).await
     }
 
-    async fn get_indexes(&mut self, database: &str) -> Result<Vec<DbIndex>> {
+    async fn get_indexes(&mut self, database: &str, _schema: Option<&str>) -> Result<Vec<DbIndex>> {
+        // MySQL tidak menggunakan schema parameter, hanya database
         self.get_indexes_impl(database).await
     }
 
-    async fn get_procedures(&mut self, database: &str) -> Result<Vec<Procedure>> {
+    async fn get_procedures(
+        &mut self,
+        database: &str,
+        _schema: Option<&str>,
+    ) -> Result<Vec<Procedure>> {
+        // MySQL tidak menggunakan schema parameter, hanya database
         self.get_procedures_impl(database).await
     }
 
-    async fn get_triggers(&mut self, database: &str) -> Result<Vec<Trigger>> {
+    async fn get_triggers(
+        &mut self,
+        database: &str,
+        _schema: Option<&str>,
+    ) -> Result<Vec<Trigger>> {
+        // MySQL tidak menggunakan schema parameter, hanya database
         self.get_triggers_impl(database).await
     }
 
-    async fn get_events(&mut self, database: &str) -> Result<Vec<Event>> {
+    async fn get_events(&mut self, database: &str, _schema: Option<&str>) -> Result<Vec<Event>> {
+        // MySQL tidak menggunakan schema parameter, hanya database
         self.get_events_impl(database).await
     }
 }

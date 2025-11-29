@@ -472,4 +472,186 @@ impl DatabaseConnection for MSSQLConnection {
         );
         self.execute_query(&query).await
     }
+
+    async fn get_views(&mut self, database: &str, schema: Option<&str>) -> Result<Vec<View>> {
+        let schema_filter = if let Some(s) = schema {
+            format!("AND s.name = '{}'", s)
+        } else {
+            String::new()
+        };
+
+        let query = format!(
+            "SELECT s.name as schema_name, v.name as view_name
+             FROM [{database}].sys.views v
+             INNER JOIN [{database}].sys.schemas s ON v.schema_id = s.schema_id
+             WHERE 1=1 {}
+             ORDER BY s.name, v.name",
+            schema_filter
+        );
+
+        let result = self.execute_query(&query).await?;
+        let mut views = Vec::new();
+
+        for row in result.rows {
+            if let (Some(schema_val), Some(name_val)) =
+                (row.get("schema_name"), row.get("view_name"))
+            {
+                if let (Some(schema_str), Some(name_str)) = (schema_val.as_str(), name_val.as_str())
+                {
+                    views.push(View {
+                        schema: Some(schema_str.to_string()),
+                        name: name_str.to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(views)
+    }
+
+    async fn get_indexes(&mut self, database: &str, schema: Option<&str>) -> Result<Vec<DbIndex>> {
+        let schema_filter = if let Some(s) = schema {
+            format!("AND s.name = '{}'", s)
+        } else {
+            String::new()
+        };
+
+        let query = format!(
+            "SELECT 
+                t.name as table_name,
+                i.name as index_name,
+                i.is_unique
+             FROM [{database}].sys.indexes i
+             INNER JOIN [{database}].sys.tables t ON i.object_id = t.object_id
+             INNER JOIN [{database}].sys.schemas s ON t.schema_id = s.schema_id
+             WHERE i.name IS NOT NULL {}
+             ORDER BY s.name, t.name, i.name",
+            schema_filter
+        );
+
+        let result = self.execute_query(&query).await?;
+        let mut indexes = Vec::new();
+
+        for row in result.rows {
+            if let (Some(table_val), Some(name_val), Some(unique_val)) = (
+                row.get("table_name"),
+                row.get("index_name"),
+                row.get("is_unique"),
+            ) {
+                if let (Some(table_str), Some(name_str)) = (table_val.as_str(), name_val.as_str()) {
+                    let is_unique = unique_val.as_bool().unwrap_or(false);
+                    indexes.push(DbIndex {
+                        name: name_str.to_string(),
+                        table_name: table_str.to_string(),
+                        columns: vec![],
+                        is_unique,
+                        index_type: None,
+                    });
+                }
+            }
+        }
+
+        Ok(indexes)
+    }
+
+    async fn get_procedures(
+        &mut self,
+        database: &str,
+        schema: Option<&str>,
+    ) -> Result<Vec<Procedure>> {
+        let schema_filter = if let Some(s) = schema {
+            format!("AND s.name = '{}'", s)
+        } else {
+            String::new()
+        };
+
+        let query = format!(
+            "SELECT 
+                p.name as procedure_name,
+                s.name as schema_name,
+                CASE p.type
+                    WHEN 'P' THEN 'PROCEDURE'
+                    WHEN 'FN' THEN 'FUNCTION'
+                    WHEN 'IF' THEN 'FUNCTION'
+                    WHEN 'TF' THEN 'FUNCTION'
+                    ELSE 'PROCEDURE'
+                END as type
+             FROM [{database}].sys.procedures p
+             INNER JOIN [{database}].sys.schemas s ON p.schema_id = s.schema_id
+             WHERE 1=1 {}
+             UNION ALL
+             SELECT 
+                o.name as procedure_name,
+                s.name as schema_name,
+                'FUNCTION' as type
+             FROM [{database}].sys.objects o
+             INNER JOIN [{database}].sys.schemas s ON o.schema_id = s.schema_id
+             WHERE o.type IN ('FN', 'IF', 'TF') {}
+             ORDER BY procedure_name",
+            schema_filter, schema_filter
+        );
+
+        let result = self.execute_query(&query).await?;
+        let mut procedures = Vec::new();
+
+        for row in result.rows {
+            if let (Some(name_val), Some(schema_val), Some(type_val)) = (
+                row.get("procedure_name"),
+                row.get("schema_name"),
+                row.get("type"),
+            ) {
+                if let (Some(name_str), Some(schema_str), Some(type_str)) =
+                    (name_val.as_str(), schema_val.as_str(), type_val.as_str())
+                {
+                    procedures.push(Procedure {
+                        name: name_str.to_string(),
+                        schema: Some(schema_str.to_string()),
+                        procedure_type: Some(type_str.to_string()),
+                    });
+                }
+            }
+        }
+
+        Ok(procedures)
+    }
+
+    async fn get_triggers(&mut self, database: &str, schema: Option<&str>) -> Result<Vec<Trigger>> {
+        let schema_filter = if let Some(s) = schema {
+            format!("AND s.name = '{}'", s)
+        } else {
+            String::new()
+        };
+
+        let query = format!(
+            "SELECT 
+                tr.name as trigger_name,
+                t.name as table_name
+             FROM [{database}].sys.triggers tr
+             INNER JOIN [{database}].sys.tables t ON tr.parent_id = t.object_id
+             INNER JOIN [{database}].sys.schemas s ON t.schema_id = s.schema_id
+             WHERE tr.is_ms_shipped = 0 {}
+             ORDER BY s.name, t.name, tr.name",
+            schema_filter
+        );
+
+        let result = self.execute_query(&query).await?;
+        let mut triggers = Vec::new();
+
+        for row in result.rows {
+            if let (Some(name_val), Some(table_val)) =
+                (row.get("trigger_name"), row.get("table_name"))
+            {
+                if let (Some(name_str), Some(table_str)) = (name_val.as_str(), table_val.as_str()) {
+                    triggers.push(Trigger {
+                        name: name_str.to_string(),
+                        table_name: table_str.to_string(),
+                        timing: String::new(),
+                        event: String::new(),
+                    });
+                }
+            }
+        }
+
+        Ok(triggers)
+    }
 }

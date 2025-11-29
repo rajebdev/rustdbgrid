@@ -20,19 +20,31 @@ pub trait DatabaseConnection: Send + Sync {
     ) -> Result<QueryResult>;
 
     // MySQL-specific methods with default implementations returning empty
-    async fn get_views(&mut self, _database: &str) -> Result<Vec<View>> {
+    async fn get_views(&mut self, _database: &str, _schema: Option<&str>) -> Result<Vec<View>> {
         Ok(vec![])
     }
-    async fn get_indexes(&mut self, _database: &str) -> Result<Vec<DbIndex>> {
+    async fn get_indexes(
+        &mut self,
+        _database: &str,
+        _schema: Option<&str>,
+    ) -> Result<Vec<DbIndex>> {
         Ok(vec![])
     }
-    async fn get_procedures(&mut self, _database: &str) -> Result<Vec<Procedure>> {
+    async fn get_procedures(
+        &mut self,
+        _database: &str,
+        _schema: Option<&str>,
+    ) -> Result<Vec<Procedure>> {
         Ok(vec![])
     }
-    async fn get_triggers(&mut self, _database: &str) -> Result<Vec<Trigger>> {
+    async fn get_triggers(
+        &mut self,
+        _database: &str,
+        _schema: Option<&str>,
+    ) -> Result<Vec<Trigger>> {
         Ok(vec![])
     }
-    async fn get_events(&mut self, _database: &str) -> Result<Vec<Event>> {
+    async fn get_events(&mut self, _database: &str, _schema: Option<&str>) -> Result<Vec<Event>> {
         Ok(vec![])
     }
 }

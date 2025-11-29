@@ -1,12 +1,13 @@
 use crate::db::traits::DatabaseConnection;
 use crate::models::connection::ConnectionConfig;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
 
 /// Wrapper for connection with metadata
 struct PooledConnection {
-    connection: Box<dyn DatabaseConnection>,
+    connection: Arc<Mutex<Box<dyn DatabaseConnection>>>,
     last_used: Instant,
 }
 
@@ -58,7 +59,7 @@ impl ConnectionPool {
 
         // Add to pool
         let pooled = PooledConnection {
-            connection: conn,
+            connection: Arc::new(Mutex::new(conn)),
             last_used: Instant::now(),
         };
 
@@ -82,11 +83,12 @@ impl ConnectionPool {
 
         let mut connections = self.connections.lock().await;
 
-        if let Some(mut pooled) = connections.remove(connection_id) {
+        if let Some(pooled) = connections.remove(connection_id) {
             let remaining = connections.len();
             drop(connections); // Release lock before async operation
 
-            pooled.connection.disconnect().await.map_err(|e| {
+            let mut conn = pooled.connection.lock().await;
+            conn.disconnect().await.map_err(|e| {
                 log::error!(
                     "❌ [CONNECTION POOL] Failed to disconnect from '{}': {}",
                     connection_id,
@@ -133,26 +135,33 @@ impl ConnectionPool {
             connection_id
         );
 
-        // Remove connection from pool temporarily
-        let mut pooled = {
-            let mut connections = self.connections.lock().await;
-            connections.remove(connection_id).ok_or_else(|| {
-                log::error!(
-                    "❌ [CONNECTION POOL] Connection '{}' not found in pool",
-                    connection_id
-                );
-                format!("Connection '{}' not found", connection_id)
-            })?
+        // Get connection Arc from pool (without removing it)
+        let connection_arc = {
+            let connections = self.connections.lock().await;
+            connections
+                .get(connection_id)
+                .map(|p| p.connection.clone())
+                .ok_or_else(|| {
+                    log::error!(
+                        "❌ [CONNECTION POOL] Connection '{}' not found in pool",
+                        connection_id
+                    );
+                    format!("Connection '{}' not found", connection_id)
+                })?
         };
 
-        // Execute operation
-        let result = operation(&mut pooled.connection).await;
+        // Lock the connection for this operation
+        let mut conn = connection_arc.lock().await;
 
-        // Update last used and return to pool
-        pooled.last_used = Instant::now();
+        // Execute operation
+        let result = operation(&mut conn).await;
+
+        // Update last used timestamp
         {
             let mut connections = self.connections.lock().await;
-            connections.insert(connection_id.to_string(), pooled);
+            if let Some(pooled) = connections.get_mut(connection_id) {
+                pooled.last_used = Instant::now();
+            }
         }
 
         match &result {

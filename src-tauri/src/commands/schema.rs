@@ -52,6 +52,7 @@ pub async fn get_tables(
 pub async fn get_views(
     config: ConnectionConfig,
     database: String,
+    schema: Option<String>,
     state: State<'_, ConnectionStore>,
 ) -> Result<Vec<View>, String> {
     let connection_id = config.id.clone();
@@ -63,7 +64,7 @@ pub async fn get_views(
     state
         .pool
         .with_connection(&connection_id, |conn| {
-            async move { conn.get_views(&database).await }.boxed()
+            async move { conn.get_views(&database, schema.as_deref()).await }.boxed()
         })
         .await
 }
@@ -72,6 +73,7 @@ pub async fn get_views(
 pub async fn get_indexes(
     config: ConnectionConfig,
     database: String,
+    schema: Option<String>,
     state: State<'_, ConnectionStore>,
 ) -> Result<Vec<DbIndex>, String> {
     let connection_id = config.id.clone();
@@ -83,7 +85,7 @@ pub async fn get_indexes(
     state
         .pool
         .with_connection(&connection_id, |conn| {
-            async move { conn.get_indexes(&database).await }.boxed()
+            async move { conn.get_indexes(&database, schema.as_deref()).await }.boxed()
         })
         .await
 }
@@ -92,6 +94,7 @@ pub async fn get_indexes(
 pub async fn get_procedures(
     config: ConnectionConfig,
     database: String,
+    schema: Option<String>,
     state: State<'_, ConnectionStore>,
 ) -> Result<Vec<Procedure>, String> {
     let connection_id = config.id.clone();
@@ -103,7 +106,7 @@ pub async fn get_procedures(
     state
         .pool
         .with_connection(&connection_id, |conn| {
-            async move { conn.get_procedures(&database).await }.boxed()
+            async move { conn.get_procedures(&database, schema.as_deref()).await }.boxed()
         })
         .await
 }
@@ -112,6 +115,7 @@ pub async fn get_procedures(
 pub async fn get_triggers(
     config: ConnectionConfig,
     database: String,
+    schema: Option<String>,
     state: State<'_, ConnectionStore>,
 ) -> Result<Vec<Trigger>, String> {
     let connection_id = config.id.clone();
@@ -123,7 +127,7 @@ pub async fn get_triggers(
     state
         .pool
         .with_connection(&connection_id, |conn| {
-            async move { conn.get_triggers(&database).await }.boxed()
+            async move { conn.get_triggers(&database, schema.as_deref()).await }.boxed()
         })
         .await
 }
@@ -132,6 +136,7 @@ pub async fn get_triggers(
 pub async fn get_events(
     config: ConnectionConfig,
     database: String,
+    schema: Option<String>,
     state: State<'_, ConnectionStore>,
 ) -> Result<Vec<Event>, String> {
     let connection_id = config.id.clone();
@@ -143,7 +148,7 @@ pub async fn get_events(
     state
         .pool
         .with_connection(&connection_id, |conn| {
-            async move { conn.get_events(&database).await }.boxed()
+            async move { conn.get_events(&database, schema.as_deref()).await }.boxed()
         })
         .await
 }

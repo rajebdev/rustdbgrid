@@ -40,25 +40,72 @@
       // Import tauri function
       const { invoke } = await import("@tauri-apps/api/core");
 
-      // Query to get procedure source
+      // Query to get procedure source - different for each database type
       let query;
-      if (procedure.procedure_type === "FUNCTION") {
-        query = `SHOW CREATE FUNCTION \`${database.name}\`.\`${procedure.name}\``;
+      let sourceColumn;
+
+      if (connection.db_type === "MySQL") {
+        // MySQL uses SHOW CREATE syntax
+        if (procedure.procedure_type === "FUNCTION") {
+          query = `SHOW CREATE FUNCTION \`${database.name}\`.\`${procedure.name}\``;
+          sourceColumn = "Create Function";
+        } else {
+          query = `SHOW CREATE PROCEDURE \`${database.name}\`.\`${procedure.name}\``;
+          sourceColumn = "Create Procedure";
+        }
+      } else if (connection.db_type === "PostgreSQL") {
+        // PostgreSQL uses prosrc for the source code
+        const schemaName = procedure.schema || "public";
+
+        // Get the complete function/procedure definition
+        // Use LIKE to handle function overloading (same name with different parameters)
+        query = `SELECT 
+                   CASE 
+                     WHEN p.prokind = 'p' THEN 
+                       'CREATE OR REPLACE PROCEDURE ' || n.nspname || '.' || p.proname || 
+                       '(' || pg_get_function_arguments(p.oid) || ')' || E'\\n' ||
+                       'LANGUAGE ' || l.lanname || E'\\n' ||
+                       'AS $' || '$' || E'\\n' || p.prosrc || E'\\n' || '$' || '$;'
+                     ELSE
+                       pg_get_functiondef(p.oid)
+                   END as source
+                 FROM pg_proc p
+                 JOIN pg_namespace n ON p.pronamespace = n.oid
+                 JOIN pg_language l ON p.prolang = l.oid
+                 WHERE n.nspname = '${schemaName}' 
+                   AND p.proname = '${procedure.name}'
+                 ORDER BY p.oid
+                 LIMIT 1`;
+        sourceColumn = "source";
+      } else if (connection.db_type === "MSSQL") {
+        // MSSQL uses OBJECT_DEFINITION with schema-qualified name
+        // Format: schema.object_name (don't include database name in OBJECT_ID)
+        const schemaName = procedure.schema || "dbo";
+        const qualifiedName = `${schemaName}.${procedure.name}`;
+        query = `USE [${database.name}]; SELECT OBJECT_DEFINITION(OBJECT_ID('${qualifiedName}')) as source`;
+        sourceColumn = "source";
       } else {
-        query = `SHOW CREATE PROCEDURE \`${database.name}\`.\`${procedure.name}\``;
+        throw new Error(`Unsupported database type: ${connection.db_type}`);
       }
+
+      console.log("Loading procedure source with query:", query);
+      console.log("Procedure object:", procedure);
+      console.log("Procedure schema:", procedure.schema);
+      console.log("Procedure name:", procedure.name);
+      console.log("Database:", database);
+      console.log("Connection:", connection);
 
       const result = await invoke("execute_query", {
         config: connection,
         query: query,
       });
 
+      console.log("Query result:", result);
+      console.log("Looking for column:", sourceColumn);
+
       if (result.rows && result.rows.length > 0) {
-        // The source is in the "Create Procedure" or "Create Function" column
-        const sourceColumn =
-          procedure.procedure_type === "FUNCTION"
-            ? "Create Function"
-            : "Create Procedure";
+        console.log("First row:", result.rows[0]);
+        console.log("Column names:", result.columns);
         procedureSource =
           result.rows[0][sourceColumn] || "-- No source available";
       } else {
