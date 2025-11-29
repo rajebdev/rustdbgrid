@@ -30,6 +30,8 @@
         return "fa-file-code";
       case "table":
         return "fa-table";
+      case "procedure":
+        return "fa-cog";
       case "connection":
         return "fa-database";
       default:

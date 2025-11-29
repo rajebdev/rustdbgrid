@@ -13,6 +13,44 @@ pub struct Table {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct View {
+    pub name: String,
+    pub schema: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DbIndex {
+    pub name: String,
+    pub table_name: String,
+    pub columns: Vec<String>,
+    pub is_unique: bool,
+    pub index_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Procedure {
+    pub name: String,
+    pub schema: Option<String>,
+    pub procedure_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Trigger {
+    pub name: String,
+    pub table_name: String,
+    pub event: String,
+    pub timing: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Event {
+    pub name: String,
+    pub status: Option<String>,
+    pub interval_value: Option<String>,
+    pub interval_field: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Column {
     pub name: String,
     pub data_type: String,

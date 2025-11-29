@@ -35,7 +35,10 @@
     class="sidebar-container border-end"
     style="width: {width}px; flex-shrink: 0; position: relative;"
   >
-    <Sidebar on:openTableTab={forwardEvent} />
+    <Sidebar
+      on:openTableTab={forwardEvent}
+      on:openProcedureTab={forwardEvent}
+    />
     <button
       class="resize-handle"
       on:mousedown={handleMouseDown}

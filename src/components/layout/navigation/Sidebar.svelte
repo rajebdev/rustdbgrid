@@ -12,6 +12,11 @@
     getConnections,
     getDatabases,
     getTables,
+    getViews,
+    getIndexes,
+    getProcedures,
+    getTriggers,
+    getEvents,
     deleteConnection,
     saveConnection,
     connectToDatabase,
@@ -36,9 +41,27 @@
   let expandedTables = {};
   let expandedSchemas = {};
   let expandedSchemasParent = {};
+  let expandedViews = {};
+  let expandedIndexes = {};
+  let expandedProcedures = {};
+  let expandedTriggers = {};
+  let expandedEvents = {};
   let searchQuery = "";
   let loadingConnections = {}; // Track loading state per connection
   let loadingDatabases = {}; // Track loading state per database
+  let loadingViews = {};
+  let loadingIndexes = {};
+  let loadingProcedures = {};
+  let loadingTriggers = {};
+  let loadingEvents = {};
+  // Store counts for MySQL objects (loaded when database expands)
+  let dbObjectCounts = {}; // { 'connId-dbName': { views: n, indexes: n, procedures: n, triggers: n, events: n } }
+  // Cache for MySQL objects data (loaded when database expands)
+  let cachedViews = {};
+  let cachedIndexes = {};
+  let cachedProcedures = {};
+  let cachedTriggers = {};
+  let cachedEvents = {};
   let connectedConnections = {}; // Track connection status
   let contextMenu = null; // { x, y, connection }
   let tableContextMenu = null; // { x, y, table, connection, database }
@@ -131,12 +154,55 @@
       loadingDatabases[key] = true;
       loadingDatabases = { ...loadingDatabases };
       try {
+        // Load tables first
         const dbTables = await getTables($activeConnection, db.name);
+
+        // Load and cache MySQL objects data BEFORE setting expandedDatabases
+        if ($activeConnection && $activeConnection.db_type === "MySQL") {
+          try {
+            // Load sequentially to avoid connection pool race condition
+            const viewsData = await getViews($activeConnection, db.name);
+            const indexesData = await getIndexes($activeConnection, db.name);
+            const proceduresData = await getProcedures(
+              $activeConnection,
+              db.name
+            );
+            const triggersData = await getTriggers($activeConnection, db.name);
+            const eventsData = await getEvents($activeConnection, db.name);
+
+            // Cache the data first
+            cachedViews[key] = viewsData || [];
+            cachedIndexes[key] = indexesData || [];
+            cachedProcedures[key] = proceduresData || [];
+            cachedTriggers[key] = triggersData || [];
+            cachedEvents[key] = eventsData || [];
+
+            // Store counts
+            dbObjectCounts[key] = {
+              views: viewsData?.length || 0,
+              indexes: indexesData?.length || 0,
+              procedures: proceduresData?.length || 0,
+              triggers: triggersData?.length || 0,
+              events: eventsData?.length || 0,
+            };
+          } catch (error) {
+            console.error("Failed to load MySQL object counts:", error);
+            // Set empty caches on error
+            cachedViews[key] = [];
+            cachedIndexes[key] = [];
+            cachedProcedures[key] = [];
+            cachedTriggers[key] = [];
+            cachedEvents[key] = [];
+          }
+        }
+
+        // NOW set expandedDatabases after all data is loaded
         expandedDatabases[key] = {
           tables: dbTables,
           connection: conn,
           database: db,
         };
+        expandedDatabases = { ...expandedDatabases };
       } catch (error) {
         console.error("Failed to load tables:", error);
       } finally {
@@ -157,6 +223,146 @@
       expandedTables[key] = true;
     }
     expandedTables = { ...expandedTables };
+  }
+
+  async function toggleViews(connId, dbName, connection) {
+    const key = `${connId}-${dbName}`;
+    if (expandedViews[key]) {
+      delete expandedViews[key];
+      expandedViews = { ...expandedViews };
+    } else {
+      // Use cached data if available
+      if (cachedViews[key]) {
+        expandedViews[key] = { views: cachedViews[key] };
+        expandedViews = { ...expandedViews };
+      } else {
+        loadingViews[key] = true;
+        loadingViews = { ...loadingViews };
+        try {
+          const views = await getViews(connection, dbName);
+          cachedViews[key] = views || [];
+          expandedViews[key] = { views: cachedViews[key] };
+        } catch (error) {
+          console.error("Failed to load views:", error);
+          expandedViews[key] = { views: [] };
+        }
+        loadingViews[key] = false;
+        loadingViews = { ...loadingViews };
+        expandedViews = { ...expandedViews };
+      }
+    }
+  }
+
+  async function toggleIndexes(connId, dbName, connection) {
+    const key = `${connId}-${dbName}`;
+    if (expandedIndexes[key]) {
+      delete expandedIndexes[key];
+      expandedIndexes = { ...expandedIndexes };
+    } else {
+      // Use cached data if available
+      if (cachedIndexes[key]) {
+        expandedIndexes[key] = { indexes: cachedIndexes[key] };
+        expandedIndexes = { ...expandedIndexes };
+      } else {
+        loadingIndexes[key] = true;
+        loadingIndexes = { ...loadingIndexes };
+        try {
+          const indexes = await getIndexes(connection, dbName);
+          cachedIndexes[key] = indexes || [];
+          expandedIndexes[key] = { indexes: cachedIndexes[key] };
+        } catch (error) {
+          console.error("Failed to load indexes:", error);
+          expandedIndexes[key] = { indexes: [] };
+        }
+        loadingIndexes[key] = false;
+        loadingIndexes = { ...loadingIndexes };
+        expandedIndexes = { ...expandedIndexes };
+      }
+    }
+  }
+
+  async function toggleProcedures(connId, dbName, connection) {
+    const key = `${connId}-${dbName}`;
+    if (expandedProcedures[key]) {
+      delete expandedProcedures[key];
+      expandedProcedures = { ...expandedProcedures };
+    } else {
+      // Use cached data if available
+      if (cachedProcedures[key]) {
+        expandedProcedures[key] = { procedures: cachedProcedures[key] };
+        expandedProcedures = { ...expandedProcedures };
+      } else {
+        loadingProcedures[key] = true;
+        loadingProcedures = { ...loadingProcedures };
+        try {
+          const procedures = await getProcedures(connection, dbName);
+          cachedProcedures[key] = procedures || [];
+          expandedProcedures[key] = { procedures: cachedProcedures[key] };
+        } catch (error) {
+          console.error("Failed to load procedures:", error);
+          expandedProcedures[key] = { procedures: [] };
+        }
+        loadingProcedures[key] = false;
+        loadingProcedures = { ...loadingProcedures };
+        expandedProcedures = { ...expandedProcedures };
+      }
+    }
+  }
+
+  async function toggleTriggers(connId, dbName, connection) {
+    const key = `${connId}-${dbName}`;
+    if (expandedTriggers[key]) {
+      delete expandedTriggers[key];
+      expandedTriggers = { ...expandedTriggers };
+    } else {
+      // Use cached data if available
+      if (cachedTriggers[key]) {
+        expandedTriggers[key] = { triggers: cachedTriggers[key] };
+        expandedTriggers = { ...expandedTriggers };
+      } else {
+        loadingTriggers[key] = true;
+        loadingTriggers = { ...loadingTriggers };
+        try {
+          const triggers = await getTriggers(connection, dbName);
+          cachedTriggers[key] = triggers || [];
+          expandedTriggers[key] = { triggers: cachedTriggers[key] };
+        } catch (error) {
+          console.error("Failed to load triggers:", error);
+          expandedTriggers[key] = { triggers: [] };
+        }
+        loadingTriggers[key] = false;
+        loadingTriggers = { ...loadingTriggers };
+        expandedTriggers = { ...expandedTriggers };
+      }
+    }
+  }
+
+  async function toggleEvents(connId, dbName, connection) {
+    const key = `${connId}-${dbName}`;
+    if (expandedEvents[key]) {
+      delete expandedEvents[key];
+      expandedEvents = { ...expandedEvents };
+    } else {
+      // Use cached data if available
+      if (cachedEvents[key]) {
+        expandedEvents[key] = { events: cachedEvents[key] };
+        expandedEvents = { ...expandedEvents };
+      } else {
+        loadingEvents[key] = true;
+        loadingEvents = { ...loadingEvents };
+        try {
+          const events = await getEvents(connection, dbName);
+          cachedEvents[key] = events || [];
+          expandedEvents[key] = { events: cachedEvents[key] };
+        } catch (error) {
+          console.error("Failed to load events:", error);
+          expandedEvents[key] = { events: [] };
+        }
+        loadingEvents[key] = false;
+        loadingEvents = { ...loadingEvents };
+        expandedEvents = { ...expandedEvents };
+      }
+    }
   }
 
   function toggleSchema(connId, dbName, schemaName) {
@@ -207,6 +413,24 @@
     // Dispatch event untuk membuka tab baru dengan data tabel
     dispatch("openTableTab", {
       table,
+      database: database,
+      connection: connection,
+    });
+  }
+
+  function handleViewDoubleClick(view, connection, database) {
+    // Dispatch event untuk membuka tab baru dengan data view (sama seperti tabel)
+    dispatch("openTableTab", {
+      table: { name: view.name, schema: view.schema, isView: true },
+      database: database,
+      connection: connection,
+    });
+  }
+
+  function handleProcedureDoubleClick(proc, connection, database) {
+    // Dispatch event untuk membuka tab baru dengan source procedure
+    dispatch("openProcedureTab", {
+      procedure: proc,
       database: database,
       connection: connection,
     });
@@ -1468,7 +1692,536 @@
                           {/if}
                         </div>
 
-                        {#if conn.db_type !== "MongoDB" && conn.db_type !== "Redis" && conn.db_type !== "Ignite"}
+                        {#if conn.db_type === "MySQL"}
+                          <!-- MySQL specific objects: Views, Indexes, Procedures, Triggers, Events -->
+                          <!-- Views -->
+                          <div class="tree-item">
+                            <div class="tree-node tables-section-node">
+                              <button
+                                class="tree-toggle"
+                                aria-label="Toggle views"
+                                on:click={() =>
+                                  toggleViews(conn.id, db.name, conn)}
+                              >
+                                {#if loadingViews[`${conn.id}-${db.name}`]}
+                                  <i class="fas fa-spinner fa-spin"></i>
+                                {:else}
+                                  <i
+                                    class="fas fa-chevron-{expandedViews[
+                                      `${conn.id}-${db.name}`
+                                    ]
+                                      ? 'down'
+                                      : 'right'}"
+                                  ></i>
+                                {/if}
+                              </button>
+                              <button
+                                class="tree-section-header"
+                                on:click={() =>
+                                  toggleViews(conn.id, db.name, conn)}
+                              >
+                                <i class="fas fa-eye"></i>
+                                <span
+                                  >Views ({cachedViews[`${conn.id}-${db.name}`]
+                                    ?.length ?? 0})</span
+                                >
+                              </button>
+                            </div>
+                            {#if expandedViews[`${conn.id}-${db.name}`]}
+                              <div class="tree-children">
+                                <table
+                                  class="table table-sm table-hover mb-0 table-borderless mysql-object-table"
+                                  style="padding-left: 8px;"
+                                >
+                                  <tbody>
+                                    {#each expandedViews[`${conn.id}-${db.name}`].views || [] as view (view.name)}
+                                      <tr
+                                        class="table-item-row"
+                                        style="cursor: pointer; line-height: 1.5;"
+                                      >
+                                        <td
+                                          class="p-0 align-middle"
+                                          style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 24px !important;"
+                                        >
+                                          <button
+                                            class="btn btn-sm p-1 text-start border-0 mysql-object-btn"
+                                            style="font-size: 11px; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                            on:dblclick={() =>
+                                              handleViewDoubleClick(
+                                                view,
+                                                expandedDatabases[
+                                                  `${conn.id}-${db.name}`
+                                                ].connection,
+                                                expandedDatabases[
+                                                  `${conn.id}-${db.name}`
+                                                ].database
+                                              )}
+                                          >
+                                            <i
+                                              class="fas fa-eye mysql-object-icon me-1"
+                                              style="font-size: 11px;"
+                                            ></i>
+                                            <span
+                                              class="text-truncate"
+                                              title={view.name}
+                                              >{view.name}</span
+                                            >
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    {/each}
+                                    {#if (expandedViews[`${conn.id}-${db.name}`].views || []).length === 0}
+                                      <tr>
+                                        <td
+                                          class="p-0"
+                                          style="padding-left: 24px !important;"
+                                        >
+                                          <span
+                                            class="text-muted"
+                                            style="font-size: 11px; font-style: italic;"
+                                            >No views</span
+                                          >
+                                        </td>
+                                      </tr>
+                                    {/if}
+                                  </tbody>
+                                </table>
+                              </div>
+                            {/if}
+                          </div>
+
+                          <!-- Indexes -->
+                          <div class="tree-item">
+                            <div class="tree-node tables-section-node">
+                              <button
+                                class="tree-toggle"
+                                aria-label="Toggle indexes"
+                                on:click={() =>
+                                  toggleIndexes(conn.id, db.name, conn)}
+                              >
+                                {#if loadingIndexes[`${conn.id}-${db.name}`]}
+                                  <i class="fas fa-spinner fa-spin"></i>
+                                {:else}
+                                  <i
+                                    class="fas fa-chevron-{expandedIndexes[
+                                      `${conn.id}-${db.name}`
+                                    ]
+                                      ? 'down'
+                                      : 'right'}"
+                                  ></i>
+                                {/if}
+                              </button>
+                              <button
+                                class="tree-section-header"
+                                on:click={() => {
+                                  console.log(
+                                    "Indexes count for",
+                                    `${conn.id}-${db.name}`,
+                                    ":",
+                                    cachedIndexes[`${conn.id}-${db.name}`]
+                                      ?.length
+                                  );
+                                  toggleIndexes(conn.id, db.name, conn);
+                                }}
+                              >
+                                <i class="fas fa-key"></i>
+                                <span
+                                  >Indexes ({cachedIndexes[
+                                    `${conn.id}-${db.name}`
+                                  ]?.length ?? 0})</span
+                                >
+                              </button>
+                            </div>
+                            {#if expandedIndexes[`${conn.id}-${db.name}`]}
+                              <div class="tree-children">
+                                <table
+                                  class="table table-sm table-hover mb-0 table-borderless mysql-object-table"
+                                  style="padding-left: 8px;"
+                                >
+                                  <tbody>
+                                    {#each expandedIndexes[`${conn.id}-${db.name}`].indexes || [] as idx (idx.name + "-" + idx.table_name)}
+                                      <tr
+                                        class="table-item-row"
+                                        style="cursor: pointer; line-height: 1.5;"
+                                      >
+                                        <td
+                                          class="p-0 align-middle"
+                                          style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 24px !important;"
+                                        >
+                                          <button
+                                            class="btn btn-sm p-1 text-start border-0 mysql-object-btn"
+                                            style="font-size: 11px; display: inline-block;  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                          >
+                                            <i
+                                              class="fas fa-key mysql-object-icon me-1"
+                                              style="font-size: 11px;"
+                                            ></i>
+                                            <span
+                                              class="text-truncate"
+                                              title="{idx.table_name}.{idx.name}"
+                                              >{idx.table_name}.{idx.name}</span
+                                            >
+                                          </button>
+                                        </td>
+                                        <td
+                                          class="text-end align-middle"
+                                          style="white-space: nowrap; width: 24px; min-width: 24px; max-width: 24px; padding: 2px 8px 2px 4px !important;"
+                                        >
+                                          {#if idx.is_unique}
+                                            <span
+                                              class="badge bg-info"
+                                              style="font-size: 9px; width: 16px; text-align: center;"
+                                              title="Unique Index">U</span
+                                            >
+                                          {:else}
+                                            <span
+                                              class="badge bg-secondary"
+                                              style="font-size: 9px; width: 16px; text-align: center;"
+                                              title="Index">I</span
+                                            >
+                                          {/if}
+                                        </td>
+                                      </tr>
+                                    {/each}
+                                    {#if (expandedIndexes[`${conn.id}-${db.name}`].indexes || []).length === 0}
+                                      <tr>
+                                        <td
+                                          class="p-0"
+                                          colspan="2"
+                                          style="padding-left: 24px !important;"
+                                        >
+                                          <span
+                                            class="text-muted"
+                                            style="font-size: 11px; font-style: italic;"
+                                            >No indexes</span
+                                          >
+                                        </td>
+                                      </tr>
+                                    {/if}
+                                  </tbody>
+                                </table>
+                              </div>
+                            {/if}
+                          </div>
+
+                          <!-- Procedures -->
+                          <div class="tree-item">
+                            <div class="tree-node tables-section-node">
+                              <button
+                                class="tree-toggle"
+                                aria-label="Toggle procedures"
+                                on:click={() =>
+                                  toggleProcedures(conn.id, db.name, conn)}
+                              >
+                                {#if loadingProcedures[`${conn.id}-${db.name}`]}
+                                  <i class="fas fa-spinner fa-spin"></i>
+                                {:else}
+                                  <i
+                                    class="fas fa-chevron-{expandedProcedures[
+                                      `${conn.id}-${db.name}`
+                                    ]
+                                      ? 'down'
+                                      : 'right'}"
+                                  ></i>
+                                {/if}
+                              </button>
+                              <button
+                                class="tree-section-header"
+                                on:click={() => {
+                                  console.log(
+                                    "Procedures count for",
+                                    `${conn.id}-${db.name}`,
+                                    ":",
+                                    cachedProcedures[`${conn.id}-${db.name}`]
+                                      ?.length
+                                  );
+                                  toggleProcedures(conn.id, db.name, conn);
+                                }}
+                              >
+                                <i class="fas fa-cog"></i>
+                                <span
+                                  >Procedures ({cachedProcedures[
+                                    `${conn.id}-${db.name}`
+                                  ]?.length ?? 0})</span
+                                >
+                              </button>
+                            </div>
+                            {#if expandedProcedures[`${conn.id}-${db.name}`]}
+                              <div class="tree-children">
+                                <table
+                                  class="table table-sm table-hover mb-0 table-borderless mysql-object-table"
+                                  style="padding-left: 8px;"
+                                >
+                                  <tbody>
+                                    {#each expandedProcedures[`${conn.id}-${db.name}`].procedures || [] as proc (proc.name)}
+                                      <tr
+                                        class="table-item-row"
+                                        style="cursor: pointer; line-height: 1.5;"
+                                      >
+                                        <td
+                                          class="p-0 align-middle"
+                                          style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 24px !important;"
+                                        >
+                                          <button
+                                            class="btn btn-sm p-1 text-start border-0 mysql-object-btn"
+                                            style="font-size: 11px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                            on:dblclick={() =>
+                                              handleProcedureDoubleClick(
+                                                proc,
+                                                expandedDatabases[
+                                                  `${conn.id}-${db.name}`
+                                                ].connection,
+                                                expandedDatabases[
+                                                  `${conn.id}-${db.name}`
+                                                ].database
+                                              )}
+                                          >
+                                            <i
+                                              class="fas fa-cog mysql-object-icon me-1"
+                                              style="font-size: 11px;"
+                                            ></i>
+                                            <span
+                                              class="text-truncate"
+                                              title={proc.name}
+                                              >{proc.name}</span
+                                            >
+                                          </button>
+                                        </td>
+                                        <td
+                                          class="text-end align-middle"
+                                          style="white-space: nowrap; width: 24px; min-width: 24px; max-width: 24px; padding: 2px 8px 2px 4px !important;"
+                                        >
+                                          {#if proc.procedure_type === "FUNCTION"}
+                                            <span
+                                              class="badge bg-success"
+                                              style="font-size: 9px; width: 16px; text-align: center;"
+                                              title="Function">F</span
+                                            >
+                                          {:else if proc.procedure_type === "PROCEDURE"}
+                                            <span
+                                              class="badge bg-secondary"
+                                              style="font-size: 9px; width: 16px; text-align: center;"
+                                              title="Procedure">P</span
+                                            >
+                                          {/if}
+                                        </td>
+                                      </tr>
+                                    {/each}
+                                    {#if (expandedProcedures[`${conn.id}-${db.name}`].procedures || []).length === 0}
+                                      <tr>
+                                        <td
+                                          class="p-0"
+                                          colspan="2"
+                                          style="padding-left: 24px !important;"
+                                        >
+                                          <span
+                                            class="text-muted"
+                                            style="font-size: 11px; font-style: italic;"
+                                            >No procedures</span
+                                          >
+                                        </td>
+                                      </tr>
+                                    {/if}
+                                  </tbody>
+                                </table>
+                              </div>
+                            {/if}
+                          </div>
+
+                          <!-- Triggers -->
+                          <div class="tree-item">
+                            <div class="tree-node tables-section-node">
+                              <button
+                                class="tree-toggle"
+                                aria-label="Toggle triggers"
+                                on:click={() =>
+                                  toggleTriggers(conn.id, db.name, conn)}
+                              >
+                                {#if loadingTriggers[`${conn.id}-${db.name}`]}
+                                  <i class="fas fa-spinner fa-spin"></i>
+                                {:else}
+                                  <i
+                                    class="fas fa-chevron-{expandedTriggers[
+                                      `${conn.id}-${db.name}`
+                                    ]
+                                      ? 'down'
+                                      : 'right'}"
+                                  ></i>
+                                {/if}
+                              </button>
+                              <button
+                                class="tree-section-header"
+                                on:click={() =>
+                                  toggleTriggers(conn.id, db.name, conn)}
+                              >
+                                <i class="fas fa-bolt"></i>
+                                <span
+                                  >Triggers ({cachedTriggers[
+                                    `${conn.id}-${db.name}`
+                                  ]?.length ?? 0})</span
+                                >
+                              </button>
+                            </div>
+                            {#if expandedTriggers[`${conn.id}-${db.name}`]}
+                              <div class="tree-children">
+                                <table
+                                  class="table table-sm table-hover mb-0 table-borderless mysql-object-table"
+                                  style="padding-left: 8px;"
+                                >
+                                  <tbody>
+                                    {#each expandedTriggers[`${conn.id}-${db.name}`].triggers || [] as trigger (trigger.name)}
+                                      <tr
+                                        class="table-item-row"
+                                        style="cursor: pointer; line-height: 1.5;"
+                                      >
+                                        <td
+                                          class="p-0 align-middle"
+                                          style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 24px !important;"
+                                        >
+                                          <button
+                                            class="btn btn-sm p-1 text-start border-0 mysql-object-btn"
+                                            style="font-size: 11px; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                          >
+                                            <i
+                                              class="fas fa-bolt mysql-object-icon me-1"
+                                              style="font-size: 11px;"
+                                            ></i>
+                                            <span
+                                              class="text-truncate"
+                                              title="{trigger.timing} {trigger.event} ON {trigger.table_name}"
+                                              >{trigger.name}</span
+                                            >
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    {/each}
+                                    {#if (expandedTriggers[`${conn.id}-${db.name}`].triggers || []).length === 0}
+                                      <tr>
+                                        <td
+                                          class="p-0"
+                                          style="padding-left: 24px !important;"
+                                        >
+                                          <span
+                                            class="text-muted"
+                                            style="font-size: 11px; font-style: italic;"
+                                            >No triggers</span
+                                          >
+                                        </td>
+                                      </tr>
+                                    {/if}
+                                  </tbody>
+                                </table>
+                              </div>
+                            {/if}
+                          </div>
+
+                          <!-- Events -->
+                          <div class="tree-item">
+                            <div class="tree-node tables-section-node">
+                              <button
+                                class="tree-toggle"
+                                aria-label="Toggle events"
+                                on:click={() =>
+                                  toggleEvents(conn.id, db.name, conn)}
+                              >
+                                {#if loadingEvents[`${conn.id}-${db.name}`]}
+                                  <i class="fas fa-spinner fa-spin"></i>
+                                {:else}
+                                  <i
+                                    class="fas fa-chevron-{expandedEvents[
+                                      `${conn.id}-${db.name}`
+                                    ]
+                                      ? 'down'
+                                      : 'right'}"
+                                  ></i>
+                                {/if}
+                              </button>
+                              <button
+                                class="tree-section-header"
+                                on:click={() =>
+                                  toggleEvents(conn.id, db.name, conn)}
+                              >
+                                <i class="fas fa-calendar-alt"></i>
+                                <span
+                                  >Events ({cachedEvents[
+                                    `${conn.id}-${db.name}`
+                                  ]?.length ?? 0})</span
+                                >
+                              </button>
+                            </div>
+                            {#if expandedEvents[`${conn.id}-${db.name}`]}
+                              <div class="tree-children">
+                                <table
+                                  class="table table-sm table-hover mb-0 table-borderless mysql-object-table"
+                                  style="padding-left: 8px;"
+                                >
+                                  <tbody>
+                                    {#each expandedEvents[`${conn.id}-${db.name}`].events || [] as event (event.name)}
+                                      <tr
+                                        class="table-item-row"
+                                        style="cursor: pointer; line-height: 1.5;"
+                                      >
+                                        <td
+                                          class="p-0 align-middle"
+                                          style="width: 100%; max-width: 0; overflow: hidden; white-space: nowrap; padding-left: 24px !important;"
+                                        >
+                                          <button
+                                            class="btn btn-sm p-1 text-start border-0 mysql-object-btn"
+                                            style="font-size: 11px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                          >
+                                            <i
+                                              class="fas fa-calendar-alt mysql-object-icon me-1"
+                                              style="font-size: 11px;"
+                                            ></i>
+                                            <span
+                                              class="text-truncate"
+                                              title={event.name}
+                                              >{event.name}</span
+                                            >
+                                          </button>
+                                        </td>
+                                        <td
+                                          class="text-end align-middle"
+                                          style="white-space: nowrap; width: 24px; min-width: 24px; max-width: 24px; padding: 2px 8px 2px 4px !important;"
+                                        >
+                                          {#if event.status}
+                                            <span
+                                              class="badge {event.status ===
+                                              'ENABLED'
+                                                ? 'bg-success'
+                                                : 'bg-warning'}"
+                                              style="font-size: 9px; width: 16px; text-align: center;"
+                                              title={event.status}
+                                              >{event.status === "ENABLED"
+                                                ? "E"
+                                                : "D"}</span
+                                            >
+                                          {/if}
+                                        </td>
+                                      </tr>
+                                    {/each}
+                                    {#if (expandedEvents[`${conn.id}-${db.name}`].events || []).length === 0}
+                                      <tr>
+                                        <td
+                                          class="p-0"
+                                          colspan="2"
+                                          style="padding-left: 24px !important;"
+                                        >
+                                          <span
+                                            class="text-muted"
+                                            style="font-size: 11px; font-style: italic;"
+                                            >No events</span
+                                          >
+                                        </td>
+                                      </tr>
+                                    {/if}
+                                  </tbody>
+                                </table>
+                              </div>
+                            {/if}
+                          </div>
+                        {:else if conn.db_type !== "MongoDB" && conn.db_type !== "Redis" && conn.db_type !== "Ignite"}
+                          <!-- Other SQL databases: Views and Functions -->
                           <div class="tree-item">
                             <div class="tree-node tables-section-node">
                               <button
@@ -1477,10 +2230,10 @@
                               >
                                 <i class="fas fa-chevron-right"></i>
                               </button>
-                              <div class="tree-section-header">
+                              <button class="tree-section-header">
                                 <i class="fas fa-eye"></i>
                                 <span>Views</span>
-                              </div>
+                              </button>
                             </div>
                           </div>
 
@@ -1492,10 +2245,10 @@
                               >
                                 <i class="fas fa-chevron-right"></i>
                               </button>
-                              <div class="tree-section-header">
+                              <button class="tree-section-header">
                                 <i class="fas fa-code"></i>
                                 <span>Functions</span>
-                              </div>
+                              </button>
                             </div>
                           </div>
                         {/if}
@@ -1902,5 +2655,35 @@
   .table-item-row .btn.text-secondary {
     color: var(--text-muted) !important;
     background: transparent !important;
+  }
+
+  /* MySQL Object Items Styling (Views, Indexes, Procedures, Triggers, Events) */
+  .mysql-object-table {
+    background: transparent !important;
+  }
+
+  .mysql-object-table .table-item-row {
+    background: transparent !important;
+  }
+
+  .mysql-object-table .table-item-row:hover {
+    background: var(--hover-bg) !important;
+  }
+
+  .mysql-object-btn {
+    color: var(--text-primary) !important;
+    background: transparent !important;
+  }
+
+  .mysql-object-btn:hover {
+    background: transparent !important;
+  }
+
+  .mysql-object-icon {
+    color: var(--text-muted) !important;
+  }
+
+  .mysql-object-table .table-item-row:hover .mysql-object-icon {
+    color: var(--text-primary) !important;
   }
 </style>

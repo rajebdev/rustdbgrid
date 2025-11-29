@@ -72,6 +72,43 @@ function createTabStore() {
     },
 
     /**
+     * Add a new procedure tab
+     */
+    addProcedureTab: (procedure, database, connection) => {
+      tabs.update((currentTabs) => {
+        // Check if tab already exists
+        const existingTab = currentTabs.find(
+          (t) =>
+            t.type === "procedure" &&
+            t.procedureInfo?.name === procedure.name &&
+            t.procedureInfo?.database === database.name
+        );
+
+        if (existingTab) {
+          activeTab.set(existingTab);
+          return currentTabs;
+        }
+
+        // Create new tab
+        const newTab = {
+          id: Date.now(),
+          title: `${database.name}.${procedure.name}`,
+          type: "procedure",
+          modified: false,
+          procedureInfo: {
+            name: procedure.name,
+            procedure_type: procedure.procedure_type,
+            database: database.name,
+            connection: connection,
+          },
+        };
+
+        activeTab.set(newTab);
+        return [...currentTabs, newTab];
+      });
+    },
+
+    /**
      * Close a tab
      */
     closeTab: (tabToClose) => {
@@ -171,6 +208,14 @@ function createTabStore() {
           if (
             tab.type === "table" &&
             tab.tableInfo?.connection?.id === connectionId
+          ) {
+            closedTabIds.push(tab.id);
+            return false;
+          }
+          // For procedure tabs, check tab.procedureInfo.connection
+          if (
+            tab.type === "procedure" &&
+            tab.procedureInfo?.connection?.id === connectionId
           ) {
             closedTabIds.push(tab.id);
             return false;

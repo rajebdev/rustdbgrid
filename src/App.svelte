@@ -20,6 +20,7 @@
   import {
     createMenuHandlers,
     handleOpenTableTab,
+    handleOpenProcedureTab,
   } from "./handlers/menuHandlers";
   import { initializeApplication } from "./services/appService";
   import { initializeTheme, toggleTheme } from "./services/themeService";
@@ -221,6 +222,9 @@
       on:startResize={handleStartResize}
       on:openTableTab={(e) => {
         handleOpenTableTab(e, tabStore, tabDataStore, getTableData);
+      }}
+      on:openProcedureTab={(e) => {
+        handleOpenProcedureTab(e, tabStore, tabDataStore);
       }}
     />
   </svelte:fragment>

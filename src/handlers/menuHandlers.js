@@ -1,6 +1,7 @@
 import { fileService, showMessage, showError } from "../services/fileService";
 import { get } from "svelte/store";
 import { buildPaginatedQuery } from "../utils/defaultQueries";
+import { executeQuery } from "../utils/tauri";
 
 /**
  * Handle opening table tab
@@ -75,6 +76,16 @@ export async function handleOpenTableTab(
     console.error("Failed to load table data:", error);
     await showError(`Failed to load table data: ${error.message || error}`);
   }
+}
+
+/**
+ * Handle opening procedure tab (shows procedure source code)
+ */
+export async function handleOpenProcedureTab(event, tabStore, tabDataStore) {
+  const { procedure, database, connection } = event.detail;
+
+  // Add a procedure tab
+  tabStore.addProcedureTab(procedure, database, connection);
 }
 
 /**

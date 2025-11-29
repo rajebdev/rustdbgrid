@@ -112,6 +112,26 @@ export async function getTables(config, database) {
   return await invoke("get_tables", { config, database });
 }
 
+export async function getViews(config, database) {
+  return await invoke("get_views", { config, database });
+}
+
+export async function getIndexes(config, database) {
+  return await invoke("get_indexes", { config, database });
+}
+
+export async function getProcedures(config, database) {
+  return await invoke("get_procedures", { config, database });
+}
+
+export async function getTriggers(config, database) {
+  return await invoke("get_triggers", { config, database });
+}
+
+export async function getEvents(config, database) {
+  return await invoke("get_events", { config, database });
+}
+
 export async function getTableSchema(config, database, table) {
   return await invoke("get_table_schema", { config, database, table });
 }

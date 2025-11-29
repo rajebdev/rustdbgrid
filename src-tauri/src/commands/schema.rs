@@ -49,6 +49,106 @@ pub async fn get_tables(
 }
 
 #[tauri::command]
+pub async fn get_views(
+    config: ConnectionConfig,
+    database: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<View>, String> {
+    let connection_id = config.id.clone();
+
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_views(&database).await }.boxed()
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn get_indexes(
+    config: ConnectionConfig,
+    database: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<DbIndex>, String> {
+    let connection_id = config.id.clone();
+
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_indexes(&database).await }.boxed()
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn get_procedures(
+    config: ConnectionConfig,
+    database: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<Procedure>, String> {
+    let connection_id = config.id.clone();
+
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_procedures(&database).await }.boxed()
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn get_triggers(
+    config: ConnectionConfig,
+    database: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<Trigger>, String> {
+    let connection_id = config.id.clone();
+
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_triggers(&database).await }.boxed()
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn get_events(
+    config: ConnectionConfig,
+    database: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<Event>, String> {
+    let connection_id = config.id.clone();
+
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_events(&database).await }.boxed()
+        })
+        .await
+}
+
+#[tauri::command]
 pub async fn get_table_schema(
     config: ConnectionConfig,
     database: String,
