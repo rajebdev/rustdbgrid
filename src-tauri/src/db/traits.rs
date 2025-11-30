@@ -1,6 +1,7 @@
 use crate::models::{connection::*, query_result::*, schema::*};
 use anyhow::Result;
 use async_trait::async_trait;
+use std::any::Any;
 
 #[async_trait]
 pub trait DatabaseConnection: Send + Sync {
@@ -79,6 +80,9 @@ pub trait DatabaseConnection: Send + Sync {
     async fn get_events(&mut self, _database: &str, _schema: Option<&str>) -> Result<Vec<Event>> {
         Ok(vec![])
     }
+
+    // Downcast helper for specific implementations
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 pub fn create_connection(db_type: &DatabaseType) -> Box<dyn DatabaseConnection> {

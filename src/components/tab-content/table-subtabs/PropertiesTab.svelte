@@ -21,6 +21,14 @@
   let loadingTriggers = false;
   let error = null;
 
+  // PostgreSQL-specific data
+  let pgConstraints = null;
+  let pgForeignKeys = null;
+  let pgIndexes = null;
+  let pgReferences = null;
+  let pgPartitions = null;
+  let loadingPgData = false;
+
   // Get database type
   $: conn = connection || $activeConnection;
   $: isMssql = conn?.db_type === "MSSQL";
@@ -91,6 +99,81 @@
     loadTableStatistics();
     loadTableReferences();
     loadTableTriggers();
+    if (isPostgres) {
+      loadPgData();
+    }
+  }
+
+  async function loadPgData() {
+    if (!isPostgres) return;
+
+    try {
+      loadingPgData = true;
+      const conn = connection || $activeConnection;
+
+      if (!conn || !tableInfo) {
+        return;
+      }
+
+      // Build table identifier with schema for PostgreSQL
+      let tableIdentifier = tableInfo.name;
+      if (tableInfo.schema) {
+        tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
+      }
+
+      // Load all PostgreSQL-specific data in parallel
+      const [constraints, foreignKeys, indexes, references, partitions] =
+        await Promise.all([
+          invoke("get_pg_constraints", {
+            config: conn,
+            database: tableInfo.database,
+            table: tableIdentifier,
+          }),
+          invoke("get_pg_foreign_keys", {
+            config: conn,
+            database: tableInfo.database,
+            table: tableIdentifier,
+          }),
+          invoke("get_pg_indexes", {
+            config: conn,
+            database: tableInfo.database,
+            table: tableIdentifier,
+          }),
+          invoke("get_pg_references", {
+            config: conn,
+            database: tableInfo.database,
+            table: tableIdentifier,
+          }),
+          invoke("get_pg_partitions", {
+            config: conn,
+            database: tableInfo.database,
+            table: tableIdentifier,
+          }),
+        ]);
+
+      pgConstraints = constraints;
+      pgForeignKeys = foreignKeys;
+      pgIndexes = indexes;
+      pgReferences = references;
+      pgPartitions = partitions;
+
+      console.log("PostgreSQL data loaded:", {
+        constraints,
+        foreignKeys,
+        indexes,
+        references,
+        partitions,
+      });
+    } catch (e) {
+      console.error("Error loading PostgreSQL data:", e);
+      pgConstraints = [];
+      pgForeignKeys = [];
+      pgIndexes = [];
+      pgReferences = [];
+      pgPartitions = [];
+    } finally {
+      loadingPgData = false;
+    }
   }
 
   async function loadTableSchema() {
@@ -379,14 +462,47 @@
           <table class="schema-table">
             <thead>
               <tr>
-                <th class="col-name">Constraint Name</th>
-                <th class="col-type">Type</th>
-                <th class="col-type">Columns</th>
-                <th class="col-comment">Details</th>
+                {#if isPostgres}
+                  <th class="col-name">Name</th>
+                  <th class="col-type">Attribute</th>
+                  <th class="col-type">Owner</th>
+                  <th class="col-type">Type</th>
+                  <th class="col-comment">Expression</th>
+                  <th class="col-comment">Comment</th>
+                {:else}
+                  <th class="col-name">Constraint Name</th>
+                  <th class="col-type">Type</th>
+                  <th class="col-type">Columns</th>
+                  <th class="col-comment">Details</th>
+                {/if}
               </tr>
             </thead>
             <tbody>
-              {#if tableSchema?.indexes && tableSchema.indexes.length > 0}
+              {#if isPostgres}
+                {#if loadingPgData}
+                  <tr>
+                    <td colspan="6" class="no-data">
+                      <i class="fas fa-spinner fa-spin"></i> Loading constraints...
+                    </td>
+                  </tr>
+                {:else if pgConstraints && pgConstraints.length > 0}
+                  {#each pgConstraints as constraint}
+                    <tr>
+                      <td class="cell-name">{constraint.name}</td>
+                      <td class="cell-type">{constraint.attribute}</td>
+                      <td class="cell-type">{constraint.owner || "N/A"}</td>
+                      <td class="cell-type">{constraint.constraint_type}</td>
+                      <td class="cell-comment">{constraint.expression || ""}</td
+                      >
+                      <td class="cell-comment">{constraint.comment || ""}</td>
+                    </tr>
+                  {/each}
+                {:else}
+                  <tr>
+                    <td colspan="6" class="no-data">No constraints found</td>
+                  </tr>
+                {/if}
+              {:else if tableSchema?.indexes && tableSchema.indexes.length > 0}
                 {#each tableSchema.indexes.filter((idx) => idx.name === "PRIMARY" || idx.is_unique) as constraint}
                   <tr>
                     <td class="cell-name">{constraint.name}</td>
@@ -416,18 +532,51 @@
           <table class="schema-table">
             <thead>
               <tr>
-                <th class="col-name">Name</th>
-                <th class="col-type">Column</th>
-                <th class="col-type">Owner</th>
-                <th class="col-type">Ref Table</th>
-                <th class="col-type">Type</th>
-                <th class="col-type">Ref Object</th>
-                <th class="col-type">On Delete</th>
-                <th class="col-type">On Update</th>
+                {#if isPostgres}
+                  <th class="col-name">Name</th>
+                  <th class="col-type">Owner</th>
+                  <th class="col-type">Type</th>
+                  <th class="col-comment">Comment</th>
+                  <th class="col-type">Associated Entity</th>
+                  <th class="col-type">Sequence Num</th>
+                {:else}
+                  <th class="col-name">Name</th>
+                  <th class="col-type">Column</th>
+                  <th class="col-type">Owner</th>
+                  <th class="col-type">Ref Table</th>
+                  <th class="col-type">Type</th>
+                  <th class="col-type">Ref Object</th>
+                  <th class="col-type">On Delete</th>
+                  <th class="col-type">On Update</th>
+                {/if}
               </tr>
             </thead>
             <tbody>
-              {#if loadingReferences}
+              {#if isPostgres}
+                {#if loadingPgData}
+                  <tr>
+                    <td colspan="6" class="no-data">
+                      <i class="fas fa-spinner fa-spin"></i> Loading references...
+                    </td>
+                  </tr>
+                {:else if pgReferences && pgReferences.length > 0}
+                  {#each pgReferences as ref}
+                    <tr>
+                      <td class="cell-name">{ref.name}</td>
+                      <td class="cell-type">{ref.owner || "N/A"}</td>
+                      <td class="cell-type">{ref.ref_type}</td>
+                      <td class="cell-comment">{ref.comment || ""}</td>
+                      <td class="cell-type">{ref.associated_entity}</td>
+                      <td class="cell-type">{ref.sequence_num || "N/A"}</td>
+                    </tr>
+                  {/each}
+                {:else}
+                  <tr>
+                    <td colspan="6" class="no-data">No references found</td>
+                  </tr>
+                {/if}
+              {:else}
+                {#if loadingReferences}
                 <tr>
                   <td colspan="8" class="no-data">
                     <i class="fas fa-spinner fa-spin"></i> Loading references...
@@ -452,10 +601,11 @@
                     >
                   </tr>
                 {/each}
-              {:else}
-                <tr>
-                  <td colspan="8" class="no-data">No references found</td>
-                </tr>
+                {:else}
+                  <tr>
+                    <td colspan="8" class="no-data">No references found</td>
+                  </tr>
+                {/if}
               {/if}
             </tbody>
           </table>
@@ -504,21 +654,86 @@
           <table class="schema-table">
             <thead>
               <tr>
-                <th class="col-name">Partition Name</th>
-                <th class="col-type">Method</th>
-                <th class="col-type">Expression</th>
-                <th class="col-comment">Rows</th>
-                <th class="col-comment">Size</th>
+                {#if isPostgres}
+                  <th style="min-width: 150px;">Table Name</th>
+                  <th style="min-width: 100px;">Object ID</th>
+                  <th style="min-width: 100px;">Owner</th>
+                  <th style="min-width: 100px;">Tablespace</th>
+                  <th style="min-width: 120px;">Row Count Estimate</th>
+                  <th style="min-width: 120px; text-align: center;">Has Row Level Security</th>
+                  <th style="min-width: 80px;">Partitions</th>
+                  <th style="min-width: 200px;">Partition By</th>
+                  <th style="min-width: 200px;">Partitions Expression</th>
+                  <th style="min-width: 150px;">Extra Options</th>
+                  <th style="min-width: 150px;">Comment</th>
+                {:else}
+                  <th class="col-name">Partition Name</th>
+                  <th class="col-type">Method</th>
+                  <th class="col-type">Expression</th>
+                  <th class="col-comment">Rows</th>
+                  <th class="col-comment">Size</th>
+                {/if}
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colspan="5" class="no-data">
-                  {tableSchema?.partitioned
-                    ? "Partition data requires additional query"
-                    : "Table is not partitioned"}
-                </td>
-              </tr>
+              {#if isPostgres}
+                {#if loadingPgData}
+                  <tr>
+                    <td colspan="11" class="no-data">
+                      <i class="fas fa-spinner fa-spin"></i> Loading partitions...
+                    </td>
+                  </tr>
+                {:else if pgPartitions && pgPartitions.length > 0}
+                  {#each pgPartitions as partition}
+                    <tr>
+                      <td class="cell-name">{partition.table_name}</td>
+                      <td class="cell-type">{partition.object_id || "N/A"}</td>
+                      <td class="cell-type">{partition.owner || "N/A"}</td>
+                      <td class="cell-type"
+                        >{partition.tablespace || "default"}</td
+                      >
+                      <td class="cell-type">
+                        {partition.rowcount_estimate
+                          ? formatNumber(partition.rowcount_estimate)
+                          : "N/A"}
+                      </td>
+                      <td class="cell-check">
+                        <input
+                          type="checkbox"
+                          checked={partition.has_row_level_security}
+                          readonly
+                          style="pointer-events: none;"
+                        />
+                      </td>
+                      <td class="cell-type">{partition.partitions || 0}</td>
+                      <td class="cell-comment"
+                        >{partition.partition_by || "N/A"}</td
+                      >
+                      <td class="cell-comment"
+                        >{partition.partitions_expression || "N/A"}</td
+                      >
+                      <td class="cell-comment"
+                        >{partition.extra_options || "N/A"}</td
+                      >
+                      <td class="cell-comment">{partition.comment || ""}</td>
+                    </tr>
+                  {/each}
+                {:else}
+                  <tr>
+                    <td colspan="11" class="no-data"
+                      >Table is not partitioned or no partitions found</td
+                    >
+                  </tr>
+                {/if}
+              {:else}
+                <tr>
+                  <td colspan="5" class="no-data">
+                    {tableSchema?.partitioned
+                      ? "Partition data requires additional query"
+                      : "Table is not partitioned"}
+                  </td>
+                </tr>
+              {/if}
             </tbody>
           </table>
         </div>
@@ -728,18 +943,75 @@
           <table class="schema-table">
             <thead>
               <tr>
-                <th class="col-name">Index Name</th>
-                <th class="col-type">Column</th>
-                <th class="col-type">Table</th>
-                <th class="col-type">Index Type</th>
-                <th class="col-check">Ascending</th>
-                <th class="col-check">Nullable</th>
-                <th class="col-check">Unique</th>
-                <th class="col-comment">Extra</th>
+                {#if isPostgres}
+                  <th class="col-type">Column</th>
+                  <th class="col-name">Index Name</th>
+                  <th class="col-type">Table</th>
+                  <th class="col-check">Ascending</th>
+                  <th class="col-check">Nullable</th>
+                  <th class="col-check">Unique</th>
+                  <th class="col-type">Operator Class</th>
+                  <th class="col-comment">Predicate</th>
+                {:else}
+                  <th class="col-name">Index Name</th>
+                  <th class="col-type">Column</th>
+                  <th class="col-type">Table</th>
+                  <th class="col-type">Index Type</th>
+                  <th class="col-check">Ascending</th>
+                  <th class="col-check">Nullable</th>
+                  <th class="col-check">Unique</th>
+                  <th class="col-comment">Extra</th>
+                {/if}
               </tr>
             </thead>
             <tbody>
-              {#if tableSchema?.indexes && tableSchema.indexes.length > 0}
+              {#if isPostgres}
+                {#if loadingPgData}
+                  <tr>
+                    <td colspan="8" class="no-data">
+                      <i class="fas fa-spinner fa-spin"></i> Loading indexes...
+                    </td>
+                  </tr>
+                {:else if pgIndexes && pgIndexes.length > 0}
+                  {#each pgIndexes as index}
+                    <tr>
+                      <td class="cell-type">{index.column}</td>
+                      <td class="cell-name">{index.idx_name}</td>
+                      <td class="cell-type">{index.table}</td>
+                      <td class="cell-check">
+                        <input
+                          type="checkbox"
+                          checked={index.ascending !== false}
+                          readonly
+                          style="pointer-events: none;"
+                        />
+                      </td>
+                      <td class="cell-check">
+                        <input
+                          type="checkbox"
+                          checked={index.nullable === true}
+                          readonly
+                          style="pointer-events: none;"
+                        />
+                      </td>
+                      <td class="cell-check">
+                        <input
+                          type="checkbox"
+                          checked={index.unique}
+                          readonly
+                          style="pointer-events: none;"
+                        />
+                      </td>
+                      <td class="cell-type">{index.operator_class || "N/A"}</td>
+                      <td class="cell-comment">{index.predicate || ""}</td>
+                    </tr>
+                  {/each}
+                {:else}
+                  <tr>
+                    <td colspan="8" class="no-data">No indexes found</td>
+                  </tr>
+                {/if}
+              {:else if tableSchema?.indexes && tableSchema.indexes.length > 0}
                 {#each tableSchema.indexes as index}
                   <tr>
                     <td class="cell-name">{index.name}</td>
@@ -786,18 +1058,58 @@
           <table class="schema-table">
             <thead>
               <tr>
-                <th class="col-name">Name</th>
-                <th class="col-type">Column</th>
-                <th class="col-type">Owner</th>
-                <th class="col-type">Ref Table</th>
-                <th class="col-type">Type</th>
-                <th class="col-type">Ref Object</th>
-                <th class="col-type">On Delete</th>
-                <th class="col-type">On Update</th>
+                {#if isPostgres}
+                  <th class="col-name">Name</th>
+                  <th class="col-type">Attribute</th>
+                  <th class="col-type">Owner</th>
+                  <th class="col-type">Type</th>
+                  <th class="col-type">Reference Column</th>
+                  <th class="col-type">Associated Entity</th>
+                  <th class="col-type">Match Type</th>
+                  <th class="col-type">Delete Rule</th>
+                  <th class="col-type">Update Rule</th>
+                  <th class="col-comment">Comment</th>
+                {:else}
+                  <th class="col-name">Name</th>
+                  <th class="col-type">Column</th>
+                  <th class="col-type">Owner</th>
+                  <th class="col-type">Ref Table</th>
+                  <th class="col-type">Type</th>
+                  <th class="col-type">Ref Object</th>
+                  <th class="col-type">On Delete</th>
+                  <th class="col-type">On Update</th>
+                {/if}
               </tr>
             </thead>
             <tbody>
-              {#if tableSchema?.foreign_keys && tableSchema.foreign_keys.length > 0}
+              {#if isPostgres}
+                {#if loadingPgData}
+                  <tr>
+                    <td colspan="10" class="no-data">
+                      <i class="fas fa-spinner fa-spin"></i> Loading foreign keys...
+                    </td>
+                  </tr>
+                {:else if pgForeignKeys && pgForeignKeys.length > 0}
+                  {#each pgForeignKeys as fk}
+                    <tr>
+                      <td class="cell-name">{fk.name}</td>
+                      <td class="cell-type">{fk.attribute}</td>
+                      <td class="cell-type">{fk.owner || "N/A"}</td>
+                      <td class="cell-type">{fk.fk_type}</td>
+                      <td class="cell-type">{fk.reference_column}</td>
+                      <td class="cell-type">{fk.associated_entity}</td>
+                      <td class="cell-type">{fk.match_type || "SIMPLE"}</td>
+                      <td class="cell-type">{fk.delete_rule || "NO ACTION"}</td>
+                      <td class="cell-type">{fk.update_rule || "NO ACTION"}</td>
+                      <td class="cell-comment">{fk.comment || ""}</td>
+                    </tr>
+                  {/each}
+                {:else}
+                  <tr>
+                    <td colspan="10" class="no-data">No foreign keys found</td>
+                  </tr>
+                {/if}
+              {:else if tableSchema?.foreign_keys && tableSchema.foreign_keys.length > 0}
                 {#each tableSchema.foreign_keys as fk}
                   <tr>
                     <td class="cell-name">{fk.name}</td>
@@ -1066,6 +1378,14 @@ ${tableSchema?.columns?.map((col, i) => `  \`${col.name}\` ${col.data_type}${!co
 
   .col-comment {
     min-width: 150px;
+  }
+
+  /* Partition table specific styling */
+  .schema-table td.cell-comment,
+  .schema-table td.cell-type {
+    word-break: break-word;
+    white-space: normal;
+    max-width: 300px;
   }
 
   .cell-icon {

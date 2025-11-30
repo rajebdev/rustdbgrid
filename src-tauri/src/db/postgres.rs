@@ -1163,4 +1163,447 @@ impl DatabaseConnection for PostgresConnection {
             }
         }
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
+// PostgreSQL-specific implementations
+impl PostgresConnection {
+    pub async fn get_pg_constraints(
+        &mut self,
+        _database: &str,
+        table: &str,
+    ) -> Result<Vec<crate::models::schema::PgConstraint>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not connected to database"))?;
+
+        let (schema, table_name) = if table.contains('.') {
+            let parts: Vec<&str> = table.split('.').collect();
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            ("public".to_string(), table.to_string())
+        };
+
+        let schema_lower = schema.to_lowercase();
+        let table_lower = table_name.to_lowercase();
+
+        let query = format!(
+            "SELECT 
+                con.conname as constraint_name,
+                CASE con.contype
+                    WHEN 'c' THEN 'CHECK'
+                    WHEN 'f' THEN 'FOREIGN KEY'
+                    WHEN 'p' THEN 'PRIMARY KEY'
+                    WHEN 'u' THEN 'UNIQUE'
+                    WHEN 't' THEN 'TRIGGER'
+                    WHEN 'x' THEN 'EXCLUSION'
+                    ELSE con.contype::text
+                END as constraint_type,
+                array_to_string(ARRAY(
+                    SELECT a.attname
+                    FROM unnest(con.conkey) AS u(attnum)
+                    JOIN pg_attribute AS a ON a.attnum = u.attnum AND a.attrelid = con.conrelid
+                ), ', ') as attributes,
+                pg_get_constraintdef(con.oid) as expression,
+                pg_catalog.obj_description(con.oid, 'pg_constraint') as comment,
+                n.nspname as owner
+            FROM pg_constraint con
+            JOIN pg_class c ON c.oid = con.conrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = '{}'
+                AND c.relname = '{}'
+                AND con.contype IN ('c', 'p', 'u', 'x')
+            ORDER BY con.contype, con.conname",
+            schema_lower, table_lower
+        );
+
+        let rows = sqlx::query(&query).fetch_all(pool).await?;
+
+        let constraints: Vec<crate::models::schema::PgConstraint> = rows
+            .iter()
+            .map(|row| {
+                let name: String = row.try_get("constraint_name").unwrap_or_default();
+                let constraint_type: String = row.try_get("constraint_type").unwrap_or_default();
+                let attribute: String = row.try_get("attributes").unwrap_or_default();
+                let expression: Option<String> = row.try_get("expression").ok();
+                let comment: Option<String> = row.try_get("comment").ok();
+                let owner: Option<String> = row.try_get("owner").ok();
+
+                crate::models::schema::PgConstraint {
+                    name,
+                    attribute,
+                    owner,
+                    constraint_type,
+                    expression,
+                    comment,
+                }
+            })
+            .collect();
+
+        Ok(constraints)
+    }
+
+    pub async fn get_pg_foreign_keys(
+        &mut self,
+        _database: &str,
+        table: &str,
+    ) -> Result<Vec<crate::models::schema::PgForeignKey>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not connected to database"))?;
+
+        let (schema, table_name) = if table.contains('.') {
+            let parts: Vec<&str> = table.split('.').collect();
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            ("public".to_string(), table.to_string())
+        };
+
+        let schema_lower = schema.to_lowercase();
+        let table_lower = table_name.to_lowercase();
+
+        let query = format!(
+            "SELECT 
+                con.conname as fk_name,
+                array_to_string(ARRAY(
+                    SELECT a.attname
+                    FROM unnest(con.conkey) AS u(attnum)
+                    JOIN pg_attribute AS a ON a.attnum = u.attnum AND a.attrelid = con.conrelid
+                ), ', ') as attributes,
+                array_to_string(ARRAY(
+                    SELECT a.attname
+                    FROM unnest(con.confkey) AS u(attnum)
+                    JOIN pg_attribute AS a ON a.attnum = u.attnum AND a.attrelid = con.confrelid
+                ), ', ') as reference_columns,
+                nf.nspname || '.' || cf.relname as associated_entity,
+                CASE con.confmatchtype
+                    WHEN 'f' THEN 'FULL'
+                    WHEN 'p' THEN 'PARTIAL'
+                    WHEN 's' THEN 'SIMPLE'
+                    ELSE 'NONE'
+                END as match_type,
+                CASE con.confdeltype
+                    WHEN 'a' THEN 'NO ACTION'
+                    WHEN 'r' THEN 'RESTRICT'
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    WHEN 'd' THEN 'SET DEFAULT'
+                    ELSE 'NO ACTION'
+                END as delete_rule,
+                CASE con.confupdtype
+                    WHEN 'a' THEN 'NO ACTION'
+                    WHEN 'r' THEN 'RESTRICT'
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    WHEN 'd' THEN 'SET DEFAULT'
+                    ELSE 'NO ACTION'
+                END as update_rule,
+                pg_catalog.obj_description(con.oid, 'pg_constraint') as comment,
+                n.nspname as owner,
+                'FOREIGN KEY' as fk_type
+            FROM pg_constraint con
+            JOIN pg_class c ON c.oid = con.conrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_class cf ON cf.oid = con.confrelid
+            JOIN pg_namespace nf ON nf.oid = cf.relnamespace
+            WHERE n.nspname = '{}'
+                AND c.relname = '{}'
+                AND con.contype = 'f'
+            ORDER BY con.conname",
+            schema_lower, table_lower
+        );
+
+        let rows = sqlx::query(&query).fetch_all(pool).await?;
+
+        let foreign_keys: Vec<crate::models::schema::PgForeignKey> = rows
+            .iter()
+            .map(|row| {
+                let name: String = row.try_get("fk_name").unwrap_or_default();
+                let attribute: String = row.try_get("attributes").unwrap_or_default();
+                let reference_column: String = row.try_get("reference_columns").unwrap_or_default();
+                let associated_entity: String =
+                    row.try_get("associated_entity").unwrap_or_default();
+                let match_type: Option<String> = row.try_get("match_type").ok();
+                let delete_rule: Option<String> = row.try_get("delete_rule").ok();
+                let update_rule: Option<String> = row.try_get("update_rule").ok();
+                let comment: Option<String> = row.try_get("comment").ok();
+                let owner: Option<String> = row.try_get("owner").ok();
+                let fk_type: String = row.try_get("fk_type").unwrap_or_default();
+
+                crate::models::schema::PgForeignKey {
+                    name,
+                    attribute,
+                    owner,
+                    fk_type,
+                    reference_column,
+                    associated_entity,
+                    match_type,
+                    delete_rule,
+                    update_rule,
+                    comment,
+                }
+            })
+            .collect();
+
+        Ok(foreign_keys)
+    }
+
+    pub async fn get_pg_indexes(
+        &mut self,
+        _database: &str,
+        table: &str,
+    ) -> Result<Vec<crate::models::schema::PgIndex>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not connected to database"))?;
+
+        let (schema, table_name) = if table.contains('.') {
+            let parts: Vec<&str> = table.split('.').collect();
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            ("public".to_string(), table.to_string())
+        };
+
+        let schema_lower = schema.to_lowercase();
+        let table_lower = table_name.to_lowercase();
+
+        let query = format!(
+            "SELECT 
+                i.relname as idx_name,
+                c.relname as table_name,
+                a.attname as column_name,
+                ix.indisunique as is_unique,
+                am.amname as index_type,
+                CASE 
+                    WHEN ix.indoption[array_position(ix.indkey::int[], a.attnum::int) - 1] & 1 = 1 THEN false
+                    ELSE true
+                END as ascending,
+                NOT a.attnotnull as nullable,
+                opc.opcname as operator_class,
+                pg_get_expr(ix.indpred, ix.indrelid) as predicate
+            FROM pg_index ix
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_class c ON c.oid = ix.indrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_am am ON am.oid = i.relam
+            CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS u(attnum, ord)
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = u.attnum
+            LEFT JOIN pg_opclass opc ON opc.oid = ix.indclass[u.ord - 1]
+            WHERE n.nspname = '{}'
+                AND c.relname = '{}'
+                AND NOT ix.indisprimary
+            ORDER BY i.relname, u.ord",
+            schema_lower, table_lower
+        );
+
+        let rows = sqlx::query(&query).fetch_all(pool).await?;
+
+        let indexes: Vec<crate::models::schema::PgIndex> = rows
+            .iter()
+            .map(|row| {
+                let idx_name: String = row.try_get("idx_name").unwrap_or_default();
+                let table: String = row.try_get("table_name").unwrap_or_default();
+                let column: String = row.try_get("column_name").unwrap_or_default();
+                let unique: bool = row.try_get("is_unique").unwrap_or(false);
+                let ascending: Option<bool> = row.try_get("ascending").ok();
+                let nullable: Option<bool> = row.try_get("nullable").ok();
+                let operator_class: Option<String> = row.try_get("operator_class").ok();
+                let predicate: Option<String> = row.try_get("predicate").ok();
+
+                crate::models::schema::PgIndex {
+                    column,
+                    idx_name,
+                    table,
+                    ascending,
+                    nullable,
+                    unique,
+                    operator_class,
+                    predicate,
+                }
+            })
+            .collect();
+
+        Ok(indexes)
+    }
+
+    pub async fn get_pg_references(
+        &mut self,
+        _database: &str,
+        table: &str,
+    ) -> Result<Vec<crate::models::schema::PgReference>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not connected to database"))?;
+
+        let (schema, table_name) = if table.contains('.') {
+            let parts: Vec<&str> = table.split('.').collect();
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            ("public".to_string(), table.to_string())
+        };
+
+        let schema_lower = schema.to_lowercase();
+        let table_lower = table_name.to_lowercase();
+
+        let query = format!(
+            "SELECT 
+                con.conname as ref_name,
+                'FOREIGN KEY' as ref_type,
+                n.nspname || '.' || c.relname as associated_entity,
+                NULL::int as sequence_num,
+                pg_catalog.obj_description(con.oid, 'pg_constraint') as comment,
+                n.nspname as owner
+            FROM pg_constraint con
+            JOIN pg_class c ON c.oid = con.conrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_class cf ON cf.oid = con.confrelid
+            JOIN pg_namespace nf ON nf.oid = cf.relnamespace
+            WHERE nf.nspname = '{}'
+                AND cf.relname = '{}'
+                AND con.contype = 'f'
+            ORDER BY con.conname",
+            schema_lower, table_lower
+        );
+
+        let rows = sqlx::query(&query).fetch_all(pool).await?;
+
+        let references: Vec<crate::models::schema::PgReference> = rows
+            .iter()
+            .map(|row| {
+                let name: String = row.try_get("ref_name").unwrap_or_default();
+                let ref_type: String = row.try_get("ref_type").unwrap_or_default();
+                let associated_entity: String =
+                    row.try_get("associated_entity").unwrap_or_default();
+                let sequence_num: Option<i32> = row.try_get("sequence_num").ok();
+                let comment: Option<String> = row.try_get("comment").ok();
+                let owner: Option<String> = row.try_get("owner").ok();
+
+                crate::models::schema::PgReference {
+                    name,
+                    owner,
+                    ref_type,
+                    comment,
+                    associated_entity,
+                    sequence_num,
+                }
+            })
+            .collect();
+
+        Ok(references)
+    }
+
+    pub async fn get_pg_partitions(
+        &mut self,
+        _database: &str,
+        table: &str,
+    ) -> Result<Vec<crate::models::schema::PgPartition>> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not connected to database"))?;
+
+        let (schema, table_name) = if table.contains('.') {
+            let parts: Vec<&str> = table.split('.').collect();
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            ("public".to_string(), table.to_string())
+        };
+
+        let schema_lower = schema.to_lowercase();
+        let table_lower = table_name.to_lowercase();
+
+        let query = format!(
+            "SELECT 
+                c.relname as table_name,
+                c.oid::text as object_id,
+                n.nspname as owner,
+                ts.spcname as tablespace,
+                c.reltuples::bigint as rowcount_estimate,
+                c.relrowsecurity as has_row_level_security,
+                (SELECT count(*) FROM pg_inherits WHERE inhparent = c.oid) as partition_count,
+                CASE 
+                    WHEN c.relkind = 'p' THEN 
+                        pg_get_partkeydef(c.oid)
+                    ELSE NULL
+                END as partition_by,
+                pg_catalog.obj_description(c.oid, 'pg_class') as comment,
+                c.reloptions as extra_options
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_tablespace ts ON ts.oid = c.reltablespace
+            WHERE n.nspname = '{}'
+                AND c.relname = '{}'
+                AND c.relkind IN ('r', 'p')
+            
+            UNION ALL
+            
+            SELECT 
+                child.relname as table_name,
+                child.oid::text as object_id,
+                n.nspname as owner,
+                ts.spcname as tablespace,
+                child.reltuples::bigint as rowcount_estimate,
+                child.relrowsecurity as has_row_level_security,
+                0 as partition_count,
+                pg_get_expr(child.relpartbound, child.oid) as partition_by,
+                pg_catalog.obj_description(child.oid, 'pg_class') as comment,
+                child.reloptions as extra_options
+            FROM pg_inherits i
+            JOIN pg_class parent ON parent.oid = i.inhparent
+            JOIN pg_class child ON child.oid = i.inhrelid
+            JOIN pg_namespace n ON n.oid = child.relnamespace
+            LEFT JOIN pg_tablespace ts ON ts.oid = child.reltablespace
+            JOIN pg_namespace pn ON pn.oid = parent.relnamespace
+            WHERE pn.nspname = '{}'
+                AND parent.relname = '{}'
+            ORDER BY table_name",
+            schema_lower, table_lower, schema_lower, table_lower
+        );
+
+        let rows = sqlx::query(&query).fetch_all(pool).await?;
+
+        let partitions: Vec<crate::models::schema::PgPartition> = rows
+            .iter()
+            .map(|row| {
+                let table_name: String = row.try_get("table_name").unwrap_or_default();
+                let object_id: Option<String> = row.try_get("object_id").ok();
+                let owner: Option<String> = row.try_get("owner").ok();
+                let tablespace: Option<String> = row.try_get("tablespace").ok();
+                let rowcount_estimate: Option<i64> = row.try_get("rowcount_estimate").ok();
+                let has_row_level_security: bool =
+                    row.try_get("has_row_level_security").unwrap_or(false);
+                let partitions: Option<i32> = row.try_get("partition_count").ok();
+                let partition_by: Option<String> = row.try_get("partition_by").ok();
+                let comment: Option<String> = row.try_get("comment").ok();
+                let extra_options: Option<String> = row
+                    .try_get::<Option<Vec<String>>, _>("extra_options")
+                    .ok()
+                    .flatten()
+                    .map(|opts| opts.join(", "));
+
+                crate::models::schema::PgPartition {
+                    table_name,
+                    object_id,
+                    owner,
+                    tablespace,
+                    rowcount_estimate,
+                    has_row_level_security,
+                    partitions,
+                    partition_by: partition_by.clone(),
+                    partitions_expression: partition_by,
+                    extra_options,
+                    comment,
+                }
+            })
+            .collect();
+
+        Ok(partitions)
+    }
 }

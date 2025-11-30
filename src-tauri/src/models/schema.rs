@@ -130,3 +130,65 @@ pub struct TableStatistics {
     pub table_size: Option<String>,
     pub pages: Option<i64>,
 }
+
+// PostgreSQL specific models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PgConstraint {
+    pub name: String,
+    pub attribute: String,
+    pub owner: Option<String>,
+    pub constraint_type: String, // CHECK, UNIQUE, PRIMARY KEY, etc.
+    pub expression: Option<String>,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PgForeignKey {
+    pub name: String,
+    pub attribute: String,
+    pub owner: Option<String>,
+    pub fk_type: String,
+    pub reference_column: String,
+    pub associated_entity: String,
+    pub match_type: Option<String>,
+    pub delete_rule: Option<String>,
+    pub update_rule: Option<String>,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PgIndex {
+    pub column: String,
+    pub idx_name: String,
+    pub table: String,
+    pub ascending: Option<bool>,
+    pub nullable: Option<bool>,
+    pub unique: bool,
+    pub operator_class: Option<String>,
+    pub predicate: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PgReference {
+    pub name: String,
+    pub owner: Option<String>,
+    pub ref_type: String,
+    pub comment: Option<String>,
+    pub associated_entity: String,
+    pub sequence_num: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PgPartition {
+    pub table_name: String,
+    pub object_id: Option<String>,
+    pub owner: Option<String>,
+    pub tablespace: Option<String>,
+    pub rowcount_estimate: Option<i64>,
+    pub has_row_level_security: bool,
+    pub partitions: Option<i32>,
+    pub partition_by: Option<String>,
+    pub partitions_expression: Option<String>,
+    pub extra_options: Option<String>,
+    pub comment: Option<String>,
+}

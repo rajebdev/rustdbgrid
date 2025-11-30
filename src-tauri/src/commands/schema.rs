@@ -270,3 +270,159 @@ pub async fn get_table_data(
         })
         .await
 }
+
+// PostgreSQL-specific commands
+#[tauri::command]
+pub async fn get_pg_constraints(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<PgConstraint>, String> {
+    let connection_id = config.id.clone();
+
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move {
+                if let Some(pg_conn) = conn
+                    .as_any_mut()
+                    .downcast_mut::<crate::db::postgres::PostgresConnection>()
+                {
+                    pg_conn.get_pg_constraints(&database, &table).await
+                } else {
+                    Err(anyhow::anyhow!("Not a PostgreSQL connection"))
+                }
+            }
+            .boxed()
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn get_pg_foreign_keys(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<PgForeignKey>, String> {
+    let connection_id = config.id.clone();
+
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move {
+                if let Some(pg_conn) = conn
+                    .as_any_mut()
+                    .downcast_mut::<crate::db::postgres::PostgresConnection>()
+                {
+                    pg_conn.get_pg_foreign_keys(&database, &table).await
+                } else {
+                    Err(anyhow::anyhow!("Not a PostgreSQL connection"))
+                }
+            }
+            .boxed()
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn get_pg_indexes(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<PgIndex>, String> {
+    let connection_id = config.id.clone();
+
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move {
+                if let Some(pg_conn) = conn
+                    .as_any_mut()
+                    .downcast_mut::<crate::db::postgres::PostgresConnection>()
+                {
+                    pg_conn.get_pg_indexes(&database, &table).await
+                } else {
+                    Err(anyhow::anyhow!("Not a PostgreSQL connection"))
+                }
+            }
+            .boxed()
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn get_pg_references(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<PgReference>, String> {
+    let connection_id = config.id.clone();
+
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move {
+                if let Some(pg_conn) = conn
+                    .as_any_mut()
+                    .downcast_mut::<crate::db::postgres::PostgresConnection>()
+                {
+                    pg_conn.get_pg_references(&database, &table).await
+                } else {
+                    Err(anyhow::anyhow!("Not a PostgreSQL connection"))
+                }
+            }
+            .boxed()
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn get_pg_partitions(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<PgPartition>, String> {
+    let connection_id = config.id.clone();
+
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move {
+                if let Some(pg_conn) = conn
+                    .as_any_mut()
+                    .downcast_mut::<crate::db::postgres::PostgresConnection>()
+                {
+                    pg_conn.get_pg_partitions(&database, &table).await
+                } else {
+                    Err(anyhow::anyhow!("Not a PostgreSQL connection"))
+                }
+            }
+            .boxed()
+        })
+        .await
+}

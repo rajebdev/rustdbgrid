@@ -936,4 +936,8 @@ impl DatabaseConnection for MSSQLConnection {
 
         Ok(statistics)
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
