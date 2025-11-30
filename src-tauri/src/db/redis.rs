@@ -495,7 +495,7 @@ impl DatabaseConnection for RedisConnection {
             final_query: None,
         })
     }
-    
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }

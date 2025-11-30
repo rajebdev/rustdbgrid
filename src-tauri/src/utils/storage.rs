@@ -122,7 +122,7 @@ fn from_stored_connection(
 /// Load connections from file
 pub fn load_connections() -> Result<Vec<ConnectionConfig>, Box<dyn std::error::Error>> {
     let path = get_storage_path()?;
-    
+
     tracing::debug!("💾 [STORAGE] Loading connections from: {}", path.display());
 
     if !path.exists() {
@@ -143,7 +143,7 @@ pub fn load_connections() -> Result<Vec<ConnectionConfig>, Box<dyn std::error::E
             }
         }
     }
-    
+
     tracing::info!("✅ [STORAGE] Loaded {} connections", connections.len());
 
     Ok(connections)
@@ -154,8 +154,12 @@ pub fn save_connections(
     connections: &[ConnectionConfig],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let path = get_storage_path()?;
-    
-    tracing::debug!("💾 [STORAGE] Saving {} connections to: {}", connections.len(), path.display());
+
+    tracing::debug!(
+        "💾 [STORAGE] Saving {} connections to: {}",
+        connections.len(),
+        path.display()
+    );
 
     let mut stored_connections = Vec::new();
     for config in connections {
@@ -168,8 +172,11 @@ pub fn save_connections(
 
     let json = serde_json::to_string_pretty(&storage)?;
     fs::write(&path, json)?;
-    
-    tracing::info!("✅ [STORAGE] Saved {} connections successfully", connections.len());
+
+    tracing::info!(
+        "✅ [STORAGE] Saved {} connections successfully",
+        connections.len()
+    );
 
     Ok(())
 }

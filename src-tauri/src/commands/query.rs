@@ -12,9 +12,15 @@ pub async fn execute_query(
     state: State<'_, ConnectionStore>,
 ) -> Result<QueryResult, String> {
     let connection_id = config.id.clone();
-    
-    tracing::debug!("🔍 [QUERY] Executing query for connection: {}", connection_id);
-    tracing::debug!("🔍 [QUERY] Query: {}", query.chars().take(100).collect::<String>());
+
+    tracing::debug!(
+        "🔍 [QUERY] Executing query for connection: {}",
+        connection_id
+    );
+    tracing::debug!(
+        "🔍 [QUERY] Query: {}",
+        query.chars().take(100).collect::<String>()
+    );
 
     // Check if already connected, if not connect first
     if !state.pool.is_connected(&connection_id).await {
@@ -30,7 +36,7 @@ pub async fn execute_query(
             async move { conn.execute_query(&query_clone).await }.boxed()
         })
         .await;
-    
+
     match &result {
         Ok(res) => {
             tracing::info!(
@@ -43,7 +49,7 @@ pub async fn execute_query(
             tracing::error!("❌ [QUERY] Query execution failed: {}", e);
         }
     }
-    
+
     result
 }
 #[tauri::command]

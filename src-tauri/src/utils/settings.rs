@@ -91,7 +91,7 @@ pub fn get_settings_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
 /// Load settings from file
 pub fn load_settings() -> Result<AppSettings, Box<dyn std::error::Error>> {
     let path = get_settings_path()?;
-    
+
     tracing::debug!("⚙️ [SETTINGS] Loading settings from: {}", path.display());
 
     if !path.exists() {
@@ -102,7 +102,7 @@ pub fn load_settings() -> Result<AppSettings, Box<dyn std::error::Error>> {
 
     let content = fs::read_to_string(&path)?;
     let settings: AppSettings = serde_json::from_str(&content)?;
-    
+
     tracing::info!("✅ [SETTINGS] Settings loaded successfully");
 
     Ok(settings)
@@ -111,12 +111,12 @@ pub fn load_settings() -> Result<AppSettings, Box<dyn std::error::Error>> {
 /// Save settings to file
 pub fn save_settings(settings: &AppSettings) -> Result<(), Box<dyn std::error::Error>> {
     let path = get_settings_path()?;
-    
+
     tracing::debug!("⚙️ [SETTINGS] Saving settings to: {}", path.display());
-    
+
     let content = serde_json::to_string_pretty(settings)?;
     fs::write(&path, content)?;
-    
+
     tracing::info!("✅ [SETTINGS] Settings saved successfully");
 
     Ok(())

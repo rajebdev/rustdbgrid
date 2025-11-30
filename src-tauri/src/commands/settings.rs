@@ -12,11 +12,11 @@ pub async fn get_settings() -> Result<AppSettings, String> {
 pub async fn save_settings(settings: AppSettings) -> Result<(), String> {
     tracing::info!("⚙️ [SETTINGS] Saving application settings");
     let result = settings::save_settings(&settings).map_err(|e| e.to_string());
-    
+
     if result.is_ok() {
         tracing::info!("✅ [SETTINGS] Settings saved successfully");
     }
-    
+
     result
 }
 
@@ -39,7 +39,7 @@ pub async fn set_theme(theme: String) -> Result<(), String> {
     tracing::info!("🎨 [SETTINGS] Setting theme to: {}", theme);
     let value = serde_json::Value::String(theme.clone());
     settings::update_setting("theme", value).map_err(|e| e.to_string())?;
-    
+
     tracing::info!("✅ [SETTINGS] Theme set to '{}'", theme);
     Ok(())
 }

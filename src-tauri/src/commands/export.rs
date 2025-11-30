@@ -2,7 +2,10 @@ use crate::models::schema::*;
 
 #[tauri::command]
 pub async fn export_schema(schema: TableSchema) -> Result<String, String> {
-    tracing::info!("📤 [EXPORT] Exporting schema for table: {}", schema.table_name);
+    tracing::info!(
+        "📤 [EXPORT] Exporting schema for table: {}",
+        schema.table_name
+    );
     // TODO: Generate DDL statements
     Ok(format!(
         "-- Schema for table {}\n-- Not yet implemented",

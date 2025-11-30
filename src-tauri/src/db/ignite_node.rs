@@ -228,7 +228,7 @@ impl IgniteConnection {
         if SIDECAR_STARTED.load(Ordering::Relaxed) {
             return Ok(());
         }
-        
+
         tracing::info!("🚀 [IGNITE BRIDGE] Starting bridge sidecar...");
 
         // Get path to sidecar binary
@@ -320,7 +320,10 @@ impl IgniteConnection {
         }
 
         SIDECAR_STARTED.store(true, Ordering::Relaxed);
-        tracing::info!("✅ [IGNITE BRIDGE] Bridge sidecar started successfully with pipe: {}", *PIPE_NAME);
+        tracing::info!(
+            "✅ [IGNITE BRIDGE] Bridge sidecar started successfully with pipe: {}",
+            *PIPE_NAME
+        );
         Ok(())
     }
 
@@ -431,8 +434,12 @@ impl Drop for IgniteConnection {
 #[async_trait]
 impl DatabaseConnection for IgniteConnection {
     async fn connect(&mut self, config: &ConnectionConfig) -> Result<()> {
-        tracing::info!("🔌 [IGNITE] Connecting to Ignite cluster at {}:{}", config.host, config.port);
-        
+        tracing::info!(
+            "🔌 [IGNITE] Connecting to Ignite cluster at {}:{}",
+            config.host,
+            config.port
+        );
+
         // Ensure bridge is running
         self.ensure_bridge_running().await?;
 
@@ -461,8 +468,11 @@ impl DatabaseConnection for IgniteConnection {
 
         self.config = Some(config.clone());
         self.connection_id = Some(connection_id.clone());
-        
-        tracing::info!("✅ [IGNITE] Successfully connected to Ignite cluster (ID: {})", connection_id);
+
+        tracing::info!(
+            "✅ [IGNITE] Successfully connected to Ignite cluster (ID: {})",
+            connection_id
+        );
 
         Ok(())
     }
@@ -842,7 +852,7 @@ impl DatabaseConnection for IgniteConnection {
             )),
         })
     }
-    
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
