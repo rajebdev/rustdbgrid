@@ -740,6 +740,8 @@ impl DatabaseConnection for MySQLConnection {
             checksum: get_numeric("checksum").map(|c| c.to_string()),
             engine: row.try_get::<Option<String>, _>("engine").ok().flatten(),
             comment: row.try_get::<Option<String>, _>("comment").ok().flatten(),
+            table_size: None,
+            pages: None,
         };
 
         Ok(statistics)

@@ -39,6 +39,8 @@ pub trait DatabaseConnection: Send + Sync {
             checksum: None,
             engine: None,
             comment: None,
+            table_size: None,
+            pages: None,
         })
     }
     async fn get_table_data(

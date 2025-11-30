@@ -516,7 +516,9 @@ impl DatabaseConnection for MSSQLConnection {
                 fk.name as constraint_name,
                 COL_NAME(fkc.parent_object_id, fkc.parent_column_id) as column_name,
                 OBJECT_NAME(fkc.referenced_object_id) as referenced_table,
-                COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) as referenced_column
+                COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) as referenced_column,
+                fk.delete_referential_action_desc as delete_rule,
+                fk.update_referential_action_desc as update_rule
             FROM [{database}].sys.foreign_keys fk
             INNER JOIN [{database}].sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
             WHERE fk.parent_object_id = OBJECT_ID('{table}')"
@@ -532,6 +534,8 @@ impl DatabaseConnection for MSSQLConnection {
                 let column = row.get::<&str, _>("column_name")?.to_string();
                 let referenced_table = row.get::<&str, _>("referenced_table")?.to_string();
                 let referenced_column = row.get::<&str, _>("referenced_column")?.to_string();
+                let on_delete = row.get::<&str, _>("delete_rule").map(|s| s.to_string());
+                let on_update = row.get::<&str, _>("update_rule").map(|s| s.to_string());
 
                 Some(ForeignKey {
                     name,
@@ -540,8 +544,8 @@ impl DatabaseConnection for MSSQLConnection {
                     referenced_column,
                     owner: None,
                     ref_object_type: Some("TABLE".to_string()),
-                    on_delete: None,
-                    on_update: None,
+                    on_delete,
+                    on_update,
                 })
             })
             .collect();
@@ -573,6 +577,8 @@ impl DatabaseConnection for MSSQLConnection {
                 COL_NAME(fkc.parent_object_id, fkc.parent_column_id) as column_name,
                 OBJECT_NAME(fkc.referenced_object_id) as referenced_table_name,
                 COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) as referenced_column_name,
+                fk.delete_referential_action_desc as delete_rule,
+                fk.update_referential_action_desc as update_rule,
                 'FOREIGN_KEY' as relationship_type
             FROM [{database}].sys.foreign_keys fk
             INNER JOIN [{database}].sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
@@ -584,6 +590,8 @@ impl DatabaseConnection for MSSQLConnection {
                 COL_NAME(fkc.parent_object_id, fkc.parent_column_id) as column_name,
                 OBJECT_NAME(fkc.referenced_object_id) as referenced_table_name,
                 COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) as referenced_column_name,
+                fk.delete_referential_action_desc as delete_rule,
+                fk.update_referential_action_desc as update_rule,
                 'REFERENCED_BY' as relationship_type
             FROM [{database}].sys.foreign_keys fk
             INNER JOIN [{database}].sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
@@ -604,6 +612,8 @@ impl DatabaseConnection for MSSQLConnection {
                 let referenced_column_name =
                     row.get::<&str, _>("referenced_column_name")?.to_string();
                 let relationship_type = row.get::<&str, _>("relationship_type")?.to_string();
+                let on_delete = row.get::<&str, _>("delete_rule").map(|s| s.to_string());
+                let on_update = row.get::<&str, _>("update_rule").map(|s| s.to_string());
 
                 Some(TableRelationship {
                     constraint_name,
@@ -614,8 +624,8 @@ impl DatabaseConnection for MSSQLConnection {
                     relationship_type,
                     owner: None,
                     ref_object_type: Some("TABLE".to_string()),
-                    on_delete: None,
-                    on_update: None,
+                    on_delete,
+                    on_update,
                 })
             })
             .collect();
@@ -846,26 +856,21 @@ impl DatabaseConnection for MSSQLConnection {
             ("dbo".to_string(), table.to_string())
         };
 
+        // Simplified query that doesn't fail if no data
         let query = format!(
             "SELECT 
                 SUM(p.rows) as row_count,
-                SUM(a.total_pages) * 8 * 1024 as data_length,
-                SUM(a.used_pages) * 8 * 1024 as used_space,
-                SUM(a.data_pages) * 8 * 1024 as table_size,
-                (SUM(a.used_pages) - SUM(a.data_pages)) * 8 * 1024 as index_length,
-                (SUM(a.total_pages) - SUM(a.used_pages)) * 8 * 1024 as unused_space,
+                SUM(a.total_pages) as total_pages,
+                SUM(a.data_pages) as data_pages,
                 t.create_date as create_time,
-                t.modify_date as update_time,
-                ep.value as comment
+                t.modify_date as update_time
             FROM [{database}].sys.tables t
-            INNER JOIN [{database}].sys.schemas s ON t.schema_id = s.schema_id
-            INNER JOIN [{database}].sys.indexes i ON t.object_id = i.object_id
-            INNER JOIN [{database}].sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
-            INNER JOIN [{database}].sys.allocation_units a ON p.partition_id = a.container_id
-            LEFT JOIN [{database}].sys.extended_properties ep ON t.object_id = ep.major_id 
-                AND ep.minor_id = 0 AND ep.name = 'MS_Description'
+            LEFT JOIN [{database}].sys.schemas s ON t.schema_id = s.schema_id
+            LEFT JOIN [{database}].sys.indexes i ON t.object_id = i.object_id
+            LEFT JOIN [{database}].sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
+            LEFT JOIN [{database}].sys.allocation_units a ON p.partition_id = a.container_id
             WHERE s.name = '{}' AND t.name = '{}'
-            GROUP BY t.create_date, t.modify_date, ep.value",
+            GROUP BY t.create_date, t.modify_date",
             schema, table_name
         );
 
@@ -878,24 +883,40 @@ impl DatabaseConnection for MSSQLConnection {
         let row = &result.rows[0];
 
         let row_count = row.get("row_count").and_then(|v| v.as_i64());
-        let data_length = row.get("data_length").and_then(|v| v.as_i64());
-        let index_length = row.get("index_length").and_then(|v| v.as_i64());
-        let unused_space = row.get("unused_space").and_then(|v| v.as_i64());
+        let total_pages = row.get("total_pages").and_then(|v| v.as_i64());
+        let data_pages = row.get("data_pages").and_then(|v| v.as_i64());
 
-        // Calculate average row length if we have both row count and data length
-        let avg_row_length = match (row_count, data_length) {
-            (Some(count), Some(length)) if count > 0 => Some(length / count),
+        // Calculate table_size from data_pages (in 8KB pages, convert to bytes)
+        let table_size = data_pages.map(|pages| {
+            let size_bytes = pages * 8192; // Each page is 8KB
+            if size_bytes < 1024 {
+                format!("{}B", size_bytes)
+            } else if size_bytes < 1024 * 1024 {
+                format!("{:.0}K", size_bytes as f64 / 1024.0)
+            } else if size_bytes < 1024 * 1024 * 1024 {
+                format!("{:.1}MB", size_bytes as f64 / (1024.0 * 1024.0))
+            } else {
+                format!("{:.1}GB", size_bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+            }
+        });
+
+        // Calculate average row length if we have data
+        let avg_row_length = match (row_count, data_pages) {
+            (Some(count), Some(pages)) if count > 0 => {
+                let data_bytes = pages * 8192;
+                Some(data_bytes / count)
+            }
             _ => None,
         };
 
         let statistics = TableStatistics {
             row_count,
             avg_row_length,
-            data_length,
-            max_data_length: None, // MSSQL doesn't have this concept
-            data_free: unused_space,
-            index_length,
-            row_format: None, // MSSQL doesn't have row format like MySQL
+            data_length: data_pages.map(|p| p * 8192), // Convert pages to bytes
+            max_data_length: None,
+            data_free: None,
+            index_length: None,
+            row_format: None,
             create_time: row
                 .get("create_time")
                 .and_then(|v| v.as_str())
@@ -904,14 +925,13 @@ impl DatabaseConnection for MSSQLConnection {
                 .get("update_time")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
-            check_time: None, // MSSQL doesn't have check time
-            collation: None,  // Would need separate query for column collations
-            checksum: None,   // MSSQL doesn't have table-level checksums by default
+            check_time: None,
+            collation: None,
+            checksum: None,
             engine: Some("SQL Server".to_string()),
-            comment: row
-                .get("comment")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
+            comment: None,
+            table_size,
+            pages: total_pages,
         };
 
         Ok(statistics)

@@ -127,4 +127,6 @@ pub struct TableStatistics {
     pub checksum: Option<String>,
     pub engine: Option<String>,
     pub comment: Option<String>,
+    pub table_size: Option<String>,
+    pub pages: Option<i64>,
 }

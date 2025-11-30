@@ -21,18 +21,61 @@
   let loadingTriggers = false;
   let error = null;
 
-  const tabs = [
-    { id: "Columns", label: "Columns", icon: "fas fa-columns" },
-    { id: "Constraints", label: "Constraints", icon: "fas fa-lock" },
-    { id: "Foreign Keys", label: "Foreign Keys", icon: "fas fa-key" },
-    { id: "References", label: "References", icon: "fas fa-link" },
-    { id: "Triggers", label: "Triggers", icon: "fas fa-bolt" },
-    { id: "Indexes", label: "Indexes", icon: "fas fa-sort-amount-down" },
-    { id: "Partitions", label: "Partitions", icon: "fas fa-th-large" },
-    { id: "Statistics", label: "Statistics", icon: "fas fa-chart-bar" },
-    { id: "DDL", label: "DDL", icon: "fas fa-code" },
-    { id: "Virtual", label: "Virtual", icon: "fas fa-cube" },
-  ];
+  // Get database type
+  $: conn = connection || $activeConnection;
+  $: isMssql = conn?.db_type === "MSSQL";
+  $: isPostgres = conn?.db_type === "PostgreSQL";
+
+  // Define tabs based on database type
+  $: tabs = isMssql
+    ? [
+        // MSSQL specific tabs
+        { id: "Columns", label: "Columns", icon: "fas fa-columns" },
+        { id: "Keys", label: "Keys", icon: "fas fa-key" },
+        { id: "Foreign Keys", label: "Foreign Keys", icon: "fas fa-link" },
+        { id: "Indexes", label: "Indexes", icon: "fas fa-sort-amount-down" },
+        { id: "References", label: "References", icon: "fas fa-sitemap" },
+        { id: "Triggers", label: "Triggers", icon: "fas fa-bolt" },
+        { id: "Statistics", label: "Statistics", icon: "fas fa-chart-bar" },
+        { id: "DDL", label: "DDL", icon: "fas fa-code" },
+        { id: "Virtual", label: "Virtual", icon: "fas fa-cube" },
+      ]
+    : isPostgres
+      ? [
+          // PostgreSQL specific tabs
+          { id: "Columns", label: "Columns", icon: "fas fa-columns" },
+          { id: "Constraints", label: "Constraints", icon: "fas fa-lock" },
+          { id: "Foreign Keys", label: "Foreign Keys", icon: "fas fa-key" },
+          { id: "Indexes", label: "Indexes", icon: "fas fa-sort-amount-down" },
+          {
+            id: "Dependencies",
+            label: "Dependencies",
+            icon: "fas fa-project-diagram",
+          },
+          { id: "References", label: "References", icon: "fas fa-link" },
+          { id: "Partitions", label: "Partitions", icon: "fas fa-th-large" },
+          { id: "Child tables", label: "Child tables", icon: "fas fa-table" },
+          { id: "Triggers", label: "Triggers", icon: "fas fa-bolt" },
+          { id: "Rules", label: "Rules", icon: "fas fa-gavel" },
+          { id: "Policies", label: "Policies", icon: "fas fa-shield-alt" },
+          { id: "Statistics", label: "Statistics", icon: "fas fa-chart-bar" },
+          { id: "Permissions", label: "Permissions", icon: "fas fa-user-lock" },
+          { id: "DDL", label: "DDL", icon: "fas fa-code" },
+          { id: "Virtual", label: "Virtual", icon: "fas fa-cube" },
+        ]
+      : [
+          // MySQL and other databases (default)
+          { id: "Columns", label: "Columns", icon: "fas fa-columns" },
+          { id: "Constraints", label: "Constraints", icon: "fas fa-lock" },
+          { id: "Foreign Keys", label: "Foreign Keys", icon: "fas fa-key" },
+          { id: "References", label: "References", icon: "fas fa-link" },
+          { id: "Triggers", label: "Triggers", icon: "fas fa-bolt" },
+          { id: "Indexes", label: "Indexes", icon: "fas fa-sort-amount-down" },
+          { id: "Partitions", label: "Partitions", icon: "fas fa-th-large" },
+          { id: "Statistics", label: "Statistics", icon: "fas fa-chart-bar" },
+          { id: "DDL", label: "DDL", icon: "fas fa-code" },
+          { id: "Virtual", label: "Virtual", icon: "fas fa-cube" },
+        ];
 
   // Subscribe to tabDataStore to get reactive updates
   $: tabData = $tabDataStore[tabId] || {};
@@ -61,11 +104,19 @@
         return;
       }
 
+      // Build table identifier with schema for PostgreSQL and MSSQL
+      let tableIdentifier = tableInfo.name;
+      if (conn.db_type === "PostgreSQL" && tableInfo.schema) {
+        tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
+      } else if (conn.db_type === "MSSQL" && tableInfo.schema) {
+        tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
+      }
+
       // Call Tauri command to get table schema
       tableSchema = await getTableSchema(
         conn,
         tableInfo.database,
-        tableInfo.name
+        tableIdentifier
       );
     } catch (e) {
       console.error("Error loading table schema:", e);
@@ -83,11 +134,19 @@
         return;
       }
 
+      // Build table identifier with schema for PostgreSQL and MSSQL
+      let tableIdentifier = tableInfo.name;
+      if (conn.db_type === "PostgreSQL" && tableInfo.schema) {
+        tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
+      } else if (conn.db_type === "MSSQL" && tableInfo.schema) {
+        tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
+      }
+
       // Call Tauri command to get table statistics
       tableStatistics = await invoke("get_table_statistics", {
         config: conn,
         database: tableInfo.database,
-        table: tableInfo.name,
+        table: tableIdentifier,
       });
 
       console.log("Table statistics loaded:", tableStatistics);
@@ -107,11 +166,19 @@
         return;
       }
 
+      // Build table identifier with schema for PostgreSQL and MSSQL
+      let tableIdentifier = tableInfo.name;
+      if (conn.db_type === "PostgreSQL" && tableInfo.schema) {
+        tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
+      } else if (conn.db_type === "MSSQL" && tableInfo.schema) {
+        tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
+      }
+
       // Call Tauri command to get table relationships (references)
       tableReferences = await getTableRelationships(
         conn,
         tableInfo.database,
-        tableInfo.name
+        tableIdentifier
       );
 
       console.log("Table references loaded:", tableReferences);
@@ -198,7 +265,8 @@
         <input
           type="checkbox"
           checked={tableSchema?.partitioned || false}
-          disabled
+          readonly
+          style="pointer-events: none;"
         />
         Partitioned
       </label>
@@ -277,14 +345,16 @@
                       <input
                         type="checkbox"
                         checked={!column.nullable}
-                        disabled
+                        readonly
+                        style="pointer-events: none;"
                       />
                     </td>
                     <td class="cell-check">
                       <input
                         type="checkbox"
                         checked={column.is_auto_increment}
-                        disabled
+                        readonly
+                        style="pointer-events: none;"
                       />
                     </td>
                     <td class="cell-default">{getColumnKey(column)}</td>
@@ -462,104 +532,159 @@
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td class="cell-name">Row Count</td>
-                <td class="cell-type">
-                  {tableStatistics?.row_count
-                    ? formatNumber(tableStatistics.row_count)
-                    : "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Avg Row Length</td>
-                <td class="cell-type">
-                  {tableStatistics?.avg_row_length
-                    ? formatNumber(tableStatistics.avg_row_length)
-                    : "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Data Length</td>
-                <td class="cell-type">
-                  {tableStatistics?.data_length
-                    ? formatBytes(tableStatistics.data_length)
-                    : "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Max data length</td>
-                <td class="cell-type">
-                  {tableStatistics?.max_data_length
-                    ? formatBytes(tableStatistics.max_data_length)
-                    : "0"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Data free</td>
-                <td class="cell-type">
-                  {tableStatistics?.data_free
-                    ? formatBytes(tableStatistics.data_free)
-                    : "0"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Index length</td>
-                <td class="cell-type">
-                  {tableStatistics?.index_length
-                    ? formatBytes(tableStatistics.index_length)
-                    : "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Row format</td>
-                <td class="cell-type">
-                  {tableStatistics?.row_format || "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Create Time</td>
-                <td class="cell-type">
-                  {tableStatistics?.create_time || "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Update time</td>
-                <td class="cell-type">
-                  {tableStatistics?.update_time || "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Check time</td>
-                <td class="cell-type">
-                  {tableStatistics?.check_time || "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Collation</td>
-                <td class="cell-type">
-                  {tableStatistics?.collation ||
-                    tableSchema?.collation ||
-                    "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Checksum</td>
-                <td class="cell-type">
-                  {tableStatistics?.checksum || "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Engine</td>
-                <td class="cell-type">
-                  {tableStatistics?.engine || tableSchema?.engine || "N/A"}
-                </td>
-              </tr>
-              <tr>
-                <td class="cell-name">Comment</td>
-                <td class="cell-type">
-                  {tableStatistics?.comment || ""}
-                </td>
-              </tr>
+              {#if isMssql}
+                <!-- MSSQL specific statistics -->
+                <tr>
+                  <td class="cell-name">Table size</td>
+                  <td class="cell-type">
+                    {tableStatistics?.table_size
+                      ? tableStatistics.table_size
+                      : "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Row Count</td>
+                  <td class="cell-type">
+                    {tableStatistics?.row_count
+                      ? formatNumber(tableStatistics.row_count)
+                      : "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Pages</td>
+                  <td class="cell-type">
+                    {tableStatistics?.pages
+                      ? formatNumber(tableStatistics.pages)
+                      : "N/A"}
+                  </td>
+                </tr>
+              {:else if isPostgres}
+                <!-- PostgreSQL specific statistics -->
+                <tr>
+                  <td class="cell-name">Row Count Estimate</td>
+                  <td class="cell-type">
+                    {tableStatistics?.row_count
+                      ? formatNumber(tableStatistics.row_count)
+                      : "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Disk Space</td>
+                  <td class="cell-type">
+                    {tableStatistics?.table_size
+                      ? tableStatistics.table_size
+                      : "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Rel Size</td>
+                  <td class="cell-type">
+                    {tableStatistics?.data_length
+                      ? formatBytes(tableStatistics.data_length)
+                      : "N/A"}
+                  </td>
+                </tr>
+              {:else}
+                <!-- MySQL and other databases statistics -->
+                <tr>
+                  <td class="cell-name">Row Count</td>
+                  <td class="cell-type">
+                    {tableStatistics?.row_count
+                      ? formatNumber(tableStatistics.row_count)
+                      : "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Avg Row Length</td>
+                  <td class="cell-type">
+                    {tableStatistics?.avg_row_length
+                      ? formatNumber(tableStatistics.avg_row_length)
+                      : "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Data Length</td>
+                  <td class="cell-type">
+                    {tableStatistics?.data_length
+                      ? formatBytes(tableStatistics.data_length)
+                      : "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Max data length</td>
+                  <td class="cell-type">
+                    {tableStatistics?.max_data_length
+                      ? formatBytes(tableStatistics.max_data_length)
+                      : "0"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Data free</td>
+                  <td class="cell-type">
+                    {tableStatistics?.data_free
+                      ? formatBytes(tableStatistics.data_free)
+                      : "0"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Index length</td>
+                  <td class="cell-type">
+                    {tableStatistics?.index_length
+                      ? formatBytes(tableStatistics.index_length)
+                      : "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Row format</td>
+                  <td class="cell-type">
+                    {tableStatistics?.row_format || "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Create Time</td>
+                  <td class="cell-type">
+                    {tableStatistics?.create_time || "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Update time</td>
+                  <td class="cell-type">
+                    {tableStatistics?.update_time || "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Check time</td>
+                  <td class="cell-type">
+                    {tableStatistics?.check_time || "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Collation</td>
+                  <td class="cell-type">
+                    {tableStatistics?.collation ||
+                      tableSchema?.collation ||
+                      "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Checksum</td>
+                  <td class="cell-type">
+                    {tableStatistics?.checksum || "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Engine</td>
+                  <td class="cell-type">
+                    {tableStatistics?.engine || tableSchema?.engine || "N/A"}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Comment</td>
+                  <td class="cell-type">
+                    {tableStatistics?.comment || ""}
+                  </td>
+                </tr>
+              {/if}
             </tbody>
           </table>
         </div>
@@ -625,21 +750,24 @@
                       <input
                         type="checkbox"
                         checked={index.ascending !== false}
-                        disabled
+                        readonly
+                        style="pointer-events: none;"
                       />
                     </td>
                     <td class="cell-check">
                       <input
                         type="checkbox"
                         checked={index.nullable === true}
-                        disabled
+                        readonly
+                        style="pointer-events: none;"
                       />
                     </td>
                     <td class="cell-check">
                       <input
                         type="checkbox"
                         checked={index.is_unique}
-                        disabled
+                        readonly
+                        style="pointer-events: none;"
                       />
                     </td>
                     <td class="cell-comment">{index.extra || ""}</td>

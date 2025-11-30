@@ -504,27 +504,33 @@ impl DatabaseConnection for PostgresConnection {
             ("public".to_string(), table.to_string())
         };
 
+        // PostgreSQL is case-sensitive for unquoted identifiers, so lowercase them
+        let schema_lower = schema.to_lowercase();
+        let table_lower = table_name.to_lowercase();
+
         let query = format!(
             "SELECT 
-                column_name, 
-                data_type, 
-                is_nullable,
-                column_default,
-                CASE WHEN constraint_type = 'PRIMARY KEY' THEN true ELSE false END as is_primary
-            FROM information_schema.columns 
-            LEFT JOIN (
-                SELECT kcu.column_name, tc.constraint_type
-                FROM information_schema.key_column_usage kcu
-                JOIN information_schema.table_constraints tc 
-                    ON kcu.constraint_name = tc.constraint_name 
-                    AND kcu.table_schema = tc.table_schema
-                WHERE tc.table_schema = '{}' 
-                    AND tc.table_name = '{}'
-            ) constraints ON columns.column_name = constraints.column_name
-            WHERE table_schema = '{}' 
-                AND table_name = '{}'
-            ORDER BY ordinal_position",
-            schema, table_name, schema, table_name
+                c.column_name, 
+                c.data_type,
+                c.character_maximum_length,
+                c.numeric_precision,
+                c.numeric_scale,
+                c.is_nullable,
+                c.column_default,
+                c.ordinal_position,
+                COALESCE(tc.constraint_type = 'PRIMARY KEY', false) as is_primary
+            FROM information_schema.columns c
+            LEFT JOIN information_schema.constraint_column_usage ccu 
+                ON c.column_name = ccu.column_name 
+                AND c.table_schema = ccu.table_schema
+                AND c.table_name = ccu.table_name
+            LEFT JOIN information_schema.table_constraints tc 
+                ON ccu.constraint_name = tc.constraint_name
+                AND tc.constraint_type = 'PRIMARY KEY'
+            WHERE c.table_schema = '{}' 
+                AND c.table_name = '{}'
+            ORDER BY c.ordinal_position",
+            schema_lower, table_lower
         );
 
         let rows = sqlx::query(&query).fetch_all(pool).await?;
@@ -533,10 +539,48 @@ impl DatabaseConnection for PostgresConnection {
             .iter()
             .map(|row| {
                 let name: String = row.try_get("column_name").unwrap_or_default();
-                let data_type: String = row.try_get("data_type").unwrap_or_default();
+                let mut data_type: String = row.try_get("data_type").unwrap_or_default();
                 let is_nullable: String = row.try_get("is_nullable").unwrap_or_default();
                 let default_value: Option<String> = row.try_get("column_default").ok();
                 let is_primary_key: bool = row.try_get("is_primary").unwrap_or(false);
+
+                // Format data types with length/precision information
+                let char_max_length: Option<i32> = row.try_get("character_maximum_length").ok();
+                let numeric_precision: Option<i32> = row.try_get("numeric_precision").ok();
+                let numeric_scale: Option<i32> = row.try_get("numeric_scale").ok();
+
+                // Convert PostgreSQL type names to user-friendly short format
+                data_type = match data_type.as_str() {
+                    "character varying" => {
+                        if let Some(length) = char_max_length {
+                            format!("varchar({})", length)
+                        } else {
+                            "varchar".to_string()
+                        }
+                    }
+                    "character" => {
+                        if let Some(length) = char_max_length {
+                            format!("char({})", length)
+                        } else {
+                            "char".to_string()
+                        }
+                    }
+                    "numeric" | "decimal" => match (numeric_precision, numeric_scale) {
+                        (Some(p), Some(s)) => format!("numeric({},{})", p, s),
+                        (Some(p), None) => format!("numeric({})", p),
+                        _ => data_type,
+                    },
+                    "double precision" => "float8".to_string(),
+                    "smallint" => "int2".to_string(),
+                    "integer" => "int4".to_string(),
+                    "bigint" => "int8".to_string(),
+                    "boolean" => "bool".to_string(),
+                    "timestamp without time zone" => "timestamp".to_string(),
+                    "timestamp with time zone" => "timestamptz".to_string(),
+                    "time without time zone" => "time".to_string(),
+                    "time with time zone" => "timetz".to_string(),
+                    _ => data_type,
+                };
 
                 let is_auto_increment = default_value
                     .as_ref()
@@ -562,7 +606,7 @@ impl DatabaseConnection for PostgresConnection {
             FROM pg_indexes 
             WHERE schemaname = '{}' 
                 AND tablename = '{}'",
-            schema, table_name
+            schema_lower, table_lower
         );
 
         let index_rows = sqlx::query(&index_query).fetch_all(pool).await?;
@@ -621,7 +665,7 @@ impl DatabaseConnection for PostgresConnection {
             WHERE tc.constraint_type = 'FOREIGN KEY'
                 AND tc.table_schema = '{}'
                 AND tc.table_name = '{}'",
-            schema, table_name
+            schema_lower, table_lower
         );
 
         let fk_rows = sqlx::query(&fk_query).fetch_all(pool).await?;
@@ -674,6 +718,10 @@ impl DatabaseConnection for PostgresConnection {
             ("public".to_string(), table.to_string())
         };
 
+        // PostgreSQL is case-sensitive for unquoted identifiers, so lowercase them
+        let schema_lower = schema.to_lowercase();
+        let table_lower = table_name.to_lowercase();
+
         let query = format!(
             "SELECT
                 tc.constraint_name,
@@ -681,6 +729,8 @@ impl DatabaseConnection for PostgresConnection {
                 kcu.column_name,
                 ccu.table_name AS referenced_table_name,
                 ccu.column_name AS referenced_column_name,
+                rc.update_rule,
+                rc.delete_rule,
                 'FOREIGN_KEY' as relationship_type
             FROM information_schema.table_constraints AS tc
             JOIN information_schema.key_column_usage AS kcu
@@ -689,6 +739,9 @@ impl DatabaseConnection for PostgresConnection {
             JOIN information_schema.constraint_column_usage AS ccu
                 ON ccu.constraint_name = tc.constraint_name
                 AND ccu.table_schema = tc.table_schema
+            LEFT JOIN information_schema.referential_constraints AS rc
+                ON tc.constraint_name = rc.constraint_name
+                AND tc.table_schema = rc.constraint_schema
             WHERE tc.constraint_type = 'FOREIGN KEY'
                 AND tc.table_schema = '{}'
                 AND tc.table_name = '{}'
@@ -699,6 +752,8 @@ impl DatabaseConnection for PostgresConnection {
                 kcu.column_name,
                 ccu.table_name AS referenced_table_name,
                 ccu.column_name AS referenced_column_name,
+                rc.update_rule,
+                rc.delete_rule,
                 'REFERENCED_BY' as relationship_type
             FROM information_schema.table_constraints AS tc
             JOIN information_schema.key_column_usage AS kcu
@@ -707,10 +762,13 @@ impl DatabaseConnection for PostgresConnection {
             JOIN information_schema.constraint_column_usage AS ccu
                 ON ccu.constraint_name = tc.constraint_name
                 AND ccu.table_schema = tc.table_schema
+            LEFT JOIN information_schema.referential_constraints AS rc
+                ON tc.constraint_name = rc.constraint_name
+                AND tc.table_schema = rc.constraint_schema
             WHERE tc.constraint_type = 'FOREIGN KEY'
                 AND tc.table_schema = '{}'
                 AND ccu.table_name = '{}'",
-            schema, table_name, schema, table_name
+            schema_lower, table_lower, schema_lower, table_lower
         );
 
         let rows = sqlx::query(&query).fetch_all(pool).await?;
@@ -727,6 +785,8 @@ impl DatabaseConnection for PostgresConnection {
                     row.try_get("referenced_column_name").unwrap_or_default();
                 let relationship_type: String =
                     row.try_get("relationship_type").unwrap_or_default();
+                let on_update: Option<String> = row.try_get("update_rule").ok();
+                let on_delete: Option<String> = row.try_get("delete_rule").ok();
 
                 TableRelationship {
                     constraint_name,
@@ -737,8 +797,8 @@ impl DatabaseConnection for PostgresConnection {
                     relationship_type,
                     owner: Some(schema.clone()),
                     ref_object_type: Some("TABLE".to_string()),
-                    on_delete: None,
-                    on_update: None,
+                    on_delete,
+                    on_update,
                 }
             })
             .collect();
@@ -994,12 +1054,16 @@ impl DatabaseConnection for PostgresConnection {
             ("public".to_string(), table.to_string())
         };
 
+        // PostgreSQL is case-sensitive for unquoted identifiers, so lowercase them
+        let schema_lower = schema.to_lowercase();
+        let table_lower = table_name.to_lowercase();
+
         let query = format!(
             "SELECT 
                 c.reltuples::bigint as row_count,
-                pg_total_relation_size(c.oid)::bigint as data_length,
+                pg_total_relation_size(c.oid)::bigint as total_size,
+                pg_relation_size(c.oid)::bigint as relation_size,
                 pg_indexes_size(c.oid)::bigint as index_length,
-                pg_relation_size(c.oid)::bigint as table_size,
                 CASE 
                     WHEN c.relkind = 'r' THEN 'TABLE'
                     WHEN c.relkind = 'v' THEN 'VIEW'
@@ -1010,42 +1074,93 @@ impl DatabaseConnection for PostgresConnection {
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = '{}' AND c.relname = '{}'",
-            schema, table_name
+            schema_lower, table_lower
         );
 
-        let row = sqlx::query(&query).fetch_one(pool).await?;
+        // Use fetch_optional to handle case when table is not found
+        match sqlx::query(&query).fetch_optional(pool).await {
+            Ok(Some(row)) => {
+                let row_count = row.try_get::<Option<i64>, _>("row_count").ok().flatten();
+                let total_size = row.try_get::<Option<i64>, _>("total_size").ok().flatten();
+                let relation_size = row
+                    .try_get::<Option<i64>, _>("relation_size")
+                    .ok()
+                    .flatten();
+                let index_length = row.try_get::<Option<i64>, _>("index_length").ok().flatten();
 
-        let row_count = row.try_get::<Option<i64>, _>("row_count").ok().flatten();
-        let data_length = row.try_get::<Option<i64>, _>("data_length").ok().flatten();
-        let index_length = row.try_get::<Option<i64>, _>("index_length").ok().flatten();
-        let _table_size = row.try_get::<Option<i64>, _>("table_size").ok().flatten();
+                // Format table_size for PostgreSQL display (Disk Space)
+                let table_size = total_size.map(|size| {
+                    if size < 1024 {
+                        format!("{}B", size)
+                    } else if size < 1024 * 1024 {
+                        format!("{:.0}K", size as f64 / 1024.0)
+                    } else if size < 1024 * 1024 * 1024 {
+                        format!("{:.1}MB", size as f64 / (1024.0 * 1024.0))
+                    } else {
+                        format!("{:.1}GB", size as f64 / (1024.0 * 1024.0 * 1024.0))
+                    }
+                });
 
-        // Calculate average row length if we have both row count and data length
-        let avg_row_length = match (row_count, data_length) {
-            (Some(count), Some(length)) if count > 0 => Some(length / count),
-            _ => None,
-        };
+                // Calculate average row length if we have both row count and relation size
+                let avg_row_length = match (row_count, relation_size) {
+                    (Some(count), Some(size)) if count > 0 => Some(size / count),
+                    _ => None,
+                };
 
-        let statistics = TableStatistics {
-            row_count,
-            avg_row_length,
-            data_length,
-            max_data_length: None, // PostgreSQL doesn't have this concept
-            data_free: None,       // PostgreSQL doesn't track this the same way
-            index_length,
-            row_format: row
-                .try_get::<Option<String>, _>("row_format")
-                .ok()
-                .flatten(),
-            create_time: None, // PostgreSQL doesn't track creation time by default
-            update_time: None, // PostgreSQL doesn't track modification time by default
-            check_time: None,  // PostgreSQL doesn't have this concept
-            collation: None,   // Would need separate query for column collations
-            checksum: None,    // PostgreSQL doesn't have table-level checksums
-            engine: Some("PostgreSQL".to_string()),
-            comment: row.try_get::<Option<String>, _>("comment").ok().flatten(),
-        };
+                let statistics = TableStatistics {
+                    row_count,
+                    avg_row_length,
+                    data_length: relation_size,
+                    max_data_length: None,
+                    data_free: None,
+                    index_length,
+                    row_format: row
+                        .try_get::<Option<String>, _>("row_format")
+                        .ok()
+                        .flatten(),
+                    create_time: None,
+                    update_time: None,
+                    check_time: None,
+                    collation: None,
+                    checksum: None,
+                    engine: Some("PostgreSQL".to_string()),
+                    comment: row.try_get::<Option<String>, _>("comment").ok().flatten(),
+                    table_size,
+                    pages: None,
+                };
 
-        Ok(statistics)
+                Ok(statistics)
+            }
+            Ok(None) => {
+                // Table not found, return default statistics with N/A values
+                println!(
+                    "⚠️ PostgreSQL table not found: {}.{}",
+                    schema_lower, table_lower
+                );
+                Ok(TableStatistics {
+                    row_count: None,
+                    avg_row_length: None,
+                    data_length: None,
+                    max_data_length: None,
+                    data_free: None,
+                    index_length: None,
+                    row_format: None,
+                    create_time: None,
+                    update_time: None,
+                    check_time: None,
+                    collation: None,
+                    checksum: None,
+                    engine: Some("PostgreSQL".to_string()),
+                    comment: None,
+                    table_size: None,
+                    pages: None,
+                })
+            }
+            Err(e) => {
+                // Error executing query
+                println!("❌ Error fetching PostgreSQL table statistics: {}", e);
+                Err(anyhow!("Error fetching table statistics: {}", e))
+            }
+        }
     }
 }
