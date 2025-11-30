@@ -49,6 +49,8 @@ fn main() {
             schema::get_triggers,
             schema::get_events,
             schema::get_table_schema,
+            schema::get_table_relationships,
+            schema::get_table_statistics,
             schema::get_table_data,
             export::export_schema,
             export::export_data,

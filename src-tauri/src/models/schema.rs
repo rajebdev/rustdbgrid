@@ -25,6 +25,9 @@ pub struct DbIndex {
     pub columns: Vec<String>,
     pub is_unique: bool,
     pub index_type: Option<String>,
+    pub ascending: Option<bool>,
+    pub nullable: Option<bool>,
+    pub extra: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +44,8 @@ pub struct Trigger {
     pub table_name: String,
     pub event: String,
     pub timing: String,
+    pub trigger_type: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +79,10 @@ pub struct Index {
     pub name: String,
     pub columns: Vec<String>,
     pub is_unique: bool,
+    pub index_type: Option<String>,
+    pub ascending: Option<bool>,
+    pub nullable: Option<bool>,
+    pub extra: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,4 +91,40 @@ pub struct ForeignKey {
     pub column: String,
     pub referenced_table: String,
     pub referenced_column: String,
+    pub owner: Option<String>,
+    pub ref_object_type: Option<String>,
+    pub on_delete: Option<String>,
+    pub on_update: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableRelationship {
+    pub constraint_name: String,
+    pub table_name: String,
+    pub column_name: String,
+    pub referenced_table_name: String,
+    pub referenced_column_name: String,
+    pub relationship_type: String, // "FOREIGN_KEY", "REFERENCED_BY", etc.
+    pub owner: Option<String>,
+    pub ref_object_type: Option<String>,
+    pub on_delete: Option<String>,
+    pub on_update: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableStatistics {
+    pub row_count: Option<i64>,
+    pub avg_row_length: Option<i64>,
+    pub data_length: Option<i64>,
+    pub max_data_length: Option<i64>,
+    pub data_free: Option<i64>,
+    pub index_length: Option<i64>,
+    pub row_format: Option<String>,
+    pub create_time: Option<String>,
+    pub update_time: Option<String>,
+    pub check_time: Option<String>,
+    pub collation: Option<String>,
+    pub checksum: Option<String>,
+    pub engine: Option<String>,
+    pub comment: Option<String>,
 }

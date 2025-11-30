@@ -573,10 +573,80 @@ impl DatabaseConnection for PostgresConnection {
                 let indexdef: String = row.try_get("indexdef").unwrap_or_default();
                 let is_unique = indexdef.contains("UNIQUE");
 
+                // Parse index type from definition
+                let index_type = if indexdef.to_lowercase().contains("btree") {
+                    Some("BTREE".to_string())
+                } else if indexdef.to_lowercase().contains("hash") {
+                    Some("HASH".to_string())
+                } else if indexdef.to_lowercase().contains("gist") {
+                    Some("GIST".to_string())
+                } else if indexdef.to_lowercase().contains("gin") {
+                    Some("GIN".to_string())
+                } else {
+                    Some("BTREE".to_string())
+                };
+
                 Index {
                     name,
                     columns: vec![], // Could be parsed from indexdef if needed
                     is_unique,
+                    index_type,
+                    ascending: Some(true),
+                    nullable: None,
+                    extra: None,
+                }
+            })
+            .collect();
+
+        // Get foreign keys
+        let fk_query = format!(
+            "SELECT
+                tc.constraint_name,
+                kcu.column_name,
+                ccu.table_name AS foreign_table_name,
+                ccu.column_name AS foreign_column_name,
+                rc.update_rule,
+                rc.delete_rule,
+                tc.table_schema as owner
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.key_column_usage AS kcu
+                ON tc.constraint_name = kcu.constraint_name
+                AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage AS ccu
+                ON ccu.constraint_name = tc.constraint_name
+                AND ccu.table_schema = tc.table_schema
+            LEFT JOIN information_schema.referential_constraints AS rc
+                ON tc.constraint_name = rc.constraint_name
+                AND tc.table_schema = rc.constraint_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+                AND tc.table_schema = '{}'
+                AND tc.table_name = '{}'",
+            schema, table_name
+        );
+
+        let fk_rows = sqlx::query(&fk_query).fetch_all(pool).await?;
+        let foreign_keys = fk_rows
+            .iter()
+            .map(|row| {
+                let name: String = row.try_get("constraint_name").unwrap_or_default();
+                let column: String = row.try_get("column_name").unwrap_or_default();
+                let referenced_table: String =
+                    row.try_get("foreign_table_name").unwrap_or_default();
+                let referenced_column: String =
+                    row.try_get("foreign_column_name").unwrap_or_default();
+                let on_update: Option<String> = row.try_get("update_rule").ok();
+                let on_delete: Option<String> = row.try_get("delete_rule").ok();
+                let owner: Option<String> = row.try_get("owner").ok();
+
+                ForeignKey {
+                    name,
+                    column,
+                    referenced_table,
+                    referenced_column,
+                    owner,
+                    ref_object_type: Some("TABLE".to_string()),
+                    on_delete,
+                    on_update,
                 }
             })
             .collect();
@@ -585,8 +655,95 @@ impl DatabaseConnection for PostgresConnection {
             table_name: table.to_string(),
             columns,
             indexes,
-            foreign_keys: vec![],
+            foreign_keys,
         })
+    }
+
+    async fn get_table_relationships(
+        &mut self,
+        _database: &str,
+        table: &str,
+    ) -> Result<Vec<TableRelationship>> {
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+
+        // Split schema and table if provided in schema.table format
+        let (schema, table_name) = if table.contains('.') {
+            let parts: Vec<&str> = table.split('.').collect();
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            ("public".to_string(), table.to_string())
+        };
+
+        let query = format!(
+            "SELECT
+                tc.constraint_name,
+                tc.table_name,
+                kcu.column_name,
+                ccu.table_name AS referenced_table_name,
+                ccu.column_name AS referenced_column_name,
+                'FOREIGN_KEY' as relationship_type
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.key_column_usage AS kcu
+                ON tc.constraint_name = kcu.constraint_name
+                AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage AS ccu
+                ON ccu.constraint_name = tc.constraint_name
+                AND ccu.table_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+                AND tc.table_schema = '{}'
+                AND tc.table_name = '{}'
+            UNION ALL
+            SELECT
+                tc.constraint_name,
+                tc.table_name,
+                kcu.column_name,
+                ccu.table_name AS referenced_table_name,
+                ccu.column_name AS referenced_column_name,
+                'REFERENCED_BY' as relationship_type
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.key_column_usage AS kcu
+                ON tc.constraint_name = kcu.constraint_name
+                AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage AS ccu
+                ON ccu.constraint_name = tc.constraint_name
+                AND ccu.table_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+                AND tc.table_schema = '{}'
+                AND ccu.table_name = '{}'",
+            schema, table_name, schema, table_name
+        );
+
+        let rows = sqlx::query(&query).fetch_all(pool).await?;
+
+        let relationships = rows
+            .iter()
+            .map(|row| {
+                let constraint_name: String = row.try_get("constraint_name").unwrap_or_default();
+                let table_name: String = row.try_get("table_name").unwrap_or_default();
+                let column_name: String = row.try_get("column_name").unwrap_or_default();
+                let referenced_table_name: String =
+                    row.try_get("referenced_table_name").unwrap_or_default();
+                let referenced_column_name: String =
+                    row.try_get("referenced_column_name").unwrap_or_default();
+                let relationship_type: String =
+                    row.try_get("relationship_type").unwrap_or_default();
+
+                TableRelationship {
+                    constraint_name,
+                    table_name,
+                    column_name,
+                    referenced_table_name,
+                    referenced_column_name,
+                    relationship_type,
+                    owner: Some(schema.clone()),
+                    ref_object_type: Some("TABLE".to_string()),
+                    on_delete: None,
+                    on_update: None,
+                }
+            })
+            .collect();
+
+        Ok(relationships)
     }
 
     async fn get_table_data(
@@ -678,12 +835,28 @@ impl DatabaseConnection for PostgresConnection {
                 let indexdef: String = row.try_get("indexdef").unwrap_or_default();
                 let is_unique = indexdef.to_lowercase().contains("unique");
 
+                // Parse index type from definition
+                let index_type = if indexdef.to_lowercase().contains("btree") {
+                    Some("BTREE".to_string())
+                } else if indexdef.to_lowercase().contains("hash") {
+                    Some("HASH".to_string())
+                } else if indexdef.to_lowercase().contains("gist") {
+                    Some("GIST".to_string())
+                } else if indexdef.to_lowercase().contains("gin") {
+                    Some("GIN".to_string())
+                } else {
+                    Some("BTREE".to_string())
+                };
+
                 DbIndex {
                     name,
                     table_name,
                     columns: vec![], // Could be parsed from indexdef if needed
                     is_unique,
-                    index_type: None,
+                    index_type,
+                    ascending: Some(true), // Default for PostgreSQL
+                    nullable: None,
+                    extra: None,
                 }
             })
             .collect();
@@ -797,10 +970,82 @@ impl DatabaseConnection for PostgresConnection {
                     table_name,
                     timing,
                     event,
+                    trigger_type: Some("ROW".to_string()),
+                    description: None,
                 }
             })
             .collect();
 
         Ok(triggers)
+    }
+
+    async fn get_table_statistics(
+        &mut self,
+        _database: &str,
+        table: &str,
+    ) -> Result<TableStatistics> {
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+
+        // Parse schema and table name
+        let (schema, table_name) = if table.contains('.') {
+            let parts: Vec<&str> = table.split('.').collect();
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            ("public".to_string(), table.to_string())
+        };
+
+        let query = format!(
+            "SELECT 
+                c.reltuples::bigint as row_count,
+                pg_total_relation_size(c.oid)::bigint as data_length,
+                pg_indexes_size(c.oid)::bigint as index_length,
+                pg_relation_size(c.oid)::bigint as table_size,
+                CASE 
+                    WHEN c.relkind = 'r' THEN 'TABLE'
+                    WHEN c.relkind = 'v' THEN 'VIEW'
+                    WHEN c.relkind = 'm' THEN 'MATERIALIZED VIEW'
+                    ELSE c.relkind::text
+                END as row_format,
+                obj_description(c.oid, 'pg_class') as comment
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = '{}' AND c.relname = '{}'",
+            schema, table_name
+        );
+
+        let row = sqlx::query(&query).fetch_one(pool).await?;
+
+        let row_count = row.try_get::<Option<i64>, _>("row_count").ok().flatten();
+        let data_length = row.try_get::<Option<i64>, _>("data_length").ok().flatten();
+        let index_length = row.try_get::<Option<i64>, _>("index_length").ok().flatten();
+        let _table_size = row.try_get::<Option<i64>, _>("table_size").ok().flatten();
+
+        // Calculate average row length if we have both row count and data length
+        let avg_row_length = match (row_count, data_length) {
+            (Some(count), Some(length)) if count > 0 => Some(length / count),
+            _ => None,
+        };
+
+        let statistics = TableStatistics {
+            row_count,
+            avg_row_length,
+            data_length,
+            max_data_length: None, // PostgreSQL doesn't have this concept
+            data_free: None,       // PostgreSQL doesn't track this the same way
+            index_length,
+            row_format: row
+                .try_get::<Option<String>, _>("row_format")
+                .ok()
+                .flatten(),
+            create_time: None, // PostgreSQL doesn't track creation time by default
+            update_time: None, // PostgreSQL doesn't track modification time by default
+            check_time: None,  // PostgreSQL doesn't have this concept
+            collation: None,   // Would need separate query for column collations
+            checksum: None,    // PostgreSQL doesn't have table-level checksums
+            engine: Some("PostgreSQL".to_string()),
+            comment: row.try_get::<Option<String>, _>("comment").ok().flatten(),
+        };
+
+        Ok(statistics)
     }
 }

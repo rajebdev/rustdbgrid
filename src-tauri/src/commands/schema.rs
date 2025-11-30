@@ -11,8 +11,11 @@ pub async fn get_databases(
     state: State<'_, ConnectionStore>,
 ) -> Result<Vec<Database>, String> {
     let connection_id = config.id.clone();
-    
-    tracing::debug!("📊 [SCHEMA] Fetching databases for connection: {}", connection_id);
+
+    tracing::debug!(
+        "📊 [SCHEMA] Fetching databases for connection: {}",
+        connection_id
+    );
 
     // Check if already connected, if not connect first
     if !state.pool.is_connected(&connection_id).await {
@@ -26,11 +29,11 @@ pub async fn get_databases(
             async move { conn.get_databases().await }.boxed()
         })
         .await;
-    
+
     if let Ok(ref databases) = result {
         tracing::info!("✅ [SCHEMA] Retrieved {} databases", databases.len());
     }
-    
+
     result
 }
 
@@ -42,7 +45,7 @@ pub async fn get_tables(
 ) -> Result<Vec<Table>, String> {
     let connection_id = config.id.clone();
     let db_name = database.clone();
-    
+
     tracing::debug!("📊 [SCHEMA] Fetching tables from database: {}", database);
 
     // Check if already connected, if not connect first
@@ -57,11 +60,15 @@ pub async fn get_tables(
             async move { conn.get_tables(&db_name).await }.boxed()
         })
         .await;
-    
+
     if let Ok(ref tables) = result {
-        tracing::info!("✅ [SCHEMA] Retrieved {} tables from '{}'", tables.len(), database);
+        tracing::info!(
+            "✅ [SCHEMA] Retrieved {} tables from '{}'",
+            tables.len(),
+            database
+        );
     }
-    
+
     result
 }
 
@@ -189,6 +196,52 @@ pub async fn get_table_schema(
         .pool
         .with_connection(&connection_id, |conn| {
             async move { conn.get_table_schema(&database, &table).await }.boxed()
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn get_table_relationships(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<Vec<TableRelationship>, String> {
+    let connection_id = config.id.clone();
+
+    // Check if already connected, if not connect first
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    // Use connection from pool
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_table_relationships(&database, &table).await }.boxed()
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn get_table_statistics(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    state: State<'_, ConnectionStore>,
+) -> Result<TableStatistics, String> {
+    let connection_id = config.id.clone();
+
+    // Check if already connected, if not connect first
+    if !state.pool.is_connected(&connection_id).await {
+        state.pool.connect(config).await?;
+    }
+
+    // Use connection from pool
+    state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.get_table_statistics(&database, &table).await }.boxed()
         })
         .await
 }

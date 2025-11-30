@@ -86,6 +86,28 @@ const createTabDataStore = () => {
       }));
     },
 
+    // Set active subtab untuk table tab tertentu
+    setActiveSubTab: (tabId, activeSubTab) => {
+      update((store) => ({
+        ...store,
+        [tabId]: {
+          ...store[tabId],
+          activeSubTab,
+        },
+      }));
+    },
+
+    // Set active properties tab untuk table tab tertentu
+    setActivePropertiesTab: (tabId, activePropertiesTab) => {
+      update((store) => ({
+        ...store,
+        [tabId]: {
+          ...store[tabId],
+          activePropertiesTab,
+        },
+      }));
+    },
+
     // Get data untuk tab tertentu
     getTabData: (tabId) => {
       let data = null;
@@ -99,6 +121,8 @@ const createTabDataStore = () => {
           sortDirection: "asc",
           scrollPosition: 0,
           viewMode: "grid",
+          activeSubTab: "data",
+          activePropertiesTab: "Columns",
         };
       })();
       return data;

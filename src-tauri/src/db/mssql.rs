@@ -437,8 +437,111 @@ impl DatabaseConnection for MSSQLConnection {
                     data_type: data_type_display,
                     nullable: nullable == "YES",
                     default_value: default,
-                    is_primary_key: false, // We'd need to query sys.key_constraints for this
+                    is_primary_key: false, // Will be updated below
                     is_auto_increment: is_identity.unwrap_or(0) == 1,
+                })
+            })
+            .collect::<Vec<Column>>();
+
+        // Get primary keys
+        let pk_query = format!(
+            "SELECT COLUMN_NAME
+            FROM [{database}].INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+            WHERE OBJECTPROPERTY(OBJECT_ID(CONSTRAINT_SCHEMA + '.' + QUOTENAME(CONSTRAINT_NAME)), 'IsPrimaryKey') = 1
+            AND TABLE_NAME = '{table}'"
+        );
+
+        let pk_stream = conn.query(pk_query, &[]).await?;
+        let pk_rows = pk_stream.into_first_result().await?;
+        let pk_columns: Vec<String> = pk_rows
+            .iter()
+            .filter_map(|row| row.get::<&str, _>("COLUMN_NAME").map(|s| s.to_string()))
+            .collect();
+
+        // Update is_primary_key flag
+        let mut columns = columns;
+        for col in columns.iter_mut() {
+            if pk_columns.contains(&col.name) {
+                col.is_primary_key = true;
+            }
+        }
+
+        // Get indexes
+        let idx_query = format!(
+            "SELECT 
+                i.name as index_name,
+                COL_NAME(ic.object_id, ic.column_id) as column_name,
+                i.is_unique
+            FROM [{database}].sys.indexes i
+            INNER JOIN [{database}].sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+            WHERE i.object_id = OBJECT_ID('{table}')
+            ORDER BY i.name, ic.key_ordinal"
+        );
+
+        let idx_stream = conn.query(idx_query, &[]).await?;
+        let idx_rows = idx_stream.into_first_result().await?;
+
+        let mut indexes_map: std::collections::HashMap<String, (Vec<String>, bool)> =
+            std::collections::HashMap::new();
+        for row in idx_rows.iter() {
+            if let (Some(idx_name), Some(col_name)) = (
+                row.get::<&str, _>("index_name"),
+                row.get::<&str, _>("column_name"),
+            ) {
+                let is_unique: Option<bool> = row.get("is_unique");
+                indexes_map
+                    .entry(idx_name.to_string())
+                    .or_insert((Vec::new(), is_unique.unwrap_or(false)))
+                    .0
+                    .push(col_name.to_string());
+            }
+        }
+
+        let indexes: Vec<Index> = indexes_map
+            .into_iter()
+            .map(|(name, (columns, is_unique))| Index {
+                name,
+                columns,
+                is_unique,
+                index_type: None,
+                ascending: Some(true),
+                nullable: None,
+                extra: None,
+            })
+            .collect();
+
+        // Get foreign keys
+        let fk_query = format!(
+            "SELECT 
+                fk.name as constraint_name,
+                COL_NAME(fkc.parent_object_id, fkc.parent_column_id) as column_name,
+                OBJECT_NAME(fkc.referenced_object_id) as referenced_table,
+                COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) as referenced_column
+            FROM [{database}].sys.foreign_keys fk
+            INNER JOIN [{database}].sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+            WHERE fk.parent_object_id = OBJECT_ID('{table}')"
+        );
+
+        let fk_stream = conn.query(fk_query, &[]).await?;
+        let fk_rows = fk_stream.into_first_result().await?;
+
+        let foreign_keys: Vec<ForeignKey> = fk_rows
+            .iter()
+            .filter_map(|row| {
+                let name = row.get::<&str, _>("constraint_name")?.to_string();
+                let column = row.get::<&str, _>("column_name")?.to_string();
+                let referenced_table = row.get::<&str, _>("referenced_table")?.to_string();
+                let referenced_column = row.get::<&str, _>("referenced_column")?.to_string();
+
+                Some(ForeignKey {
+                    name,
+                    column,
+                    referenced_table,
+                    referenced_column,
+                    owner: None,
+                    ref_object_type: Some("TABLE".to_string()),
+                    on_delete: None,
+                    on_update: None,
                 })
             })
             .collect();
@@ -446,9 +549,78 @@ impl DatabaseConnection for MSSQLConnection {
         Ok(TableSchema {
             table_name: table.to_string(),
             columns,
-            indexes: vec![],
-            foreign_keys: vec![],
+            indexes,
+            foreign_keys,
         })
+    }
+
+    async fn get_table_relationships(
+        &mut self,
+        database: &str,
+        table: &str,
+    ) -> Result<Vec<TableRelationship>> {
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+
+        let mut conn = pool
+            .get()
+            .await
+            .map_err(|e| anyhow!("Failed to get connection from pool: {}", e))?;
+
+        let query = format!(
+            "SELECT 
+                fk.name as constraint_name,
+                OBJECT_NAME(fk.parent_object_id) as table_name,
+                COL_NAME(fkc.parent_object_id, fkc.parent_column_id) as column_name,
+                OBJECT_NAME(fkc.referenced_object_id) as referenced_table_name,
+                COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) as referenced_column_name,
+                'FOREIGN_KEY' as relationship_type
+            FROM [{database}].sys.foreign_keys fk
+            INNER JOIN [{database}].sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+            WHERE fk.parent_object_id = OBJECT_ID('{table}')
+            UNION ALL
+            SELECT 
+                fk.name as constraint_name,
+                OBJECT_NAME(fk.parent_object_id) as table_name,
+                COL_NAME(fkc.parent_object_id, fkc.parent_column_id) as column_name,
+                OBJECT_NAME(fkc.referenced_object_id) as referenced_table_name,
+                COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) as referenced_column_name,
+                'REFERENCED_BY' as relationship_type
+            FROM [{database}].sys.foreign_keys fk
+            INNER JOIN [{database}].sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+            WHERE fkc.referenced_object_id = OBJECT_ID('{table}')"
+        );
+
+        let stream = conn.query(query, &[]).await?;
+        let rows = stream.into_first_result().await?;
+
+        let relationships: Vec<TableRelationship> = rows
+            .iter()
+            .filter_map(|row| {
+                let constraint_name = row.get::<&str, _>("constraint_name")?.to_string();
+                let table_name = row.get::<&str, _>("table_name")?.to_string();
+                let column_name = row.get::<&str, _>("column_name")?.to_string();
+                let referenced_table_name =
+                    row.get::<&str, _>("referenced_table_name")?.to_string();
+                let referenced_column_name =
+                    row.get::<&str, _>("referenced_column_name")?.to_string();
+                let relationship_type = row.get::<&str, _>("relationship_type")?.to_string();
+
+                Some(TableRelationship {
+                    constraint_name,
+                    table_name,
+                    column_name,
+                    referenced_table_name,
+                    referenced_column_name,
+                    relationship_type,
+                    owner: None,
+                    ref_object_type: Some("TABLE".to_string()),
+                    on_delete: None,
+                    on_update: None,
+                })
+            })
+            .collect();
+
+        Ok(relationships)
     }
 
     async fn get_table_data(
@@ -546,6 +718,9 @@ impl DatabaseConnection for MSSQLConnection {
                         columns: vec![],
                         is_unique,
                         index_type: None,
+                        ascending: Some(true),
+                        nullable: None,
+                        extra: None,
                     });
                 }
             }
@@ -648,11 +823,97 @@ impl DatabaseConnection for MSSQLConnection {
                         table_name: table_str.to_string(),
                         timing: String::new(),
                         event: String::new(),
+                        trigger_type: None,
+                        description: None,
                     });
                 }
             }
         }
 
         Ok(triggers)
+    }
+
+    async fn get_table_statistics(
+        &mut self,
+        database: &str,
+        table: &str,
+    ) -> Result<TableStatistics> {
+        // Parse schema and table name
+        let (schema, table_name) = if table.contains('.') {
+            let parts: Vec<&str> = table.split('.').collect();
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            ("dbo".to_string(), table.to_string())
+        };
+
+        let query = format!(
+            "SELECT 
+                SUM(p.rows) as row_count,
+                SUM(a.total_pages) * 8 * 1024 as data_length,
+                SUM(a.used_pages) * 8 * 1024 as used_space,
+                SUM(a.data_pages) * 8 * 1024 as table_size,
+                (SUM(a.used_pages) - SUM(a.data_pages)) * 8 * 1024 as index_length,
+                (SUM(a.total_pages) - SUM(a.used_pages)) * 8 * 1024 as unused_space,
+                t.create_date as create_time,
+                t.modify_date as update_time,
+                ep.value as comment
+            FROM [{database}].sys.tables t
+            INNER JOIN [{database}].sys.schemas s ON t.schema_id = s.schema_id
+            INNER JOIN [{database}].sys.indexes i ON t.object_id = i.object_id
+            INNER JOIN [{database}].sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
+            INNER JOIN [{database}].sys.allocation_units a ON p.partition_id = a.container_id
+            LEFT JOIN [{database}].sys.extended_properties ep ON t.object_id = ep.major_id 
+                AND ep.minor_id = 0 AND ep.name = 'MS_Description'
+            WHERE s.name = '{}' AND t.name = '{}'
+            GROUP BY t.create_date, t.modify_date, ep.value",
+            schema, table_name
+        );
+
+        let result = self.execute_query(&query).await?;
+
+        if result.rows.is_empty() {
+            return Err(anyhow!("Table not found or no statistics available"));
+        }
+
+        let row = &result.rows[0];
+
+        let row_count = row.get("row_count").and_then(|v| v.as_i64());
+        let data_length = row.get("data_length").and_then(|v| v.as_i64());
+        let index_length = row.get("index_length").and_then(|v| v.as_i64());
+        let unused_space = row.get("unused_space").and_then(|v| v.as_i64());
+
+        // Calculate average row length if we have both row count and data length
+        let avg_row_length = match (row_count, data_length) {
+            (Some(count), Some(length)) if count > 0 => Some(length / count),
+            _ => None,
+        };
+
+        let statistics = TableStatistics {
+            row_count,
+            avg_row_length,
+            data_length,
+            max_data_length: None, // MSSQL doesn't have this concept
+            data_free: unused_space,
+            index_length,
+            row_format: None, // MSSQL doesn't have row format like MySQL
+            create_time: row
+                .get("create_time")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            update_time: row
+                .get("update_time")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            check_time: None, // MSSQL doesn't have check time
+            collation: None,  // Would need separate query for column collations
+            checksum: None,   // MSSQL doesn't have table-level checksums by default
+            engine: Some("SQL Server".to_string()),
+            comment: row
+                .get("comment")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+        };
+
+        Ok(statistics)
     }
 }

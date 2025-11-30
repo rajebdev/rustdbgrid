@@ -136,6 +136,10 @@ export async function getTableSchema(config, database, table) {
   return await invoke("get_table_schema", { config, database, table });
 }
 
+export async function getTableRelationships(config, database, table) {
+  return await invoke("get_table_relationships", { config, database, table });
+}
+
 export async function getTableData(
   config,
   database,

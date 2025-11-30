@@ -1,43 +1,59 @@
 <script>
-  import DataGrid from "../common/DataGrid.svelte";
+  import SubTabBar from "./table-subtabs/SubTabBar.svelte";
+  import PropertiesTab from "./table-subtabs/PropertiesTab.svelte";
+  import DataTab from "./table-subtabs/DataTab.svelte";
+  import DiagramTab from "./table-subtabs/DiagramTab.svelte";
   import { activeConnection } from "../../stores/connections";
+  import { tabDataStore } from "../../stores/tabData";
 
   export let tabId;
   export let currentTabData;
   export let tableInfo;
+
+  // Get activeSubTab from store for this specific tab
+  $: activeSubTab = currentTabData?.activeSubTab || "data";
+
+  function handleSubTabChange(newSubTab) {
+    tabDataStore.setActiveSubTab(tabId, newSubTab);
+  }
 </script>
 
-<div class="flex-grow-1 overflow-hidden">
-  {#if currentTabData?.queryResult}
-    <DataGrid
-      data={currentTabData.queryResult}
-      {tabId}
-      executedQuery={currentTabData?.executedQuery || ""}
-      connection={tableInfo?.connection || $activeConnection}
-      tableName={tableInfo?.name || ""}
-      databaseName={tableInfo?.database || ""}
-    />
-  {:else}
-    <div
-      class="loading-container d-flex flex-column align-items-center justify-content-center h-100 gap-3"
-    >
-      <i class="fas fa-spinner fa-spin loading-spinner"></i>
-      <p class="fs-6 m-0 loading-text">Loading table data...</p>
-    </div>
-  {/if}
+<div class="table-tab-container">
+  <SubTabBar {activeSubTab} onTabChange={handleSubTabChange} />
+
+  <div class="subtab-content">
+    {#if activeSubTab === "properties"}
+      <PropertiesTab
+        {tabId}
+        {tableInfo}
+        connection={tableInfo?.connection || $activeConnection}
+      />
+    {:else if activeSubTab === "data"}
+      <DataTab
+        {tabId}
+        {currentTabData}
+        {tableInfo}
+        connection={tableInfo?.connection || $activeConnection}
+      />
+    {:else if activeSubTab === "diagram"}
+      <DiagramTab
+        {tableInfo}
+        connection={tableInfo?.connection || $activeConnection}
+      />
+    {/if}
+  </div>
 </div>
 
 <style>
-  .loading-container {
-    background: var(--bg-tertiary);
+  .table-tab-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
   }
 
-  .loading-spinner {
-    font-size: 48px;
-    color: var(--accent-blue);
-  }
-
-  .loading-text {
-    color: var(--text-primary);
+  .subtab-content {
+    flex: 1;
+    overflow: hidden;
   }
 </style>

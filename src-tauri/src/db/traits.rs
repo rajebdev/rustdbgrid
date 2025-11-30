@@ -11,6 +11,36 @@ pub trait DatabaseConnection: Send + Sync {
     async fn get_databases(&mut self) -> Result<Vec<Database>>;
     async fn get_tables(&mut self, database: &str) -> Result<Vec<Table>>;
     async fn get_table_schema(&mut self, database: &str, table: &str) -> Result<TableSchema>;
+    async fn get_table_relationships(
+        &mut self,
+        _database: &str,
+        _table: &str,
+    ) -> Result<Vec<TableRelationship>> {
+        Ok(vec![])
+    }
+    async fn get_table_statistics(
+        &mut self,
+        _database: &str,
+        _table: &str,
+    ) -> Result<TableStatistics> {
+        // Default implementation returns empty statistics
+        Ok(TableStatistics {
+            row_count: None,
+            avg_row_length: None,
+            data_length: None,
+            max_data_length: None,
+            data_free: None,
+            index_length: None,
+            row_format: None,
+            create_time: None,
+            update_time: None,
+            check_time: None,
+            collation: None,
+            checksum: None,
+            engine: None,
+            comment: None,
+        })
+    }
     async fn get_table_data(
         &mut self,
         database: &str,
