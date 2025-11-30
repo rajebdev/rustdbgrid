@@ -19,21 +19,12 @@ const originalConsole = {
  */
 function getTimestamp() {
   const now = new Date();
-  return (
-    now.getFullYear() +
-    "-" +
-    String(now.getMonth() + 1).padStart(2, "0") +
-    "-" +
-    String(now.getDate()).padStart(2, "0") +
-    " " +
-    String(now.getHours()).padStart(2, "0") +
-    ":" +
-    String(now.getMinutes()).padStart(2, "0") +
-    ":" +
-    String(now.getSeconds()).padStart(2, "0") +
-    "." +
-    String(now.getMilliseconds()).padStart(3, "0")
-  );
+  // ISO string with milliseconds and Z
+  // Example: 2025-11-30T19:39:16.549299Z
+  // JS only supports milliseconds, so pad with 000 for microseconds
+  const iso = now.toISOString(); // 2025-11-30T19:39:16.549Z
+  // Add extra zeros for microseconds
+  return iso.replace("Z", "000Z");
 }
 
 /**
@@ -55,11 +46,11 @@ function getCallerInfo() {
         let fileName = file.split(/[/\\]/).pop() || file;
         // Remove query params if any
         fileName = fileName.split("?")[0];
-        return `${fileName};${fn}:${lineNum}`;
+        return `${fileName}::${fn}:${lineNum}`;
       }
     }
   }
-  return "unknown;unknown";
+  return "unknown::unknown";
 }
 
 /**
@@ -85,7 +76,10 @@ function formatMessage(...args) {
 function formatLogLine(level, message) {
   const timestamp = getTimestamp();
   const caller = getCallerInfo();
-  return `[${timestamp}][${caller}][FE][${level}] ${message}`;
+  // Pad level to 5 chars (Rust style)
+  const paddedLevel = level.toUpperCase().padStart(5, " ");
+  // Format: 2025-11-30T19:39:16.549299Z  INFO  rustdbgrid::utils::FE: 147: message
+  return `${timestamp} ${paddedLevel} ${caller}: ${message}`;
 }
 
 /**

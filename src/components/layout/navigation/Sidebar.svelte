@@ -84,9 +84,12 @@
   let activeContextTable = null;
 
   onMount(async () => {
+    console.log("[FRONTEND] Sidebar onMount starting...");
     await loadConnections();
+    console.log("[FRONTEND] Connections loaded");
     // Load connected databases from backend
     await syncConnectedStatus();
+    console.log("[FRONTEND] Connected status synced");
     // Close context menu when clicking anywhere
     document.addEventListener("click", closeContextMenu);
     document.addEventListener("click", closeTableContextMenu);

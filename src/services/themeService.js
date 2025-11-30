@@ -14,8 +14,10 @@ let unsubscribeListener = null;
  * Should be called once during app initialization
  */
 export async function initializeTheme() {
+  console.log("[FRONTEND] Initializing theme...");
   // Initialize theme preference from backend settings
   await themePreference.init();
+  console.log("[FRONTEND] Theme preference initialized");
 
   // Set up system preference listener
   unsubscribeListener = initializeThemeListener();

@@ -3,7 +3,7 @@ use crate::utils::tracing_logger;
 /// Frontend logging command
 /// Receives pre-formatted log messages from frontend and writes to frontend.log
 #[tauri::command]
-pub fn log_from_frontend(_level: String, message: String) {
+pub fn log_from_frontend(message: String) {
     // Write to frontend-specific log file
     tracing_logger::write_frontend_log(&message);
 }
@@ -11,7 +11,7 @@ pub fn log_from_frontend(_level: String, message: String) {
 /// Bridge (sidecar) logging command
 /// Receives pre-formatted log messages from bridge sidecar and writes to bridge.log
 #[tauri::command]
-pub fn log_from_bridge(_level: String, message: String) {
+pub fn log_from_bridge(message: String) {
     // Write to bridge-specific log file
     tracing_logger::write_bridge_log(&message);
 }

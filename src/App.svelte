@@ -143,10 +143,13 @@
   });
 
   onMount(async () => {
+    console.log("[FRONTEND] App onMount starting...");
     // Initialize theme system first
     await initializeTheme();
+    console.log("[FRONTEND] Theme initialized");
 
     await initializeApplication();
+    console.log("[FRONTEND] Application initialized");
   });
 
   // Event handlers

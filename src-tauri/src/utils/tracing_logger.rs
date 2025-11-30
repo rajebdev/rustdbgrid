@@ -115,11 +115,10 @@ pub fn write_frontend_log(message: &str) {
     if let Some(appender) = FRONTEND_APPENDER.get() {
         use std::io::Write;
         if let Ok(mut writer) = appender.lock() {
-            let now = chrono::Local::now();
-            let timestamp = now.format("%Y-%m-%d %H:%M:%S%.3f");
-            let formatted = format!("[{}][FE] {}\n", timestamp, message);
-            let _ = writer.write_all(formatted.as_bytes());
+            let _ = writer.write_all(message.as_bytes());
             let _ = writer.flush();
+            // Print to stdout as well
+            println!("{}", message);
         }
     }
 }
@@ -129,11 +128,10 @@ pub fn write_bridge_log(message: &str) {
     if let Some(appender) = BRIDGE_APPENDER.get() {
         use std::io::Write;
         if let Ok(mut writer) = appender.lock() {
-            let now = chrono::Local::now();
-            let timestamp = now.format("%Y-%m-%d %H:%M:%S%.3f");
-            let formatted = format!("[{}][BRIDGE] {}\n", timestamp, message);
-            let _ = writer.write_all(formatted.as_bytes());
+            let _ = writer.write_all(message.as_bytes());
             let _ = writer.flush();
+            // Print to stdout as well
+            println!("{}", message);
         }
     }
 }

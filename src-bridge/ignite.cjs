@@ -39,31 +39,19 @@ function getCallerInfo() {
     const line = match[3] || "";
     // Extract just filename from path
     const fileName = file.split(/[/\\]/).pop() || file;
-    return `${fileName};${fn}:${line}`;
+    return `${fileName}::${fn}:${line}`;
   }
-  return "ignite.cjs;unknown";
+  return "ignite.cjs::unknown";
 }
 
 function formatLog(level, message) {
   const now = new Date();
-  const timestamp =
-    now.getFullYear() +
-    "-" +
-    String(now.getMonth() + 1).padStart(2, "0") +
-    "-" +
-    String(now.getDate()).padStart(2, "0") +
-    " " +
-    String(now.getHours()).padStart(2, "0") +
-    ":" +
-    String(now.getMinutes()).padStart(2, "0") +
-    ":" +
-    String(now.getSeconds()).padStart(2, "0") +
-    "." +
-    String(now.getMilliseconds()).padStart(3, "0");
+  const timestamp = now.toISOString().replace("Z", "000Z");
 
   const caller = getCallerInfo();
-  // Format: [TIMESTAMP][file;fn:line][BRIDGE][LEVEL] message
-  return `[${timestamp}][${caller}][BRIDGE][${level}] ${message}`;
+  const paddedLevel = level.toUpperCase().padStart(5, " ");
+  // Format: 2025-11-30T19:39:16.549299Z  INFO  rustdbgrid::utils::FE: 147: message
+  return `${timestamp} ${paddedLevel} ${caller}: ${message}`;
 }
 
 const log = {
