@@ -575,8 +575,7 @@
                     <td colspan="6" class="no-data">No references found</td>
                   </tr>
                 {/if}
-              {:else}
-                {#if loadingReferences}
+              {:else if loadingReferences}
                 <tr>
                   <td colspan="8" class="no-data">
                     <i class="fas fa-spinner fa-spin"></i> Loading references...
@@ -601,11 +600,10 @@
                     >
                   </tr>
                 {/each}
-                {:else}
-                  <tr>
-                    <td colspan="8" class="no-data">No references found</td>
-                  </tr>
-                {/if}
+              {:else}
+                <tr>
+                  <td colspan="8" class="no-data">No references found</td>
+                </tr>
               {/if}
             </tbody>
           </table>
@@ -660,7 +658,9 @@
                   <th style="min-width: 100px;">Owner</th>
                   <th style="min-width: 100px;">Tablespace</th>
                   <th style="min-width: 120px;">Row Count Estimate</th>
-                  <th style="min-width: 120px; text-align: center;">Has Row Level Security</th>
+                  <th style="min-width: 120px; text-align: center;"
+                    >Has Row Level Security</th
+                  >
                   <th style="min-width: 80px;">Partitions</th>
                   <th style="min-width: 200px;">Partition By</th>
                   <th style="min-width: 200px;">Partitions Expression</th>

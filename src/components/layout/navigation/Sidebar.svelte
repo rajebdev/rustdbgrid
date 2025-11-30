@@ -3594,9 +3594,9 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    background: transparent;
+    background: transparent !important;
     border: none;
-    color: var(--text-primary);
+    color: var(--text-primary) !important;
     padding: 2px 8px;
     cursor: pointer;
     font-size: 12px;
@@ -3608,12 +3608,12 @@
   }
 
   .tree-label:hover {
-    background: var(--hover-bg);
+    background: var(--hover-bg) !important;
   }
 
   .tree-label.active {
-    background: var(--selected-bg);
-    color: var(--accent-blue);
+    background: var(--selected-bg) !important;
+    color: var(--accent-blue) !important;
     font-weight: 500;
   }
 
@@ -3622,7 +3622,7 @@
     width: 16px;
     text-align: center;
     flex-shrink: 0;
-    color: var(--text-muted);
+    color: var(--text-muted) !important;
   }
 
   .connection-icon {
@@ -3658,7 +3658,7 @@
   }
 
   .tree-label.active .tree-icon {
-    color: var(--accent-blue);
+    color: var(--accent-blue) !important;
   }
 
   .tree-text {
@@ -3699,35 +3699,43 @@
   }
 
   .tree-section-header {
+    flex: 1;
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 8px;
-    font-size: 11px;
-    color: var(--text-muted);
-    font-weight: 600;
-    line-height: 1.5;
-    flex: 1;
-    background: transparent;
+    background: transparent !important;
     border: none;
-    text-align: left;
+    color: var(--text-primary) !important;
+    padding: 2px 8px;
     cursor: pointer;
+    font-size: 12px;
+    text-align: left;
+    transition: background-color 0.15s;
+    min-height: 20px;
     border-radius: 3px;
+    line-height: 1.5;
   }
 
   .tree-section-header:hover {
-    background: var(--hover-bg);
+    background: var(--hover-bg) !important;
   }
 
   .tree-section-header.active {
-    background: var(--selected-bg);
-    color: var(--accent-blue);
+    background: var(--selected-bg) !important;
+    color: var(--accent-blue) !important;
+    font-weight: 500;
   }
 
   .tree-section-header i {
     font-size: 11px;
     width: 16px;
     text-align: center;
+    flex-shrink: 0;
+    color: var(--text-muted) !important;
+  }
+
+  .tree-section-header.active i {
+    color: var(--accent-blue) !important;
   }
 
   .database-node {

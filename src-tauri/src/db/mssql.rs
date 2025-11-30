@@ -395,6 +395,14 @@ impl DatabaseConnection for MSSQLConnection {
             .await
             .map_err(|e| anyhow!("Failed to get connection from pool: {}", e))?;
 
+        // Parse table name - if it includes schema (e.g., "dbo.users"), split it
+        let (schema, table_name) = if table.contains('.') {
+            let parts: Vec<&str> = table.split('.').collect();
+            (parts[0], parts[1])
+        } else {
+            ("dbo", table) // Default to dbo schema if not specified
+        };
+
         let query = format!(
             "SELECT 
                 COLUMN_NAME as column_name,
@@ -404,7 +412,7 @@ impl DatabaseConnection for MSSQLConnection {
                 CHARACTER_MAXIMUM_LENGTH as max_length,
                 COLUMNPROPERTY(object_id(TABLE_SCHEMA+'.'+TABLE_NAME), COLUMN_NAME, 'IsIdentity') as is_identity
             FROM [{database}].INFORMATION_SCHEMA.COLUMNS 
-            WHERE TABLE_NAME = '{table}'
+            WHERE TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema}'
             ORDER BY ORDINAL_POSITION"
         );
 
@@ -448,7 +456,7 @@ impl DatabaseConnection for MSSQLConnection {
             "SELECT COLUMN_NAME
             FROM [{database}].INFORMATION_SCHEMA.KEY_COLUMN_USAGE
             WHERE OBJECTPROPERTY(OBJECT_ID(CONSTRAINT_SCHEMA + '.' + QUOTENAME(CONSTRAINT_NAME)), 'IsPrimaryKey') = 1
-            AND TABLE_NAME = '{table}'"
+            AND TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema}'"
         );
 
         let pk_stream = conn.query(pk_query, &[]).await?;
@@ -474,7 +482,7 @@ impl DatabaseConnection for MSSQLConnection {
                 i.is_unique
             FROM [{database}].sys.indexes i
             INNER JOIN [{database}].sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            WHERE i.object_id = OBJECT_ID('{table}')
+            WHERE i.object_id = OBJECT_ID('[{schema}].[{table_name}]', 'U')
             ORDER BY i.name, ic.key_ordinal"
         );
 
@@ -570,6 +578,14 @@ impl DatabaseConnection for MSSQLConnection {
             .await
             .map_err(|e| anyhow!("Failed to get connection from pool: {}", e))?;
 
+        // Parse table name - if it includes schema (e.g., "dbo.users"), split it
+        let (schema, table_name) = if table.contains('.') {
+            let parts: Vec<&str> = table.split('.').collect();
+            (parts[0], parts[1])
+        } else {
+            ("dbo", table) // Default to dbo schema if not specified
+        };
+
         let query = format!(
             "SELECT 
                 fk.name as constraint_name,
@@ -582,7 +598,7 @@ impl DatabaseConnection for MSSQLConnection {
                 'FOREIGN_KEY' as relationship_type
             FROM [{database}].sys.foreign_keys fk
             INNER JOIN [{database}].sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
-            WHERE fk.parent_object_id = OBJECT_ID('{table}')
+            WHERE fk.parent_object_id = OBJECT_ID('[{schema}].[{table_name}]', 'U')
             UNION ALL
             SELECT 
                 fk.name as constraint_name,
@@ -595,7 +611,7 @@ impl DatabaseConnection for MSSQLConnection {
                 'REFERENCED_BY' as relationship_type
             FROM [{database}].sys.foreign_keys fk
             INNER JOIN [{database}].sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
-            WHERE fkc.referenced_object_id = OBJECT_ID('{table}')"
+            WHERE fkc.referenced_object_id = OBJECT_ID('[{schema}].[{table_name}]', 'U')"
         );
 
         let stream = conn.query(query, &[]).await?;

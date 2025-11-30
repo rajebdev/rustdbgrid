@@ -47,18 +47,39 @@
       relationships = [];
       tableOffsets = new Map(); // Reset positions when loading new table
 
+      // Build table identifier with schema for PostgreSQL and MSSQL
+      let tableIdentifier = tableInfo.name;
+      if (conn.db_type === "PostgreSQL" && tableInfo.schema) {
+        tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
+      } else if (conn.db_type === "MSSQL" && tableInfo.schema) {
+        tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
+      }
+
+      console.log("🔍 Loading diagram for:", {
+        db_type: conn.db_type,
+        database: tableInfo.database,
+        table: tableInfo.name,
+        schema: tableInfo.schema,
+        tableIdentifier,
+      });
+
       // Load current table schema
       currentTableSchema = await getTableSchema(
         conn,
         tableInfo.database,
-        tableInfo.name
+        tableIdentifier
       );
+
+      console.log("📋 Current table schema loaded:", {
+        hasColumns: !!currentTableSchema?.columns,
+        columnCount: currentTableSchema?.columns?.length || 0,
+      });
 
       // Load relationships
       relationships = await getTableRelationships(
         conn,
         tableInfo.database,
-        tableInfo.name
+        tableIdentifier
       );
 
       console.log(
@@ -86,14 +107,45 @@
       // Fetch schemas for related tables
       for (const tableName of relatedTableNames) {
         try {
+          // For PostgreSQL and MSSQL, check if we need to qualify with schema
+          // The tableName from relationships might already include schema or might not
+          let relatedTableIdentifier = tableName;
+
+          // If it doesn't already have schema prefix, add default schema based on DB type
+          if (!tableName.includes(".")) {
+            if (conn.db_type === "PostgreSQL") {
+              relatedTableIdentifier = `public.${tableName}`;
+            } else if (conn.db_type === "MSSQL") {
+              relatedTableIdentifier = `dbo.${tableName}`;
+            }
+          }
+
           const schema = await getTableSchema(
             conn,
             tableInfo.database,
-            tableName
+            relatedTableIdentifier
           );
-          relatedTables.set(tableName, schema);
+
+          // Validate schema response has columns
+          if (!schema || !schema.columns) {
+            console.warn(
+              `⚠️ Schema for ${tableName} is invalid or has no columns:`,
+              schema
+            );
+            // Still add to map even if columns are missing, for partial rendering
+            relatedTables.set(tableName, schema || { columns: [] });
+          } else {
+            // Store using the original tableName for consistency in rendering
+            relatedTables.set(tableName, schema);
+            console.log(
+              `✅ Loaded schema for table: ${tableName} with ${schema.columns.length} columns`
+            );
+          }
         } catch (e) {
-          console.warn(`Could not load schema for ${tableName}:`, e);
+          console.warn(
+            `Could not load schema for ${tableName}:`,
+            e.message || e
+          );
         }
       }
 
@@ -213,12 +265,9 @@
     const columns = schema?.columns || [];
     const headerHeight = 30; // Reduced from 40
     const rowHeight = 20; // Reduced from 25
-    const maxVisibleColumns = 6; // Show fewer columns
-    const visibleColumns = columns.slice(0, maxVisibleColumns);
-    const tableHeight =
-      headerHeight +
-      visibleColumns.length * rowHeight +
-      (columns.length > maxVisibleColumns ? 20 : 0);
+    // Show all columns for complete entity relationship diagram
+    const visibleColumns = columns;
+    const tableHeight = headerHeight + visibleColumns.length * rowHeight;
     const tableWidth = 200; // Reduced from 250
 
     return {
@@ -270,6 +319,20 @@
     );
 
     relatedTableArray.forEach(([tableName, schema], index) => {
+      // Validate schema before rendering
+      if (!schema) {
+        console.warn(`⚠️ Skipping table ${tableName}: schema is null`);
+        return;
+      }
+
+      if (!schema.columns || schema.columns.length === 0) {
+        console.warn(
+          `⚠️ Skipping table ${tableName}: no columns found`,
+          schema
+        );
+        return;
+      }
+
       const angle = (2 * Math.PI * index) / relatedTableArray.length;
       const offsetX = tableOffsets.get(tableName)?.x || 0;
       const offsetY = tableOffsets.get(tableName)?.y || 0;
@@ -277,7 +340,9 @@
       const y = centerY + radius * Math.sin(angle) - 80 + offsetY;
       const table = renderTable(tableName, schema, x, y);
       tables.push(table);
-      console.log(`✅ Added related table: ${tableName}`);
+      console.log(
+        `✅ Added related table: ${tableName} with ${schema.columns.length} columns`
+      );
     });
 
     console.log(`📊 Total tables in diagram: ${tables.length}`);
@@ -294,14 +359,30 @@
     }
 
     relationships.forEach((rel) => {
+      // Normalize table names for comparison (remove schema prefix if present)
+      const normalizeTableName = (name) => {
+        if (name && name.includes(".")) {
+          return name.split(".").pop();
+        }
+        return name;
+      };
+
+      const sourceTableName = normalizeTableName(rel.table_name);
+      const targetTableName = normalizeTableName(rel.referenced_table_name);
+      const currentTableName = tableInfo.name;
+
       const sourceTable =
-        rel.table_name === tableInfo.name
+        sourceTableName === currentTableName
           ? centerTable
-          : tables.find((t) => t.tableName === rel.table_name);
+          : tables.find(
+              (t) => normalizeTableName(t.tableName) === sourceTableName
+            );
       const targetTable =
-        rel.referenced_table_name === tableInfo.name
+        targetTableName === currentTableName
           ? centerTable
-          : tables.find((t) => t.tableName === rel.referenced_table_name);
+          : tables.find(
+              (t) => normalizeTableName(t.tableName) === targetTableName
+            );
 
       if (sourceTable && targetTable) {
         // Find the column positions in both tables
@@ -313,7 +394,7 @@
           (col) => col.name === rel.column_name
         );
         const sourceColumnY =
-          sourceColumnIndex >= 0 && sourceColumnIndex < 6
+          sourceColumnIndex >= 0
             ? sourceTable.y +
               headerHeight +
               sourceColumnIndex * rowHeight +
@@ -325,7 +406,7 @@
           (col) => col.name === rel.referenced_column_name
         );
         const targetColumnY =
-          targetColumnIndex >= 0 && targetColumnIndex < 6
+          targetColumnIndex >= 0
             ? targetTable.y +
               headerHeight +
               targetColumnIndex * rowHeight +
@@ -380,6 +461,11 @@
         const midX1 = x1 + (x2 - x1) * 0.5;
         const midX2 = x1 + (x2 - x1) * 0.5;
 
+        // Create a descriptive label for the relationship
+        const relationshipLabel = rel.constraint_name
+          ? `${rel.column_name} → ${rel.referenced_column_name}`
+          : `${rel.column_name}`;
+
         lines.push({
           x1,
           y1,
@@ -393,7 +479,7 @@
           targetAngle,
           sourceCardinality,
           targetCardinality,
-          label: `${rel.column_name}`,
+          label: relationshipLabel,
           type: rel.relationship_type,
         });
       } else {
@@ -629,7 +715,7 @@
                 on:mousedown={(e) => handleTableMouseDown(e, table)}
                 style="cursor: move;"
               >
-                <!-- Table container -->
+                <!-- Table container background -->
                 <rect
                   x="0"
                   y="0"
@@ -639,11 +725,14 @@
                   stroke={table.tableName === tableInfo.name
                     ? "var(--accent-blue)"
                     : "var(--border-color)"}
-                  stroke-width={table.tableName === tableInfo.name ? "2" : "1"}
-                  rx="4"
+                  stroke-width={table.tableName === tableInfo.name
+                    ? "2"
+                    : "1.5"}
+                  rx="3"
+                  ry="3"
                 />
 
-                <!-- Table header -->
+                <!-- Table header background -->
                 <rect
                   x="0"
                   y="0"
@@ -652,8 +741,11 @@
                   fill={table.tableName === tableInfo.name
                     ? "var(--accent-blue)"
                     : "var(--bg-tertiary)"}
-                  rx="4"
+                  rx="3"
+                  ry="0"
                 />
+
+                <!-- Table name header text -->
                 <text
                   x={table.width / 2}
                   y="20"
@@ -663,45 +755,63 @@
                     : "var(--text-primary)"}
                   font-size="12"
                   font-weight="600"
+                  letter-spacing="0.3"
                 >
                   {table.tableName}
                 </text>
 
                 <!-- Columns -->
                 {#each table.columns as column, idx}
-                  <g transform="translate(0, {30 + idx * 20})">
-                    <text
-                      x="8"
-                      y="14"
-                      fill="var(--text-primary)"
-                      font-size="10"
-                    >
-                      {#if column.is_primary_key}
-                        <tspan fill="#ffd700" font-size="9">🔑</tspan>
-                      {:else if column.is_foreign_key}
-                        <tspan fill="#4a9eff" font-size="9">🔗</tspan>
-                      {:else}
-                        <tspan fill="var(--text-secondary)">•</tspan>
-                      {/if}
-                      <tspan dx="4">{column.name}</tspan>
-                      <tspan dx="3" fill="var(--text-muted)" font-size="8"
-                        >{column.data_type}</tspan
-                      >
-                    </text>
-                  </g>
-                {/each}
+                  <!-- Column background row -->
+                  <rect
+                    x="0"
+                    y={30 + idx * 20}
+                    width={table.width}
+                    height="20"
+                    fill={idx % 2 === 0
+                      ? "var(--bg-secondary)"
+                      : "rgba(0, 0, 0, 0.03)"}
+                    stroke="none"
+                  />
 
-                {#if table.allColumns.length > table.columns.length}
+                  <!-- Column content -->
                   <text
-                    x={table.width / 2}
-                    y={30 + table.columns.length * 20 + 14}
-                    text-anchor="middle"
-                    fill="var(--text-muted)"
-                    font-size="9"
+                    x="8"
+                    y={30 + idx * 20 + 14}
+                    fill="var(--text-primary)"
+                    font-size="10"
                   >
-                    +{table.allColumns.length - table.columns.length} more
+                    {#if column.is_primary_key}
+                      <tspan fill="#ffd700" font-size="9">🔑</tspan>
+                    {:else if column.is_foreign_key}
+                      <tspan fill="#4a9eff" font-size="9">🔗</tspan>
+                    {:else}
+                      <tspan fill="var(--text-secondary)">•</tspan>
+                    {/if}
+                    <tspan
+                      dx="4"
+                      font-family="'Consolas', 'Monaco', monospace"
+                      font-size="9">{column.name}</tspan
+                    >
+                    <tspan
+                      dx="3"
+                      fill="var(--text-muted)"
+                      font-size="8"
+                      font-style="italic">{column.data_type}</tspan
+                    >
                   </text>
-                {/if}
+
+                  <!-- Row separator line -->
+                  <line
+                    x1="0"
+                    y1={30 + (idx + 1) * 20}
+                    x2={table.width}
+                    y2={30 + (idx + 1) * 20}
+                    stroke="var(--border-color)"
+                    stroke-width="0.5"
+                    opacity="0.4"
+                  />
+                {/each}
               </g>
             {/each}
 
