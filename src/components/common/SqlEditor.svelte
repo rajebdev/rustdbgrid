@@ -5,6 +5,7 @@
   import { drawSelection, highlightActiveLineGutter } from "@codemirror/view";
   import { sql } from "@codemirror/lang-sql";
   import { autocompletion } from "@codemirror/autocomplete";
+  import { oneDark } from "@codemirror/theme-one-dark";
   import {
     activeConnection,
     connections,
@@ -33,6 +34,8 @@
   let tables = [];
   let schema = {};
   let currentTheme = null;
+  let loadedDatabases = {}; // Cache for database tables
+  let tableAliasMap = new Map(); // Track used aliases to prevent duplicates
 
   // Subscribe to theme changes
   $: if ($activeTheme && $activeTheme !== currentTheme) {
@@ -99,12 +102,96 @@
       }
       schema = newSchema;
 
+      // Cache tables for selected database
+      if (selectedDb) {
+        loadedDatabases[selectedDb] = { tables, schema: newSchema };
+      }
+
       // Update editor with new schema
       if (editorView) {
         updateEditorExtensions();
       }
     } catch (error) {
       console.error("Failed to load tables:", error);
+    }
+  }
+
+  // Helper to generate table alias
+  function generateTableAlias(tableName) {
+    // Convert to lowercase and get first letter of each word
+    const words = tableName.toLowerCase().split(/[_-]/);
+    let alias = "";
+
+    if (words.length === 1) {
+      // Single word: take first letter
+      alias = words[0][0];
+    } else {
+      // Multiple words: take first letter of each
+      alias = words.map((w) => w[0]).join("");
+    }
+
+    // Check for duplicates and append number if needed
+    let finalAlias = alias;
+    let counter = 1;
+    const existingAliases = new Set(tableAliasMap.values());
+
+    while (existingAliases.has(finalAlias)) {
+      finalAlias = alias + counter;
+      counter++;
+    }
+
+    return finalAlias;
+  }
+
+  // Lazy load tables for a specific database
+  async function loadTablesForDatabase(dbName) {
+    if (!selectedConn || !dbName) return [];
+
+    // Return from cache if available
+    if (loadedDatabases[dbName]) {
+      return loadedDatabases[dbName].tables;
+    }
+
+    try {
+      const dbTables = await getTables(selectedConn, dbName);
+
+      // Only store table names, don't load schema yet
+      loadedDatabases[dbName] = { tables: dbTables, schema: {} };
+      return dbTables;
+    } catch (error) {
+      console.error(`Failed to load tables for ${dbName}:`, error);
+      return [];
+    }
+  }
+
+  // Lazy load columns for a specific table
+  async function loadColumnsForTable(dbName, tableName) {
+    if (!selectedConn || !dbName || !tableName) return [];
+
+    // Check if already loaded
+    if (loadedDatabases[dbName]?.schema?.[tableName]) {
+      return loadedDatabases[dbName].schema[tableName];
+    }
+
+    try {
+      const tableSchema = await getTableSchema(selectedConn, dbName, tableName);
+      const columns = tableSchema.columns.map((col) => col.name);
+
+      if (!loadedDatabases[dbName]) {
+        loadedDatabases[dbName] = { tables: [], schema: {} };
+      }
+      if (!loadedDatabases[dbName].schema) {
+        loadedDatabases[dbName].schema = {};
+      }
+      loadedDatabases[dbName].schema[tableName] = columns;
+
+      return columns;
+    } catch (error) {
+      console.error(
+        `Failed to load columns for ${dbName}.${tableName}:`,
+        error
+      );
+      return [];
     }
   }
 
@@ -198,44 +285,280 @@
       label: keyword,
       type: "keyword",
       boost: 3,
-      apply: keyword,
+      apply: (view, completion, from, to) => {
+        // Insert keyword with space
+        const text = `${keyword} `;
+        view.dispatch({
+          changes: { from, to, insert: text },
+          selection: { anchor: from + text.length },
+        });
+      },
     }));
 
-    // Create custom SQL completions based on schema (keep original case)
-    const tableCompletions = Object.keys(schema).map((tableName) => ({
-      label: tableName,
-      type: "type",
-      boost: 2,
-      apply: tableName,
-    }));
+    return async function sqlAutoComplete(context) {
+      const line = context.state.doc.lineAt(context.pos);
+      const textBefore = line.text.slice(0, context.pos - line.from);
 
-    const columnCompletions = [];
-    for (const [tableName, columns] of Object.entries(schema)) {
-      for (const columnName of columns) {
-        columnCompletions.push({
-          label: `${tableName}.${columnName}`,
-          type: "property",
-          boost: 1,
-          apply: `${tableName}.${columnName}`,
-        });
-        columnCompletions.push({
-          label: columnName,
-          type: "property",
-          boost: 0,
-          apply: columnName,
-        });
+      // Pre-load tables when user types database name (before dot)
+      const dbNameMatch = textBefore.match(/\b(\w+)$/);
+      if (dbNameMatch) {
+        const typedWord = dbNameMatch[1];
+        const matchedDb = databases.find(
+          (db) => db.name.toLowerCase() === typedWord.toLowerCase()
+        );
+        if (matchedDb && !loadedDatabases[matchedDb.name]) {
+          // Pre-load tables in background without blocking
+          loadTablesForDatabase(matchedDb.name).catch((err) =>
+            console.error(`Background load failed for ${matchedDb.name}:`, err)
+          );
+        }
       }
-    }
 
-    return function sqlAutoComplete(context) {
+      // Check for dot notation (table.column or database.table)
+      const dotMatch = textBefore.match(/(\w+)\.(\w*)$/);
+      if (dotMatch) {
+        const [, identifier, partial] = dotMatch;
+        const options = [];
+
+        // Check if we're in FROM/JOIN context for auto-alias
+        const beforeDot = textBefore.substring(
+          0,
+          textBefore.lastIndexOf(identifier)
+        );
+        const inFromJoinContext = /(?:FROM|JOIN)\s+$/i.test(beforeDot);
+
+        // Check if identifier is a database name (case-insensitive)
+        const matchedDb = databases.find(
+          (db) => db.name.toLowerCase() === identifier.toLowerCase()
+        );
+
+        if (matchedDb) {
+          // Tables should already be loaded, just retrieve from cache
+          const dbTables = await loadTablesForDatabase(matchedDb.name);
+          options.push(
+            ...dbTables.map((table) => {
+              // If in FROM/JOIN context, add auto-alias
+              if (inFromJoinContext) {
+                const alias = generateTableAlias(table.name);
+                return {
+                  label: table.name,
+                  type: "type",
+                  boost: 10,
+                  apply: (view, completion, from, to) => {
+                    // Store the alias mapping
+                    tableAliasMap.set(alias, table.name);
+
+                    // Insert table name with alias and space
+                    const text = `${table.name} ${alias} `;
+                    view.dispatch({
+                      changes: { from, to, insert: text },
+                      selection: { anchor: from + text.length },
+                    });
+                  },
+                };
+              }
+              // Otherwise, just table name
+              return {
+                label: table.name,
+                type: "type",
+                boost: 10,
+                apply: table.name,
+              };
+            })
+          );
+        }
+        // Check if identifier is a table name in current database
+        else if (selectedDb && loadedDatabases[selectedDb]?.tables) {
+          const matchedTable = loadedDatabases[selectedDb].tables.find(
+            (t) => t.name.toLowerCase() === identifier.toLowerCase()
+          );
+          if (matchedTable) {
+            // Load columns for this table
+            const columns = await loadColumnsForTable(
+              selectedDb,
+              matchedTable.name
+            );
+            options.push(
+              ...columns.map((col) => ({
+                label: col,
+                type: "property",
+                boost: 10,
+                apply: col,
+              }))
+            );
+          }
+        }
+        // Check if identifier is an alias
+        if (options.length === 0 && tableAliasMap.has(identifier)) {
+          const tableName = tableAliasMap.get(identifier);
+          const dbName = selectedDb; // Assume current database for alias
+          if (dbName) {
+            const columns = await loadColumnsForTable(dbName, tableName);
+            options.push(
+              ...columns.map((col) => ({
+                label: col,
+                type: "property",
+                boost: 10,
+                apply: col,
+              }))
+            );
+          }
+        }
+
+        if (options.length > 0) {
+          return {
+            from: context.pos - partial.length,
+            options,
+            validFor: /^\w*$/,
+          };
+        }
+        return null;
+      }
+
+      // Check for FROM/JOIN context to show tables
+      const fromMatch = textBefore.match(/(?:FROM|JOIN)\s+(\w*)$/i);
+      if (fromMatch) {
+        const options = [];
+
+        // If database is selected, load its tables
+        if (selectedDb) {
+          const dbTables = await loadTablesForDatabase(selectedDb);
+          options.push(
+            ...dbTables.map((table) => {
+              const alias = generateTableAlias(table.name);
+              return {
+                label: table.name,
+                type: "type",
+                boost: 10,
+                apply: (view, completion, from, to) => {
+                  // Store the alias mapping
+                  tableAliasMap.set(alias, table.name);
+
+                  // Insert table name with alias and space
+                  const text = `${table.name} ${alias} `;
+                  view.dispatch({
+                    changes: { from, to, insert: text },
+                    selection: { anchor: from + text.length },
+                  });
+                },
+              };
+            })
+          );
+        }
+
+        // Also show other databases with pre-load
+        options.push(
+          ...databases.map((db) => ({
+            label: db.name,
+            type: "namespace",
+            boost: 5,
+            detail: "database",
+            apply: (view, completion, from, to) => {
+              // Pre-load tables when database is selected
+              if (!loadedDatabases[db.name]) {
+                loadTablesForDatabase(db.name).catch((err) =>
+                  console.error(
+                    `Failed to pre-load tables for ${db.name}:`,
+                    err
+                  )
+                );
+              }
+              // Insert database name
+              view.dispatch({
+                changes: { from, to, insert: db.name },
+                selection: { anchor: from + db.name.length },
+              });
+            },
+          }))
+        );
+
+        if (options.length > 0) {
+          return {
+            from: context.pos - fromMatch[1].length,
+            options,
+            validFor: /^\w*$/,
+          };
+        }
+      }
+
+      // Default word-based completion
       const word = context.matchBefore(/\w*/);
       if (!word || (word.from === word.to && !context.explicit)) {
         return null;
       }
 
+      // Check if we're in FROM/JOIN context for tables with alias
+      const lineTextBefore = context.state.doc
+        .lineAt(word.from)
+        .text.slice(0, word.from - context.state.doc.lineAt(word.from).from);
+      const inFromJoinContext = /(?:FROM|JOIN)\s+\w*$/i.test(lineTextBefore);
+
+      // Build basic completions
+      const options = [...sqlKeywords];
+
+      // Add tables from current database
+      if (selectedDb && loadedDatabases[selectedDb]) {
+        const dbTables = loadedDatabases[selectedDb].tables || [];
+        options.push(
+          ...dbTables.map((table) => {
+            // If in FROM/JOIN context, add auto-alias
+            if (inFromJoinContext) {
+              const alias = generateTableAlias(table.name);
+              return {
+                label: table.name,
+                type: "type",
+                boost: 2,
+                apply: (view, completion, from, to) => {
+                  // Store the alias mapping
+                  tableAliasMap.set(alias, table.name);
+
+                  // Insert table name with alias and space
+                  const text = `${table.name} ${alias} `;
+                  view.dispatch({
+                    changes: { from, to, insert: text },
+                    selection: { anchor: from + text.length },
+                  });
+                },
+              };
+            }
+            // Otherwise, just table name
+            return {
+              label: table.name,
+              type: "type",
+              boost: 2,
+              apply: table.name,
+            };
+          })
+        );
+      }
+
+      // Add databases with pre-load on hover/selection
+      options.push(
+        ...databases.map((db) => ({
+          label: db.name,
+          type: "namespace",
+          boost: 1,
+          detail: "database",
+          apply: (view, completion, from, to) => {
+            // Pre-load tables when database is selected
+            if (!loadedDatabases[db.name]) {
+              loadTablesForDatabase(db.name).catch((err) =>
+                console.error(`Failed to pre-load tables for ${db.name}:`, err)
+              );
+            }
+            // Insert database name
+            view.dispatch({
+              changes: { from, to, insert: db.name },
+              selection: { anchor: from + db.name.length },
+            });
+          },
+        }))
+      );
+
       return {
         from: word.from,
-        options: [...sqlKeywords, ...tableCompletions, ...columnCompletions],
+        options,
+        validFor: /^\w*$/,
       };
     };
   }
@@ -250,16 +573,27 @@
       sql(),
       autocompletion({
         override: [createAutocompletions()],
+        activateOnTyping: true,
       }),
       EditorView.lineWrapping,
-      EditorView.theme(getEditorTheme($activeTheme)),
+    ];
+
+    // Add theme based on current theme
+    if ($activeTheme === "dark") {
+      extensions.push(oneDark);
+    } else {
+      extensions.push(EditorView.theme(getEditorTheme($activeTheme)));
+    }
+
+    // Add update listener
+    extensions.push(
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           const text = update.state.doc.toString();
           tabDataStore.setQueryText(tabId, text);
         }
-      }),
-    ];
+      })
+    );
 
     // Recreate the editor view with new extensions
     const currentDoc = editorView.state.doc.toString();
@@ -273,26 +607,39 @@
   }
 
   onMount(() => {
+    const extensions = [
+      basicSetup,
+      drawSelection(),
+      highlightActiveLineGutter(),
+      sql(),
+      autocompletion({
+        override: [createAutocompletions()],
+        activateOnTyping: true,
+      }),
+      EditorView.lineWrapping,
+    ];
+
+    // Add theme based on current theme
+    if ($activeTheme === "dark") {
+      extensions.push(oneDark);
+    } else {
+      extensions.push(EditorView.theme(getEditorTheme($activeTheme)));
+    }
+
+    // Add update listener
+    extensions.push(
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          const text = update.state.doc.toString();
+          tabDataStore.setQueryText(tabId, text);
+        }
+      })
+    );
+
     editorView = new EditorView({
       doc:
         tabData.queryText || getDefaultQuery(selectedConn?.db_type || "MySQL"),
-      extensions: [
-        basicSetup,
-        drawSelection(),
-        highlightActiveLineGutter(),
-        sql(),
-        autocompletion({
-          override: [createAutocompletions()],
-        }),
-        EditorView.lineWrapping,
-        EditorView.theme(getEditorTheme($activeTheme)),
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
-            const text = update.state.doc.toString();
-            tabDataStore.setQueryText(tabId, text);
-          }
-        }),
-      ],
+      extensions,
       parent: editorContainer,
     });
 
@@ -373,6 +720,8 @@
     databases = [];
     tables = [];
     schema = {};
+    loadedDatabases = {};
+    tableAliasMap.clear();
     if (selectedConn) {
       await loadDatabases();
     }
@@ -381,6 +730,7 @@
   async function handleDatabaseChange(event) {
     selectedDb = event.target.value;
     selectedDatabase.set(selectedDb);
+    tableAliasMap.clear(); // Reset alias map when database changes
     await loadTablesAndSchema();
   }
 
@@ -413,6 +763,7 @@
       editorView.dispatch({
         changes: { from: 0, to: editorView.state.doc.length, insert: "" },
       });
+      tableAliasMap.clear(); // Reset alias map when clearing editor
     }
   }
 </script>
