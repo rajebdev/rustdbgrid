@@ -4,9 +4,8 @@ use tauri::command;
 /// Get config directory path
 #[command]
 pub async fn get_config_dir() -> Result<String, String> {
-    let config_dir = dirs::config_dir()
-        .ok_or("Failed to get config directory")?;
-    
+    let config_dir = dirs::config_dir().ok_or("Failed to get config directory")?;
+
     Ok(config_dir
         .to_str()
         .ok_or("Failed to convert path to string")?
@@ -60,7 +59,7 @@ pub async fn set_theme(theme: String) -> Result<(), String> {
 #[command]
 pub async fn open_path_in_explorer(path: String) -> Result<(), String> {
     use std::path::Path;
-    
+
     let path_obj = Path::new(&path);
     let _parent_dir = path_obj.parent().unwrap_or_else(|| Path::new(&path));
 
@@ -107,10 +106,9 @@ pub async fn open_path_in_explorer(path: String) -> Result<(), String> {
 #[command]
 pub async fn delete_file(path: String) -> Result<(), String> {
     use std::fs;
-    
-    fs::remove_file(&path)
-        .map_err(|e| format!("Failed to delete file: {}", e))?;
-    
+
+    fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))?;
+
     tracing::info!("🗑️ [FILE] File deleted: {}", path);
     Ok(())
 }
@@ -119,10 +117,9 @@ pub async fn delete_file(path: String) -> Result<(), String> {
 #[command]
 pub async fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
     use std::fs;
-    
-    fs::rename(&old_path, &new_path)
-        .map_err(|e| format!("Failed to rename file: {}", e))?;
-    
+
+    fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename file: {}", e))?;
+
     tracing::info!("✏️ [FILE] File renamed from {} to {}", old_path, new_path);
     Ok(())
 }

@@ -544,7 +544,8 @@ pub async fn save_query(
         .join("queries");
 
     // Create queries directory if it doesn't exist
-    fs::create_dir_all(&query_dir).map_err(|e| format!("Failed to create queries directory: {}", e))?;
+    fs::create_dir_all(&query_dir)
+        .map_err(|e| format!("Failed to create queries directory: {}", e))?;
 
     // Create new query
     let query = SavedQuery::new(title, content, description, connection_id, database_name);
@@ -566,8 +567,7 @@ pub async fn save_query(
     // Save to file
     let json = serde_json::to_string_pretty(&queries_data)
         .map_err(|e| format!("Failed to serialize queries: {}", e))?;
-    fs::write(&queries_file, json)
-        .map_err(|e| format!("Failed to save queries file: {}", e))?;
+    fs::write(&queries_file, json).map_err(|e| format!("Failed to save queries file: {}", e))?;
 
     tracing::info!("✅ Query saved with id: {}", query_id);
     Ok(query_id)
@@ -583,7 +583,8 @@ pub async fn load_queries() -> Result<Vec<crate::models::saved_query::SavedQuery
         .join("queries");
 
     // Create queries directory if it doesn't exist
-    fs::create_dir_all(&query_dir).map_err(|e| format!("Failed to create queries directory: {}", e))?;
+    fs::create_dir_all(&query_dir)
+        .map_err(|e| format!("Failed to create queries directory: {}", e))?;
 
     let queries_file = query_dir.join("queries.json");
 
@@ -593,7 +594,7 @@ pub async fn load_queries() -> Result<Vec<crate::models::saved_query::SavedQuery
 
     let content = fs::read_to_string(&queries_file)
         .map_err(|e| format!("Failed to read queries file: {}", e))?;
-    
+
     let queries: Vec<crate::models::saved_query::SavedQuery> = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse queries file: {}", e))?;
 
@@ -617,16 +618,16 @@ pub async fn delete_query(query_id: String) -> Result<(), String> {
 
     let content = fs::read_to_string(&queries_file)
         .map_err(|e| format!("Failed to read queries file: {}", e))?;
-    
-    let mut queries: Vec<crate::models::saved_query::SavedQuery> = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse queries file: {}", e))?;
+
+    let mut queries: Vec<crate::models::saved_query::SavedQuery> =
+        serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse queries file: {}", e))?;
 
     queries.retain(|q| q.id != query_id);
 
     let json = serde_json::to_string_pretty(&queries)
         .map_err(|e| format!("Failed to serialize queries: {}", e))?;
-    fs::write(&queries_file, json)
-        .map_err(|e| format!("Failed to save queries file: {}", e))?;
+    fs::write(&queries_file, json).map_err(|e| format!("Failed to save queries file: {}", e))?;
 
     tracing::info!("✅ Query deleted: {}", query_id);
     Ok(())
@@ -649,7 +650,8 @@ pub async fn save_auto_query(
         .join("queries");
 
     // Create queries directory if it doesn't exist
-    fs::create_dir_all(&query_dir).map_err(|e| format!("Failed to create queries directory: {}", e))?;
+    fs::create_dir_all(&query_dir)
+        .map_err(|e| format!("Failed to create queries directory: {}", e))?;
 
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -667,14 +669,14 @@ pub async fn save_auto_query(
     let autosave_file = query_dir.join(".autosave.json");
     let json = serde_json::to_string_pretty(&auto_save)
         .map_err(|e| format!("Failed to serialize auto-save: {}", e))?;
-    fs::write(&autosave_file, json)
-        .map_err(|e| format!("Failed to save auto-save file: {}", e))?;
+    fs::write(&autosave_file, json).map_err(|e| format!("Failed to save auto-save file: {}", e))?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn load_auto_query() -> Result<Option<crate::models::saved_query::AutoSaveQuery>, String> {
+pub async fn load_auto_query() -> Result<Option<crate::models::saved_query::AutoSaveQuery>, String>
+{
     use std::fs;
 
     let query_dir = dirs::config_dir()
@@ -690,7 +692,7 @@ pub async fn load_auto_query() -> Result<Option<crate::models::saved_query::Auto
 
     let content = fs::read_to_string(&autosave_file)
         .map_err(|e| format!("Failed to read auto-save file: {}", e))?;
-    
+
     let auto_save: crate::models::saved_query::AutoSaveQuery = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse auto-save file: {}", e))?;
 
@@ -706,16 +708,14 @@ pub async fn auto_save_query_file(
     use std::path::Path;
 
     let path = Path::new(&file_path);
-    
+
     // Create parent directories if they don't exist
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directories: {}", e))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
     }
 
     // Write the file
-    fs::write(path, content)
-        .map_err(|e| format!("Failed to write query file: {}", e))?;
+    fs::write(path, content).map_err(|e| format!("Failed to write query file: {}", e))?;
 
     tracing::info!("💾 [AUTO-SAVE] Query auto-saved to: {}", file_path);
 
@@ -743,7 +743,7 @@ pub async fn get_next_query_number() -> Result<usize, String> {
 
     // Read directory and find all Query N.sql files
     let mut max_number = 0;
-    
+
     if let Ok(entries) = fs::read_dir(&query_dir) {
         for entry in entries.flatten() {
             if let Ok(metadata) = entry.metadata() {
@@ -755,7 +755,7 @@ pub async fn get_next_query_number() -> Result<usize, String> {
                                 .strip_prefix("Query ")
                                 .and_then(|s| s.strip_suffix(".sql"))
                                 .unwrap_or("0");
-                            
+
                             if let Ok(number) = number_str.parse::<usize>() {
                                 max_number = max_number.max(number);
                             }
@@ -801,12 +801,18 @@ pub async fn list_query_files(folder_path: String) -> Result<Vec<QueryFileInfo>,
                         // Only include .sql files
                         if file_name.ends_with(".sql") {
                             let file_path = entry.path();
-                            
-                            let created = metadata.created().ok()
-                                .and_then(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339_opts(chrono::SecondsFormat::Secs, true).into());
-                            
-                            let modified = metadata.modified().ok()
-                                .and_then(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339_opts(chrono::SecondsFormat::Secs, true).into());
+
+                            let created = metadata.created().ok().and_then(|t| {
+                                chrono::DateTime::<chrono::Utc>::from(t)
+                                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+                                    .into()
+                            });
+
+                            let modified = metadata.modified().ok().and_then(|t| {
+                                chrono::DateTime::<chrono::Utc>::from(t)
+                                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+                                    .into()
+                            });
 
                             files.push(QueryFileInfo {
                                 name: file_name.to_string(),
@@ -822,9 +828,7 @@ pub async fn list_query_files(folder_path: String) -> Result<Vec<QueryFileInfo>,
     }
 
     // Sort by modified time (newest first)
-    files.sort_by(|a, b| {
-        b.modified.cmp(&a.modified)
-    });
+    files.sort_by(|a, b| b.modified.cmp(&a.modified));
 
     Ok(files)
 }
@@ -840,8 +844,7 @@ pub async fn delete_query_file(file_path: String) -> Result<bool, String> {
         return Err("File does not exist".to_string());
     }
 
-    fs::remove_file(path)
-        .map_err(|e| format!("Failed to delete file: {}", e))?;
+    fs::remove_file(path).map_err(|e| format!("Failed to delete file: {}", e))?;
 
     tracing::info!("🗑️ [DELETE] Query file deleted: {}", file_path);
 
@@ -861,7 +864,9 @@ pub struct QueryFileWithContent {
 }
 
 #[tauri::command]
-pub async fn list_query_files_with_content(folder_path: String) -> Result<Vec<QueryFileWithContent>, String> {
+pub async fn list_query_files_with_content(
+    folder_path: String,
+) -> Result<Vec<QueryFileWithContent>, String> {
     use std::fs;
     use std::path::Path;
 
@@ -884,26 +889,40 @@ pub async fn list_query_files_with_content(folder_path: String) -> Result<Vec<Qu
                         // Only include .sql files
                         if file_name.ends_with(".sql") {
                             let file_path = entry.path();
-                            
+
                             // Read file content
                             match fs::read_to_string(&file_path) {
                                 Ok(content) => {
-                                    let created = metadata.created().ok()
+                                    let created = metadata
+                                        .created()
+                                        .ok()
                                         .and_then(|t| {
                                             let datetime: chrono::DateTime<chrono::Utc> = t.into();
-                                            Some(datetime.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+                                            Some(
+                                                datetime.to_rfc3339_opts(
+                                                    chrono::SecondsFormat::Secs,
+                                                    true,
+                                                ),
+                                            )
                                         })
                                         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
-                                    
-                                    let modified = metadata.modified().ok()
+
+                                    let modified = metadata
+                                        .modified()
+                                        .ok()
                                         .and_then(|t| {
                                             let datetime: chrono::DateTime<chrono::Utc> = t.into();
-                                            Some(datetime.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+                                            Some(
+                                                datetime.to_rfc3339_opts(
+                                                    chrono::SecondsFormat::Secs,
+                                                    true,
+                                                ),
+                                            )
                                         })
                                         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
                                     let path_str = file_path.to_string_lossy().to_string();
-                                    
+
                                     queries.push(QueryFileWithContent {
                                         id: path_str.clone(),
                                         title: file_name.replace(".sql", ""),
@@ -916,7 +935,11 @@ pub async fn list_query_files_with_content(folder_path: String) -> Result<Vec<Qu
                                     });
                                 }
                                 Err(e) => {
-                                    tracing::warn!("Failed to read query file {}: {}", file_name, e);
+                                    tracing::warn!(
+                                        "Failed to read query file {}: {}",
+                                        file_name,
+                                        e
+                                    );
                                 }
                             }
                         }
@@ -927,9 +950,7 @@ pub async fn list_query_files_with_content(folder_path: String) -> Result<Vec<Qu
     }
 
     // Sort by modified time (newest first)
-    queries.sort_by(|a, b| {
-        b.last_modified.cmp(&a.last_modified)
-    });
+    queries.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
 
     Ok(queries)
 }

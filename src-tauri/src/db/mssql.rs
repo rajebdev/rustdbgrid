@@ -266,9 +266,11 @@ impl DatabaseConnection for MSSQLConnection {
             .map(|col| {
                 let base_name = col.name().to_string();
                 let type_name = format!("{:?}", col.column_type()).to_uppercase();
-                
+
                 // Use the same deduplication logic for column_types
-                let count = column_name_counts_reset.entry(base_name.clone()).or_insert(0);
+                let count = column_name_counts_reset
+                    .entry(base_name.clone())
+                    .or_insert(0);
                 *count += 1;
                 let col_name = if *count == 1 {
                     base_name

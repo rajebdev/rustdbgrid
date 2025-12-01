@@ -297,9 +297,11 @@ impl DatabaseConnection for MySQLConnection {
             .map(|col| {
                 let base_name = SqlxColumn::name(col).to_string();
                 let type_name = col.type_info().name().to_uppercase();
-                
+
                 // Use the same deduplication logic for column_types
-                let count = column_name_counts_reset.entry(base_name.clone()).or_insert(0);
+                let count = column_name_counts_reset
+                    .entry(base_name.clone())
+                    .or_insert(0);
                 *count += 1;
                 let col_name = if *count == 1 {
                     base_name
