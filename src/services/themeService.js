@@ -86,6 +86,20 @@ export function toggleTheme() {
 }
 
 /**
+ * Get Monaco Editor theme based on current theme
+ */
+export function getMonacoTheme(theme = null) {
+  const currentTheme = theme || get(activeTheme);
+
+  if (currentTheme === "dark") {
+    return "vs-dark";
+  }
+
+  // Light theme (default)
+  return "vs";
+}
+
+/**
  * Get CodeMirror theme configuration based on current theme
  */
 export function getEditorTheme(theme = null) {

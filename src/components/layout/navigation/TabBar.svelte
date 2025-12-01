@@ -189,21 +189,25 @@
     }
   }
 
-  async function handleContextMenuCopyObjectName() {
+  function handleContextMenuCopyObjectName() {
     if (contextMenu) {
-      try {
-        // For table tabs, copy database.table format
-        let textToCopy = contextMenu.tab.title;
+      // For table tabs, copy database.table format
+      let textToCopy = contextMenu.tab.title;
 
-        if (contextMenu.tab.type === "table" && contextMenu.tab.tableInfo) {
-          const { database, name } = contextMenu.tab.tableInfo;
-          textToCopy = `${database}.${name}`;
-        }
-
-        await invoke("copy_to_clipboard", { text: textToCopy });
-      } catch (error) {
-        console.error("Failed to copy:", error);
+      if (contextMenu.tab.type === "table" && contextMenu.tab.tableInfo) {
+        const { database, name } = contextMenu.tab.tableInfo;
+        textToCopy = `${database}.${name}`;
       }
+
+      // Use JavaScript Clipboard API instead of Tauri command
+      navigator.clipboard
+        .writeText(textToCopy)
+        .then(() => {
+          console.log("Object name copied to clipboard");
+        })
+        .catch((error) => {
+          console.error("Failed to copy:", error);
+        });
       closeContextMenu();
     }
   }
@@ -212,6 +216,60 @@
     if (contextMenu) {
       // TODO: Implement bookmark functionality
       console.log("Add bookmark:", contextMenu.tab);
+      closeContextMenu();
+    }
+  }
+
+  function handleContextMenuNewScript() {
+    if (contextMenu) {
+      dispatch("newScript", contextMenu.tab);
+      closeContextMenu();
+    }
+  }
+
+  function handleContextMenuRevealInExplorer() {
+    if (contextMenu && contextMenu.tab.filePath) {
+      dispatch("revealInExplorer", contextMenu.tab);
+      closeContextMenu();
+    }
+  }
+
+  async function handleContextMenuCopyFilePath() {
+    if (contextMenu && contextMenu.tab.filePath) {
+      try {
+        let fullPath = contextMenu.tab.filePath;
+
+        // Convert relative path to absolute if needed
+        if (!fullPath.match(/^[a-zA-Z]:[\\\\/]/) && !fullPath.startsWith("/")) {
+          const { invoke } = await import("@tauri-apps/api/core");
+          const configDir = await invoke("get_config_dir");
+          const sep = navigator.platform.toLowerCase().includes("win")
+            ? "\\"
+            : "/";
+          fullPath =
+            configDir + sep + "rustdbgrid" + sep + fullPath.replace(/\//g, sep);
+        }
+
+        // Use JavaScript Clipboard API instead of Tauri command
+        await navigator.clipboard.writeText(fullPath);
+        console.log("File path copied to clipboard:", fullPath);
+      } catch (error) {
+        console.error("Failed to copy file path:", error);
+      }
+      closeContextMenu();
+    }
+  }
+
+  function handleContextMenuDeleteScript() {
+    if (contextMenu) {
+      dispatch("deleteScript", contextMenu.tab);
+      closeContextMenu();
+    }
+  }
+
+  function handleContextMenuRenameFile() {
+    if (contextMenu) {
+      dispatch("renameFile", contextMenu.tab);
       closeContextMenu();
     }
   }
@@ -380,6 +438,8 @@
   <TabContextMenu
     x={contextMenu.x}
     y={contextMenu.y}
+    tab={contextMenu.tab}
+    tabType={contextMenu.tab?.type}
     canCloseLeft={getContextMenuState().canCloseLeft}
     canCloseRight={getContextMenuState().canCloseRight}
     canCloseOthers={getContextMenuState().canCloseOthers}
@@ -391,6 +451,11 @@
     on:detach={handleContextMenuDetach}
     on:copyObjectName={handleContextMenuCopyObjectName}
     on:addBookmark={handleContextMenuAddBookmark}
+    on:newScript={handleContextMenuNewScript}
+    on:revealInExplorer={handleContextMenuRevealInExplorer}
+    on:copyFilePath={handleContextMenuCopyFilePath}
+    on:deleteScript={handleContextMenuDeleteScript}
+    on:renameFile={handleContextMenuRenameFile}
   />
 {/if}
 

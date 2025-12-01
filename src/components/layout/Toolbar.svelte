@@ -1,19 +1,83 @@
 <script>
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, onMount } from "svelte";
   import { tabStore } from "../../stores/tabs";
+  import {
+    connections,
+    activeConnection,
+    selectedDatabase,
+  } from "../../stores/connections";
+  import { getDatabases } from "../../utils/tauri";
 
   const dispatch = createEventDispatcher();
   const { activeTab } = tabStore;
+
+  let databases = [];
+  let loadingDatabases = false;
 
   function handleAction(action) {
     dispatch(action);
   }
 
+  // Validate connection when connections list changes
+  $: if ($connections.length > 0 && $activeConnection) {
+    const connExists = $connections.find((c) => c.id === $activeConnection.id);
+    if (!connExists) {
+      // Active connection was deleted, clear it
+      activeConnection.set(null);
+      selectedDatabase.set(null);
+    }
+  }
+
+  // Load databases when connection changes
+  $: if ($activeConnection) {
+    loadDatabasesForConnection($activeConnection);
+  }
+
+  async function loadDatabasesForConnection(conn) {
+    if (!conn) {
+      databases = [];
+      return;
+    }
+    loadingDatabases = true;
+    try {
+      databases = await getDatabases(conn);
+
+      // Validate selected database still exists
+      if (
+        $selectedDatabase &&
+        !databases.find((db) => db.name === $selectedDatabase)
+      ) {
+        selectedDatabase.set(null);
+      }
+    } catch (error) {
+      console.error("Failed to load databases:", error);
+      databases = [];
+    }
+    loadingDatabases = false;
+  }
+
+  function handleConnectionChange(event) {
+    const connId = event.target.value;
+    const conn = $connections.find((c) => c.id === connId);
+    if (conn) {
+      activeConnection.set(conn);
+      selectedDatabase.set(null);
+    }
+  }
+
+  function handleDatabaseChange(event) {
+    selectedDatabase.set(event.target.value);
+  }
+
   // Get connection and database info from active tab
-  $: activeConnection = getConnectionInfo($activeTab);
+  $: activeConnectionInfo = getConnectionInfo($activeTab);
   $: activeDatabase = getDatabaseInfo($activeTab);
   $: connectionDbType = getConnectionDbType($activeTab);
   $: databaseIcon = getDatabaseIcon($activeTab);
+  $: isQueryTab = $activeTab?.type === "query";
+  $: showConnectionSelector = isQueryTab;
+  $: showInfoPanel =
+    $activeTab?.type === "table" || $activeTab?.type === "procedure";
 
   function getConnectionInfo(tab) {
     if (!tab) return null;
@@ -22,9 +86,6 @@
     }
     if (tab.type === "procedure" && tab.procedureInfo?.connection) {
       return tab.procedureInfo.connection.name;
-    }
-    if (tab.type === "query" && tab.connection) {
-      return tab.connection.name;
     }
     return null;
   }
@@ -36,9 +97,6 @@
     }
     if (tab.type === "procedure" && tab.procedureInfo?.connection) {
       return tab.procedureInfo.connection.db_type;
-    }
-    if (tab.type === "query" && tab.connection) {
-      return tab.connection.db_type;
     }
     return null;
   }
@@ -58,9 +116,6 @@
       database = tab.procedureInfo.database;
       schema = tab.procedureInfo.schema;
       connection = tab.procedureInfo.connection;
-    } else if (tab.type === "query" && tab.connection) {
-      database = tab.connection.database;
-      connection = tab.connection;
     }
 
     if (!database) return null;
@@ -83,9 +138,6 @@
     }
     if (tab.type === "procedure" && tab.procedureInfo?.connection) {
       return tab.procedureInfo.connection.db_type;
-    }
-    if (tab.type === "query" && tab.connection) {
-      return tab.connection.db_type;
     }
     return null;
   }
@@ -139,32 +191,62 @@
   <div class="toolbar-divider"></div>
   <button
     class="toolbar-btn"
-    title="Commit"
-    on:click={() => handleAction("commit")}
-  >
-    <i class="fas fa-check"></i>
-  </button>
-  <button
-    class="toolbar-btn"
-    title="Rollback"
-    on:click={() => handleAction("rollback")}
-  >
-    <i class="fas fa-undo"></i>
-  </button>
-  <div class="toolbar-divider"></div>
-  <button
-    class="toolbar-btn"
     title="Refresh (Shift+F5)"
     on:click={() => handleAction("refresh")}
   >
     <i class="fas fa-sync-alt"></i>
   </button>
 
-  <!-- Connection and Database Info -->
-  {#if activeConnection || activeDatabase}
+  <div class="toolbar-divider"></div>
+
+  <!-- Connection Selector and Database Selector - Positioned to the right -->
+  {#if showConnectionSelector}
+    <div style="margin-left: auto;" class="toolbar-right-section">
+      <!-- Connection Selector -->
+      <div class="toolbar-selector">
+        <select
+          class="toolbar-select"
+          on:change={handleConnectionChange}
+          value={$activeConnection?.id || ""}
+        >
+          <option value="" disabled>🔌 Connection</option>
+          {#each $connections as conn}
+            <option value={conn.id}
+              >{#if conn.db_type === "MySQL"}🐬{:else if conn.db_type === "PostgreSQL"}🐘{:else if conn.db_type === "MongoDB"}🍃{:else if conn.db_type === "Redis"}📕{:else if conn.db_type === "Ignite"}🔥{:else if conn.db_type === "MSSQL"}🗄️{:else}🔌{/if}
+              {conn.name}</option
+            >
+          {/each}
+        </select>
+      </div>
+
+      <!-- Database Selector -->
+      <div class="toolbar-selector">
+        {#if loadingDatabases}
+          <span class="toolbar-loading">
+            <i class="fas fa-spinner fa-spin"></i>
+          </span>
+        {:else}
+          <select
+            class="toolbar-select"
+            on:change={handleDatabaseChange}
+            value={$selectedDatabase || ""}
+            disabled={!$activeConnection || databases.length === 0}
+          >
+            <option value="" disabled>🛢️ Database</option>
+            {#each databases as db}
+              <option value={db.name}>🛢️ {db.name}</option>
+            {/each}
+          </select>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  <!-- Connection and Database Info - Only show for table/procedure tabs -->
+  {#if showInfoPanel && (activeConnectionInfo || activeDatabase)}
     <div class="toolbar-divider"></div>
     <div class="toolbar-info">
-      {#if activeConnection}
+      {#if activeConnectionInfo}
         <span class="info-item connection-item" title="Active Connection">
           {#if connectionDbType === "MySQL"}
             <span class="db-icon">🐬</span>
@@ -181,7 +263,7 @@
           {:else}
             <i class="fas fa-server"></i>
           {/if}
-          <span class="info-text">{activeConnection}</span>
+          <span class="info-text">{activeConnectionInfo}</span>
         </span>
       {/if}
       {#if activeDatabase}
@@ -253,6 +335,54 @@
     gap: 12px;
     margin-left: auto;
     padding-right: 8px;
+  }
+
+  .toolbar-right-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .toolbar-selector {
+    display: flex;
+    align-items: center;
+  }
+
+  .toolbar-select {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    height: 22px;
+    min-width: 120px;
+    max-width: 180px;
+    cursor: pointer;
+  }
+
+  .toolbar-select:hover {
+    border-color: var(--accent-blue);
+  }
+
+  .toolbar-select:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+  }
+
+  .toolbar-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .toolbar-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 120px;
+    height: 22px;
+    color: var(--text-muted);
+    font-size: 11px;
   }
 
   .info-item {

@@ -44,8 +44,6 @@
       on:execute={forwardEvent}
       on:executeScript={forwardEvent}
       on:stop={forwardEvent}
-      on:commit={forwardEvent}
-      on:rollback={forwardEvent}
       on:refresh={forwardEvent}
     />
   {/if}

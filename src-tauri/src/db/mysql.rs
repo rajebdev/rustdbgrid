@@ -244,6 +244,7 @@ impl DatabaseConnection for MySQLConnection {
         if rows.is_empty() {
             return Ok(QueryResult {
                 columns: vec![],
+                column_display_names: None,
                 column_types: None,
                 rows: vec![],
                 rows_affected: None,
@@ -252,10 +253,23 @@ impl DatabaseConnection for MySQLConnection {
             });
         }
 
+        // Handle duplicate column names by adding numeric suffix
+        let mut column_name_counts: HashMap<String, usize> = HashMap::new();
+        let mut display_names = Vec::new();
         let columns: Vec<String> = rows[0]
             .columns()
             .iter()
-            .map(|c| SqlxColumn::name(c).to_string())
+            .map(|c| {
+                let base_name = SqlxColumn::name(c).to_string();
+                display_names.push(base_name.clone()); // Store original name for display
+                let count = column_name_counts.entry(base_name.clone()).or_insert(0);
+                *count += 1;
+                if *count == 1 {
+                    base_name
+                } else {
+                    format!("{}_{}", base_name, count)
+                }
+            })
             .collect();
 
         // Extract column types and categorize them once upfront
@@ -276,12 +290,22 @@ impl DatabaseConnection for MySQLConnection {
         }
 
         // Pre-compute column types once
+        let mut column_name_counts_reset: HashMap<String, usize> = HashMap::new();
         let col_type_map: Vec<ColType> = rows[0]
             .columns()
             .iter()
             .map(|col| {
-                let col_name = SqlxColumn::name(col).to_string();
+                let base_name = SqlxColumn::name(col).to_string();
                 let type_name = col.type_info().name().to_uppercase();
+                
+                // Use the same deduplication logic for column_types
+                let count = column_name_counts_reset.entry(base_name.clone()).or_insert(0);
+                *count += 1;
+                let col_name = if *count == 1 {
+                    base_name
+                } else {
+                    format!("{}_{}", base_name, count)
+                };
                 column_types.insert(col_name, type_name.clone());
 
                 match type_name.as_str() {
@@ -356,6 +380,7 @@ impl DatabaseConnection for MySQLConnection {
 
         Ok(QueryResult {
             columns,
+            column_display_names: Some(display_names),
             column_types: Some(column_types),
             rows: result_rows,
             rows_affected: None,

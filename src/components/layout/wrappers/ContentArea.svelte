@@ -42,6 +42,11 @@
       on:select={handleTabSelect}
       on:close={handleTabClose}
       on:new={handleNewTab}
+      on:newScript={forwardEvent}
+      on:revealInExplorer={forwardEvent}
+      on:copyFilePath={forwardEvent}
+      on:deleteScript={forwardEvent}
+      on:renameFile={forwardEvent}
     />
   </div>
 
@@ -53,6 +58,7 @@
       {#if activeTab.type === "query"}
         <QueryTabContent
           tabId={activeTab.id}
+          tab={activeTab}
           {currentTabData}
           {editorHeight}
           {isResizingEditor}

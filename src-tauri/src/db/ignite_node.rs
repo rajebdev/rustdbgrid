@@ -623,6 +623,7 @@ impl DatabaseConnection for IgniteConnection {
 
             return Ok(QueryResult {
                 columns: br.columns,
+                column_display_names: None,
                 column_types: None,
                 rows: br.rows,
                 rows_affected: br.rows_affected,
@@ -658,6 +659,7 @@ impl DatabaseConnection for IgniteConnection {
 
         Ok(QueryResult {
             columns: br.columns,
+            column_display_names: None,
             column_types: None,
             rows: br.rows,
             rows_affected: br.rows_affected,
@@ -842,6 +844,7 @@ impl DatabaseConnection for IgniteConnection {
 
         Ok(QueryResult {
             columns: br.columns,
+            column_display_names: None,
             column_types: None,
             rows: br.rows,
             rows_affected: br.rows_affected,

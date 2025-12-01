@@ -11,7 +11,7 @@ A modern, cross-platform database manager built with **Rust**, **Tauri 2.0**, an
 ## ✨ Features
 
 - 🗄️ **Multi-database support**: MySQL, PostgreSQL, SQLite, SQL Server, MongoDB, Redis, Apache Ignite
-- 📝 **SQL Editor**: Execute queries with syntax highlighting (CodeMirror)
+- 📝 **SQL Editor**: Execute queries with syntax highlighting (Monaco Editor)
 - 📊 **Data Grid**: View and explore query results in a responsive table
 - 🌲 **Schema Explorer**: Browse databases, schemas, tables, and columns
 - 🎨 **Dark/Light Theme**: Comfortable viewing in any environment
@@ -35,7 +35,7 @@ Download the latest release for your platform:
 | Layer | Technology |
 |-------|------------|
 | **Backend** | Rust, Tauri 2.0 |
-| **Frontend** | Svelte 4, Bootstrap 5, CodeMirror 6 |
+| **Frontend** | Svelte 4, Bootstrap 5, Monaco Editor |
 | **Database Drivers** | sqlx, mongodb, redis, tiberius, ignite-rs |
 | **Build** | Vite, esbuild |
 
@@ -136,6 +136,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [Tauri](https://tauri.app/) - Build smaller, faster, and more secure desktop apps
 - [Svelte](https://svelte.dev/) - Cybernetically enhanced web apps
-- [CodeMirror](https://codemirror.net/) - Versatile text editor for the browser
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/) - Rich text editor from Microsoft VS Code
 - [Bootstrap](https://getbootstrap.com/) - The world's most popular front-end toolkit
 

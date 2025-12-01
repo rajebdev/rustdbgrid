@@ -1,21 +1,28 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { EditorView, basicSetup } from "codemirror";
-  import { sql } from "@codemirror/lang-sql";
-  import { oneDark } from "@codemirror/theme-one-dark";
+  import * as monaco from "monaco-editor";
   import { activeTheme } from "../../stores/theme";
+  import { getMonacoTheme } from "../../services/themeService";
 
   export let procedure;
   export let database;
   export let connection;
 
   let editorContainer;
-  let editorView;
+  let editor;
   let loading = true;
   let error = null;
   let procedureSource = "";
+  let currentTheme = null;
 
-  $: isDark = $activeTheme === "dark";
+  // React to theme changes
+  $: if ($activeTheme && $activeTheme !== currentTheme) {
+    currentTheme = $activeTheme;
+    if (editor) {
+      const theme = getMonacoTheme($activeTheme);
+      monaco.editor.setTheme(theme);
+    }
+  }
 
   // Reload when procedure changes
   $: if (procedure && database) {
@@ -28,8 +35,8 @@
   });
 
   onDestroy(() => {
-    if (editorView) {
-      editorView.destroy();
+    if (editor) {
+      editor.dispose();
     }
   });
 
@@ -120,47 +127,30 @@
       procedureSource = `-- Error loading procedure source:\n-- ${err}`;
     } finally {
       loading = false;
+      if (editor) {
+        editor.setValue(procedureSource);
+      }
     }
   }
 
   function initializeEditor() {
-    if (!editorContainer) return;
+    if (!editorContainer || loading) return;
 
-    const extensions = [
-      basicSetup,
-      sql(),
-      EditorView.editable.of(false), // Read-only
-      EditorView.lineWrapping,
-    ];
+    const theme = getMonacoTheme($activeTheme);
 
-    if (isDark) {
-      extensions.push(oneDark);
-    }
-
-    editorView = new EditorView({
-      doc: procedureSource,
-      extensions,
-      parent: editorContainer,
+    editor = monaco.editor.create(editorContainer, {
+      value: procedureSource,
+      language: "sql",
+      theme,
+      readOnly: true,
+      automaticLayout: true,
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      wordWrap: "on",
+      fontSize: 13,
+      fontFamily: "'Fira Code', 'Monaco', monospace",
+      folding: true,
     });
-  }
-
-  // Update editor content when procedureSource changes
-  $: if (editorView && !loading) {
-    const transaction = editorView.state.update({
-      changes: {
-        from: 0,
-        to: editorView.state.doc.length,
-        insert: procedureSource,
-      },
-    });
-    editorView.dispatch(transaction);
-  }
-
-  // Update theme by recreating editor
-  $: if (editorView && editorContainer) {
-    isDark; // dependency
-    editorView.destroy();
-    initializeEditor();
   }
 
   async function copyToClipboard() {
@@ -255,15 +245,6 @@
   .editor-container {
     width: 100%;
     height: 100%;
-    overflow: auto;
-  }
-
-  .editor-container :global(.cm-editor) {
-    height: 100%;
-    font-size: 13px;
-  }
-
-  .editor-container :global(.cm-scroller) {
     overflow: auto;
   }
 

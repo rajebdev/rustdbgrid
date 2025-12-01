@@ -46,7 +46,7 @@
               <span
                 class="badge bg-secondary bg-opacity-10 text-dark px-3 py-2"
               >
-                <i class="fas fa-edit me-1"></i> CodeMirror
+                <i class="fas fa-edit me-1"></i> Monaco Editor
               </span>
             </div>
           </div>

@@ -1,20 +1,84 @@
 import { writable, get } from "svelte/store";
+import { tabDataStore } from "./tabData";
 
 /**
  * Tab Management Store and Logic
  */
 function createTabStore() {
-  const tabs = writable([]);
-  const activeTab = writable(null);
+  const STORAGE_KEY = "rustdbgrid_tabs";
+  const ACTIVE_TAB_KEY = "rustdbgrid_active_tab";
+
+  // Load initial tabs from localStorage
+  let initialTabs = [];
+  let initialActiveTab = null;
+
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        initialTabs = JSON.parse(saved);
+      }
+      const savedActive = localStorage.getItem(ACTIVE_TAB_KEY);
+      if (savedActive) {
+        initialActiveTab = JSON.parse(savedActive);
+      }
+    } catch (e) {
+      console.error("Failed to load tabs from storage:", e);
+      initialTabs = [];
+      initialActiveTab = null;
+    }
+  }
+
+  const tabs = writable(initialTabs);
+  const activeTab = writable(initialActiveTab);
+
+  // Auto-save tabs to localStorage whenever they change
+  tabs.subscribe((currentTabs) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentTabs));
+    }
+  });
+
+  // Auto-save active tab to localStorage
+  activeTab.subscribe((currentActive) => {
+    if (typeof window !== "undefined") {
+      if (currentActive) {
+        localStorage.setItem(ACTIVE_TAB_KEY, JSON.stringify(currentActive));
+      } else {
+        localStorage.removeItem(ACTIVE_TAB_KEY);
+      }
+    }
+  });
 
   return {
     subscribe: tabs.subscribe,
     activeTab,
 
     /**
+     * Validate tabs (check if tabs are still valid)
+     * Can be called on app startup to ensure tabs are properly loaded
+     */
+    validateTabs: () => {
+      const currentTabs = get(tabs);
+      const currentActive = get(activeTab);
+
+      // Check if active tab still exists in tabs
+      if (
+        currentActive &&
+        !currentTabs.find((t) => t.id === currentActive.id)
+      ) {
+        if (currentTabs.length > 0) {
+          activeTab.set(currentTabs[0]);
+        } else {
+          activeTab.set(null);
+        }
+      }
+    },
+
+    /**
      * Add a new query tab
      */
-    addQueryTab: (connection = null) => {
+    addQueryTab: (connection = null, initialContent = null) => {
       tabs.update((currentTabs) => {
         const newTab = {
           id: Date.now(),
@@ -22,7 +86,14 @@ function createTabStore() {
           type: "query",
           modified: false,
           connection: connection, // Store connection info
+          initialContent: initialContent, // Store initial content to pass to components
         };
+
+        // Initialize tabDataStore with initial content if provided
+        if (initialContent) {
+          tabDataStore.setQueryText(newTab.id, initialContent);
+        }
+
         activeTab.set(newTab);
         return [...currentTabs, newTab];
       });
@@ -194,6 +265,17 @@ function createTabStore() {
     },
 
     /**
+     * Update a specific tab
+     */
+    updateTab: (updatedTab) => {
+      tabs.update((currentTabs) => {
+        return currentTabs.map((t) =>
+          t.id === updatedTab.id ? updatedTab : t
+        );
+      });
+    },
+
+    /**
      * Set tabs
      */
     setTabs: (newTabs) => {
@@ -252,6 +334,18 @@ function createTabStore() {
       });
 
       return closedTabIds;
+    },
+
+    /**
+     * Clear all tabs and active tab (useful for cleanup)
+     */
+    clearAll: () => {
+      tabs.set([]);
+      activeTab.set(null);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(ACTIVE_TAB_KEY);
+      }
     },
   };
 }

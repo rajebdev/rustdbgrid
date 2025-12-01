@@ -47,6 +47,10 @@
   let isRestoringScroll = false; // Flag to prevent restore during user scroll
   let viewMode = "grid"; // View mode: "grid" or "json"
 
+  // Display names for headers (original names without suffix for duplicates)
+  $: displayNames =
+    displayData?.column_display_names || displayData?.columns || [];
+
   // Inline editing state
   let editingCell = null; // { rowIndex, column }
   let editingValue = "";
@@ -1276,15 +1280,16 @@
             >
               <thead>
                 <tr>
-                  {#each displayData.columns as column}
+                  {#each displayData.columns as column, idx}
                     {@const isNumeric = isNumericColumn(column)}
+                    {@const displayName = displayNames[idx] || column}
                     <th>
                       <div class="column-header">
                         <button
                           class="sort-button"
                           on:click={() => handleSort(column)}
                         >
-                          <span class="column-name">{column}</span>
+                          <span class="column-name">{displayName}</span>
                           {#if sortColumn === column}
                             <i
                               class="fas fa-sort-{sortDirection === 'asc'

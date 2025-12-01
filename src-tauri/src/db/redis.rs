@@ -284,6 +284,7 @@ impl DatabaseConnection for RedisConnection {
 
         Ok(QueryResult {
             columns,
+            column_display_names: None,
             column_types: None,
             rows,
             rows_affected: None,
@@ -488,6 +489,7 @@ impl DatabaseConnection for RedisConnection {
 
         Ok(QueryResult {
             columns,
+            column_display_names: None,
             column_types: None,
             rows,
             rows_affected: None,

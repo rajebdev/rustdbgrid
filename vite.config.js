@@ -1,10 +1,16 @@
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import monacoEditorPlugin from "vite-plugin-monaco-editor";
 
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [
+    svelte(),
+    monacoEditorPlugin.default({
+      languageWorkers: ["editorWorkerService"],
+    }),
+  ],
   clearScreen: false,
   server: {
     host: host || false,
@@ -26,13 +32,7 @@ export default defineConfig({
   optimizeDeps: {
     include: [
       "bootstrap/dist/js/bootstrap.bundle.min.js",
-      "codemirror",
-      "@codemirror/state",
-      "@codemirror/view",
-      "@codemirror/lang-sql",
-      "@codemirror/autocomplete",
-      "@codemirror/commands",
-      "@codemirror/theme-one-dark",
+      "monaco-editor",
       "@tauri-apps/api",
       "svelte",
       "svelte/store",

@@ -41,6 +41,13 @@ fn main() {
             query::execute_query,
             query::execute_query_with_filters,
             query::get_filter_values,
+            query::save_query,
+            query::load_queries,
+            query::delete_query,
+            query::save_auto_query,
+            query::load_auto_query,
+            query::auto_save_query_file,
+            query::get_next_query_number,
             schema::get_databases,
             schema::get_tables,
             schema::get_views,
@@ -69,6 +76,10 @@ fn main() {
             settings::update_setting,
             settings::get_theme,
             settings::set_theme,
+            settings::get_config_dir,
+            settings::open_path_in_explorer,
+            settings::delete_file,
+            settings::rename_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -381,6 +381,7 @@ impl DatabaseConnection for PostgresConnection {
         if rows.is_empty() {
             return Ok(QueryResult {
                 columns: vec![],
+                column_display_names: None,
                 column_types: None,
                 rows: vec![],
                 rows_affected: None,
@@ -389,10 +390,23 @@ impl DatabaseConnection for PostgresConnection {
             });
         }
 
+        // Handle duplicate column names by adding numeric suffix
+        let mut column_name_counts: HashMap<String, usize> = HashMap::new();
+        let mut display_names = Vec::new();
         let columns: Vec<String> = rows[0]
             .columns()
             .iter()
-            .map(|c| SqlxColumn::name(c).to_string())
+            .map(|c| {
+                let base_name = SqlxColumn::name(c).to_string();
+                display_names.push(base_name.clone()); // Store original name for display
+                let count = column_name_counts.entry(base_name.clone()).or_insert(0);
+                *count += 1;
+                if *count == 1 {
+                    base_name
+                } else {
+                    format!("{}_{}", base_name, count)
+                }
+            })
             .collect();
 
         // Pre-compute column type info once upfront (base_type, is_array, col_type enum)
@@ -431,6 +445,7 @@ impl DatabaseConnection for PostgresConnection {
 
         Ok(QueryResult {
             columns,
+            column_display_names: Some(display_names),
             column_types: None,
             rows: result_rows,
             rows_affected: None,

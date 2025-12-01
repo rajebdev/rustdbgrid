@@ -180,3 +180,50 @@ export async function getTheme() {
 export async function setTheme(theme) {
   return await invoke("set_theme", { theme });
 }
+
+// Query management functions
+export async function saveQuery(
+  title,
+  content,
+  description = "",
+  connectionId = null,
+  databaseName = null
+) {
+  return await invoke("save_query", {
+    title,
+    content,
+    description,
+    connection_id: connectionId,
+    database_name: databaseName,
+  });
+}
+
+export async function loadQueries() {
+  return await invoke("load_queries");
+}
+
+export async function deleteQuery(queryId) {
+  return await invoke("delete_query", { query_id: queryId });
+}
+
+export async function saveAutoQuery(
+  tabId,
+  query,
+  connectionId = null,
+  databaseName = null
+) {
+  return await invoke("save_auto_query", {
+    tab_id: tabId,
+    query,
+    connection_id: connectionId,
+    database_name: databaseName,
+  });
+}
+
+export async function loadAutoQuery() {
+  return await invoke("load_auto_query");
+}
+
+export async function getNextQueryNumber() {
+  return await invoke("get_next_query_number");
+}

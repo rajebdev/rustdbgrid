@@ -5,6 +5,7 @@
     selectedDatabase,
     selectedTable,
     isSaving,
+    saveStatus,
   } from "../../stores/connections";
   import { tabDataStore } from "../../stores/tabData";
   import { themePreference } from "../../stores/theme";
@@ -112,7 +113,20 @@
     {#if currentTabData?.queryResult && storageInfo}
       <span class="vr"></span>
     {/if}
-    {#if storageInfo}
+    {#if $saveStatus.message}
+      <div class="d-flex align-items-center gap-1">
+        {#if $saveStatus.type === "info" || $isSaving}
+          <i class="fas fa-spinner fa-spin text-primary"></i>
+          <span class="text-primary">{$saveStatus.message}</span>
+        {:else if $saveStatus.type === "success"}
+          <i class="fas fa-check-circle text-success"></i>
+          <span class="text-success">{$saveStatus.message}</span>
+        {:else if $saveStatus.type === "error"}
+          <i class="fas fa-exclamation-circle text-danger"></i>
+          <span class="text-danger">{$saveStatus.message}</span>
+        {/if}
+      </div>
+    {:else if storageInfo}
       <div
         class="d-flex align-items-center gap-1"
         title="{storageInfo.path}\n{storageInfo.exists

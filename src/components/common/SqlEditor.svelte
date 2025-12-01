@@ -1,15 +1,6 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { EditorView, basicSetup } from "codemirror";
-  import { EditorState } from "@codemirror/state";
-  import {
-    drawSelection,
-    highlightActiveLineGutter,
-    crosshairCursor,
-  } from "@codemirror/view";
-  import { sql } from "@codemirror/lang-sql";
-  import { autocompletion } from "@codemirror/autocomplete";
-  import { oneDark } from "@codemirror/theme-one-dark";
+  import * as monaco from "monaco-editor";
   import {
     activeConnection,
     connections,
@@ -17,19 +8,30 @@
   } from "../../stores/connections";
   import { tabDataStore } from "../../stores/tabData";
   import { activeTheme } from "../../stores/theme";
+  import { queryListStore } from "../../stores/queryList";
+  import { queryHistoryStore } from "../../stores/queryHistory";
   import { getDefaultQuery } from "../../utils/defaultQueries";
-  import { getEditorTheme } from "../../services/themeService";
+  import { getMonacoTheme } from "../../services/themeService";
+  import { formatSql } from "../../utils/sqlFormatter";
+  import {
+    getSelectedOrFullText,
+    executeSelectedText,
+  } from "../../utils/editorUtils";
   import {
     executeQuery,
     getDatabases,
     getTables,
     getTableSchema,
+    saveAutoQuery,
   } from "../../utils/tauri";
+  import EditorContextMenu from "../context-menus/EditorContextMenu.svelte";
 
   export let tabId;
+  export let tab;
 
   let editorContainer;
-  let editorView;
+  let editor;
+  let contextMenuComponent;
   let executing = false;
   let databases = [];
   let selectedConn = null;
@@ -40,12 +42,15 @@
   let currentTheme = null;
   let loadedDatabases = {}; // Cache for database tables
   let tableAliasMap = new Map(); // Track used aliases to prevent duplicates
+  let autoSaveTimeout; // For debouncing auto-save
+  let tabData = {}; // Initialize tabData
 
   // Subscribe to theme changes
   $: if ($activeTheme && $activeTheme !== currentTheme) {
     currentTheme = $activeTheme;
-    if (editorView) {
-      updateEditorExtensions();
+    if (editor) {
+      const theme = getMonacoTheme($activeTheme);
+      monaco.editor.setTheme(theme);
     }
   }
 
@@ -199,469 +204,375 @@
     }
   }
 
-  function createAutocompletions() {
-    // SQL Keywords for autocomplete (UPPERCASE)
-    const sqlKeywords = [
-      "SELECT",
-      "FROM",
-      "WHERE",
-      "INSERT",
-      "UPDATE",
-      "DELETE",
-      "JOIN",
-      "INNER",
-      "LEFT",
-      "RIGHT",
-      "OUTER",
-      "ON",
-      "AND",
-      "OR",
-      "NOT",
-      "IN",
-      "EXISTS",
-      "BETWEEN",
-      "LIKE",
-      "IS",
-      "NULL",
-      "ORDER",
-      "BY",
-      "GROUP",
-      "HAVING",
-      "LIMIT",
-      "OFFSET",
-      "AS",
-      "DISTINCT",
-      "ALL",
-      "UNION",
-      "INTERSECT",
-      "EXCEPT",
-      "CREATE",
-      "ALTER",
-      "DROP",
-      "TABLE",
-      "DATABASE",
-      "INDEX",
-      "VIEW",
-      "PRIMARY",
-      "KEY",
-      "FOREIGN",
-      "REFERENCES",
-      "CONSTRAINT",
-      "UNIQUE",
-      "CHECK",
-      "DEFAULT",
-      "CASCADE",
-      "SET",
-      "VALUES",
-      "INTO",
-      "CASE",
-      "WHEN",
-      "THEN",
-      "ELSE",
-      "END",
-      "COUNT",
-      "SUM",
-      "AVG",
-      "MIN",
-      "MAX",
-      "CAST",
-      "COALESCE",
-      "NULLIF",
-      "IFNULL",
-      "CONCAT",
-      "SUBSTRING",
-      "TRIM",
-      "UPPER",
-      "LOWER",
-      "LENGTH",
-      "ROUND",
-      "FLOOR",
-      "CEIL",
-      "ABS",
-      "NOW",
-      "CURDATE",
-      "CURTIME",
-      "DATE",
-      "TIME",
-      "DATETIME",
-      "TIMESTAMP",
-    ].map((keyword) => ({
-      label: keyword,
-      type: "keyword",
-      boost: 3,
-      apply: (view, completion, from, to) => {
-        // Insert keyword with space
-        const text = `${keyword} `;
-        view.dispatch({
-          changes: { from, to, insert: text },
-          selection: { anchor: from + text.length },
+  function createCompletionProvider() {
+    return {
+      triggerCharacters: [" ", ".", "\n"],
+      provideCompletionItems: async (model, position, context, token) => {
+        const textUntilPosition = model.getValueInRange({
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
         });
-      },
-    }));
 
-    return async function sqlAutoComplete(context) {
-      const line = context.state.doc.lineAt(context.pos);
-      const textBefore = line.text.slice(0, context.pos - line.from);
+        const line = model.getLineContent(position.lineNumber);
+        const textBefore = line.slice(0, position.column - 1);
 
-      // Pre-load tables when user types database name (before dot)
-      const dbNameMatch = textBefore.match(/\b(\w+)$/);
-      if (dbNameMatch) {
-        const typedWord = dbNameMatch[1];
-        const matchedDb = databases.find(
-          (db) => db.name.toLowerCase() === typedWord.toLowerCase()
-        );
-        if (matchedDb && !loadedDatabases[matchedDb.name]) {
-          // Pre-load tables in background without blocking
-          loadTablesForDatabase(matchedDb.name).catch((err) =>
-            console.error(`Background load failed for ${matchedDb.name}:`, err)
+        // Pre-load tables when user types database name (before dot)
+        const dbNameMatch = textBefore.match(/\b(\w+)$/);
+        if (dbNameMatch) {
+          const typedWord = dbNameMatch[1];
+          const matchedDb = databases.find(
+            (db) => db.name.toLowerCase() === typedWord.toLowerCase()
           );
+          if (matchedDb && !loadedDatabases[matchedDb.name]) {
+            loadTablesForDatabase(matchedDb.name).catch((err) =>
+              console.error(
+                `Background load failed for ${matchedDb.name}:`,
+                err
+              )
+            );
+          }
         }
-      }
 
-      // Check for dot notation (table.column or database.table)
-      const dotMatch = textBefore.match(/(\w+)\.(\w*)$/);
-      if (dotMatch) {
-        const [, identifier, partial] = dotMatch;
-        const options = [];
+        const suggestions = [];
 
-        // Check if we're in FROM/JOIN context for auto-alias
-        const beforeDot = textBefore.substring(
-          0,
-          textBefore.lastIndexOf(identifier)
-        );
-        const inFromJoinContext = /(?:FROM|JOIN)\s+$/i.test(beforeDot);
+        // Check for dot notation (table.column or database.table)
+        const dotMatch = textBefore.match(/(\w+)\.(\w*)$/);
+        if (dotMatch) {
+          const [, identifier, partial] = dotMatch;
 
-        // Check if identifier is a database name (case-insensitive)
-        const matchedDb = databases.find(
-          (db) => db.name.toLowerCase() === identifier.toLowerCase()
-        );
+          // Check if we're in FROM/JOIN context for auto-alias
+          const beforeDot = textBefore.substring(
+            0,
+            textBefore.lastIndexOf(identifier)
+          );
+          const inFromJoinContext = /(?:FROM|JOIN)\s+$/i.test(beforeDot);
 
-        if (matchedDb) {
-          // Tables should already be loaded, just retrieve from cache
-          const dbTables = await loadTablesForDatabase(matchedDb.name);
-          options.push(
-            ...dbTables.map((table) => {
-              // If in FROM/JOIN context, add auto-alias
-              if (inFromJoinContext) {
+          // Check if identifier is a database name (case-insensitive)
+          const matchedDb = databases.find(
+            (db) => db.name.toLowerCase() === identifier.toLowerCase()
+          );
+
+          if (matchedDb) {
+            // Tables should already be loaded, just retrieve from cache
+            const dbTables = await loadTablesForDatabase(matchedDb.name);
+            suggestions.push(
+              ...dbTables.map((table) => {
+                // If in FROM/JOIN context, add auto-alias
+                if (inFromJoinContext) {
+                  const alias = generateTableAlias(table.name);
+                  return {
+                    label: table.name,
+                    kind: monaco.languages.CompletionItemKind.Class,
+                    insertText: `${table.name} ${alias} `,
+                    sortText: "1" + table.name,
+                  };
+                }
+                return {
+                  label: table.name,
+                  kind: monaco.languages.CompletionItemKind.Class,
+                  insertText: table.name,
+                  sortText: "1" + table.name,
+                };
+              })
+            );
+          } else if (selectedDb && loadedDatabases[selectedDb]?.tables) {
+            const matchedTable = loadedDatabases[selectedDb].tables.find(
+              (t) => t.name.toLowerCase() === identifier.toLowerCase()
+            );
+            if (matchedTable) {
+              // Load columns for this table
+              const columns = await loadColumnsForTable(
+                selectedDb,
+                matchedTable.name
+              );
+              suggestions.push(
+                ...columns.map((col) => ({
+                  label: col,
+                  kind: monaco.languages.CompletionItemKind.Field,
+                  insertText: col,
+                  sortText: "1" + col,
+                }))
+              );
+            }
+          }
+
+          // Check if identifier is an alias
+          if (suggestions.length === 0 && tableAliasMap.has(identifier)) {
+            const tableName = tableAliasMap.get(identifier);
+            const dbName = selectedDb;
+            if (dbName) {
+              const columns = await loadColumnsForTable(dbName, tableName);
+              suggestions.push(
+                ...columns.map((col) => ({
+                  label: col,
+                  kind: monaco.languages.CompletionItemKind.Field,
+                  insertText: col,
+                  sortText: "1" + col,
+                }))
+              );
+            }
+          }
+
+          return { suggestions };
+        }
+
+        // Check for FROM/JOIN context to show tables
+        const fromMatch = textBefore.match(/(?:FROM|JOIN)\s+(\w*)$/i);
+        if (fromMatch) {
+          // If database is selected, load its tables
+          if (selectedDb) {
+            const dbTables = await loadTablesForDatabase(selectedDb);
+            suggestions.push(
+              ...dbTables.map((table) => {
                 const alias = generateTableAlias(table.name);
                 return {
                   label: table.name,
-                  type: "type",
-                  boost: 10,
-                  apply: (view, completion, from, to) => {
-                    // Store the alias mapping
-                    tableAliasMap.set(alias, table.name);
-
-                    // Insert table name with alias and space
-                    const text = `${table.name} ${alias} `;
-                    view.dispatch({
-                      changes: { from, to, insert: text },
-                      selection: { anchor: from + text.length },
-                    });
-                  },
+                  kind: monaco.languages.CompletionItemKind.Class,
+                  insertText: `${table.name} ${alias} `,
+                  sortText: "2" + table.name,
                 };
-              }
-              // Otherwise, just table name
-              return {
-                label: table.name,
-                type: "type",
-                boost: 10,
-                apply: table.name,
-              };
-            })
-          );
-        }
-        // Check if identifier is a table name in current database
-        else if (selectedDb && loadedDatabases[selectedDb]?.tables) {
-          const matchedTable = loadedDatabases[selectedDb].tables.find(
-            (t) => t.name.toLowerCase() === identifier.toLowerCase()
-          );
-          if (matchedTable) {
-            // Load columns for this table
-            const columns = await loadColumnsForTable(
-              selectedDb,
-              matchedTable.name
-            );
-            options.push(
-              ...columns.map((col) => ({
-                label: col,
-                type: "property",
-                boost: 10,
-                apply: col,
-              }))
+              })
             );
           }
-        }
-        // Check if identifier is an alias
-        if (options.length === 0 && tableAliasMap.has(identifier)) {
-          const tableName = tableAliasMap.get(identifier);
-          const dbName = selectedDb; // Assume current database for alias
-          if (dbName) {
-            const columns = await loadColumnsForTable(dbName, tableName);
-            options.push(
-              ...columns.map((col) => ({
-                label: col,
-                type: "property",
-                boost: 10,
-                apply: col,
-              }))
-            );
-          }
-        }
 
-        if (options.length > 0) {
-          return {
-            from: context.pos - partial.length,
-            options,
-            validFor: /^\w*$/,
-          };
-        }
-        return null;
-      }
-
-      // Check for FROM/JOIN context to show tables
-      const fromMatch = textBefore.match(/(?:FROM|JOIN)\s+(\w*)$/i);
-      if (fromMatch) {
-        const options = [];
-
-        // If database is selected, load its tables
-        if (selectedDb) {
-          const dbTables = await loadTablesForDatabase(selectedDb);
-          options.push(
-            ...dbTables.map((table) => {
-              const alias = generateTableAlias(table.name);
-              return {
-                label: table.name,
-                type: "type",
-                boost: 10,
-                apply: (view, completion, from, to) => {
-                  // Store the alias mapping
-                  tableAliasMap.set(alias, table.name);
-
-                  // Insert table name with alias and space
-                  const text = `${table.name} ${alias} `;
-                  view.dispatch({
-                    changes: { from, to, insert: text },
-                    selection: { anchor: from + text.length },
-                  });
-                },
-              };
-            })
+          // Also show other databases
+          suggestions.push(
+            ...databases.map((db) => ({
+              label: db.name,
+              kind: monaco.languages.CompletionItemKind.Module,
+              insertText: db.name,
+              detail: "database",
+              sortText: "3" + db.name,
+            }))
           );
+
+          return { suggestions };
         }
 
-        // Also show other databases with pre-load
-        options.push(
-          ...databases.map((db) => ({
-            label: db.name,
-            type: "namespace",
-            boost: 5,
-            detail: "database",
-            apply: (view, completion, from, to) => {
-              // Pre-load tables when database is selected
-              if (!loadedDatabases[db.name]) {
-                loadTablesForDatabase(db.name).catch((err) =>
-                  console.error(
-                    `Failed to pre-load tables for ${db.name}:`,
-                    err
-                  )
-                );
-              }
-              // Insert database name
-              view.dispatch({
-                changes: { from, to, insert: db.name },
-                selection: { anchor: from + db.name.length },
-              });
-            },
+        // SQL Keywords
+        const sqlKeywords = [
+          "SELECT",
+          "FROM",
+          "WHERE",
+          "INSERT",
+          "UPDATE",
+          "DELETE",
+          "JOIN",
+          "INNER",
+          "LEFT",
+          "RIGHT",
+          "OUTER",
+          "ON",
+          "AND",
+          "OR",
+          "NOT",
+          "IN",
+          "EXISTS",
+          "BETWEEN",
+          "LIKE",
+          "IS",
+          "NULL",
+          "ORDER",
+          "BY",
+          "GROUP",
+          "HAVING",
+          "LIMIT",
+          "OFFSET",
+          "AS",
+          "DISTINCT",
+          "ALL",
+          "UNION",
+          "INTERSECT",
+          "EXCEPT",
+          "CREATE",
+          "ALTER",
+          "DROP",
+          "TABLE",
+          "DATABASE",
+          "INDEX",
+          "VIEW",
+          "PRIMARY",
+          "KEY",
+          "FOREIGN",
+          "REFERENCES",
+          "CONSTRAINT",
+          "UNIQUE",
+          "CHECK",
+          "DEFAULT",
+          "CASCADE",
+          "SET",
+          "VALUES",
+          "INTO",
+          "CASE",
+          "WHEN",
+          "THEN",
+          "ELSE",
+          "END",
+          "COUNT",
+          "SUM",
+          "AVG",
+          "MIN",
+          "MAX",
+          "CAST",
+          "COALESCE",
+          "NULLIF",
+          "IFNULL",
+          "CONCAT",
+          "SUBSTRING",
+          "TRIM",
+          "UPPER",
+          "LOWER",
+          "LENGTH",
+          "ROUND",
+          "FLOOR",
+          "CEIL",
+          "ABS",
+          "NOW",
+          "CURDATE",
+          "CURTIME",
+          "DATE",
+          "TIME",
+          "DATETIME",
+          "TIMESTAMP",
+        ];
+
+        // Get the word range for completion
+        const word = model.getWordUntilPosition(position);
+
+        // Add SQL keywords
+        suggestions.push(
+          ...sqlKeywords.map((keyword) => ({
+            label: keyword,
+            kind: monaco.languages.CompletionItemKind.Keyword,
+            insertText: keyword + " ",
+            sortText: "0" + keyword,
           }))
         );
 
-        if (options.length > 0) {
-          return {
-            from: context.pos - fromMatch[1].length,
-            options,
-            validFor: /^\w*$/,
-          };
-        }
-      }
-
-      // Default word-based completion
-      const word = context.matchBefore(/\w*/);
-      if (!word || (word.from === word.to && !context.explicit)) {
-        return null;
-      }
-
-      // Check if we're in FROM/JOIN context for tables with alias
-      const lineTextBefore = context.state.doc
-        .lineAt(word.from)
-        .text.slice(0, word.from - context.state.doc.lineAt(word.from).from);
-      const inFromJoinContext = /(?:FROM|JOIN)\s+\w*$/i.test(lineTextBefore);
-
-      // Build basic completions
-      const options = [...sqlKeywords];
-
-      // Add tables from current database
-      if (selectedDb && loadedDatabases[selectedDb]) {
-        const dbTables = loadedDatabases[selectedDb].tables || [];
-        options.push(
-          ...dbTables.map((table) => {
-            // If in FROM/JOIN context, add auto-alias
-            if (inFromJoinContext) {
-              const alias = generateTableAlias(table.name);
-              return {
-                label: table.name,
-                type: "type",
-                boost: 2,
-                apply: (view, completion, from, to) => {
-                  // Store the alias mapping
-                  tableAliasMap.set(alias, table.name);
-
-                  // Insert table name with alias and space
-                  const text = `${table.name} ${alias} `;
-                  view.dispatch({
-                    changes: { from, to, insert: text },
-                    selection: { anchor: from + text.length },
-                  });
-                },
-              };
-            }
-            // Otherwise, just table name
-            return {
+        // Add tables from current database
+        if (selectedDb && loadedDatabases[selectedDb]) {
+          const dbTables = loadedDatabases[selectedDb].tables || [];
+          suggestions.push(
+            ...dbTables.map((table) => ({
               label: table.name,
-              type: "type",
-              boost: 2,
-              apply: table.name,
-            };
-          })
+              kind: monaco.languages.CompletionItemKind.Class,
+              insertText: table.name,
+              sortText: "4" + table.name,
+            }))
+          );
+        }
+
+        // Add databases
+        suggestions.push(
+          ...databases.map((db) => ({
+            label: db.name,
+            kind: monaco.languages.CompletionItemKind.Module,
+            insertText: db.name,
+            detail: "database",
+            sortText: "5" + db.name,
+          }))
         );
-      }
 
-      // Add databases with pre-load on hover/selection
-      options.push(
-        ...databases.map((db) => ({
-          label: db.name,
-          type: "namespace",
-          boost: 1,
-          detail: "database",
-          apply: (view, completion, from, to) => {
-            // Pre-load tables when database is selected
-            if (!loadedDatabases[db.name]) {
-              loadTablesForDatabase(db.name).catch((err) =>
-                console.error(`Failed to pre-load tables for ${db.name}:`, err)
-              );
-            }
-            // Insert database name
-            view.dispatch({
-              changes: { from, to, insert: db.name },
-              selection: { anchor: from + db.name.length },
-            });
-          },
-        }))
-      );
-
-      return {
-        from: word.from,
-        options,
-        validFor: /^\w*$/,
-      };
+        return { suggestions };
+      },
     };
   }
 
-  function updateEditorExtensions() {
-    if (!editorView) return;
+  function updateEditorCompletions() {
+    if (!editor) return;
 
-    const extensions = [
-      basicSetup,
-      drawSelection({
-        drawRangeCursor: true,
-        cursorBlinkRate: 1200,
-      }),
-      highlightActiveLineGutter(),
-      sql(),
-      autocompletion({
-        override: [createAutocompletions()],
-        activateOnTyping: true,
-      }),
-      EditorView.lineWrapping,
-      // Ensure proper selection handling
-      EditorState.allowMultipleSelections.of(true),
-      EditorView.contentAttributes.of({
-        style: "user-select: text; -webkit-user-select: text;",
-      }),
-    ];
-
-    // Add theme based on current theme
-    if ($activeTheme === "dark") {
-      extensions.push(oneDark);
-    } else {
-      extensions.push(EditorView.theme(getEditorTheme($activeTheme)));
+    // Dispose old completion provider if exists
+    if (editor._completionDisposable) {
+      editor._completionDisposable.dispose();
     }
 
-    // Add update listener
-    extensions.push(
-      EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-          const text = update.state.doc.toString();
-          tabDataStore.setQueryText(tabId, text);
-        }
-      })
-    );
-
-    // Recreate the editor view with new extensions
-    const currentDoc = editorView.state.doc.toString();
-    editorView.destroy();
-
-    editorView = new EditorView({
-      doc: currentDoc,
-      extensions,
-      parent: editorContainer,
-    });
+    // Register new completion provider
+    editor._completionDisposable =
+      monaco.languages.registerCompletionItemProvider(
+        "sql",
+        createCompletionProvider()
+      );
   }
 
-  onMount(() => {
-    const extensions = [
-      basicSetup,
-      drawSelection({
-        drawRangeCursor: true,
-        cursorBlinkRate: 1200,
-      }),
-      highlightActiveLineGutter(),
-      sql(),
-      autocompletion({
-        override: [createAutocompletions()],
-        activateOnTyping: true,
-      }),
-      EditorView.lineWrapping,
-      // Ensure proper selection handling
-      EditorState.allowMultipleSelections.of(true),
-      EditorView.contentAttributes.of({
-        style: "user-select: text; -webkit-user-select: text;",
-      }),
-    ];
+  onMount(async () => {
+    const theme = getMonacoTheme($activeTheme);
 
-    // Add theme based on current theme
-    if ($activeTheme === "dark") {
-      extensions.push(oneDark);
-    } else {
-      extensions.push(EditorView.theme(getEditorTheme($activeTheme)));
+    // Check for auto-saved query from backend
+    // Priority: tab.initialContent > tabData.queryText > default query
+    let initialQuery =
+      tab?.initialContent ||
+      tabData.queryText ||
+      getDefaultQuery(selectedConn?.db_type || "MySQL");
+
+    try {
+      const { loadAutoQuery } = await import("../../utils/tauri");
+      const autoSaved = await loadAutoQuery();
+      if (autoSaved && autoSaved.tab_id === tabId) {
+        // Use auto-saved query if available and matches current tab
+        initialQuery = autoSaved.query;
+      }
+    } catch (e) {
+      console.error("Failed to load auto-saved query:", e);
     }
 
-    // Add update listener
-    extensions.push(
-      EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-          const text = update.state.doc.toString();
-          tabDataStore.setQueryText(tabId, text);
-        }
-      })
-    );
-
-    editorView = new EditorView({
-      doc:
-        tabData.queryText || getDefaultQuery(selectedConn?.db_type || "MySQL"),
-      extensions,
-      parent: editorContainer,
+    // Create editor
+    editor = monaco.editor.create(editorContainer, {
+      value: initialQuery,
+      language: "sql",
+      theme,
+      automaticLayout: true,
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      wordWrap: "on",
+      fontSize: 13,
+      fontFamily: "'Fira Code', 'Monaco', monospace",
+      folding: true,
+      formatOnPaste: true,
+      formatOnType: true,
+      contextmenu: false,
+      suggest: {
+        shareSuggestSelections: true,
+        showIcons: true,
+      },
     });
+
+    // Register SQL completion provider
+    updateEditorCompletions();
+
+    // Listen for changes
+    editor.onDidChangeModelContent(() => {
+      const text = editor.getValue();
+      tabDataStore.setQueryText(tabId, text);
+      autoSaveQuery(); // Auto-save with debouncing
+    });
+
+    // Add context menu listener
+    editorContainer.addEventListener("contextmenu", handleEditorContextMenu);
+
+    // Add keyboard shortcuts
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () =>
+      executeSelectedQuery()
+    );
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter,
+      () => executeSelectedInNewTab()
+    );
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyL,
+      () => formatSelectedText()
+    );
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd |
+        monaco.KeyMod.Shift |
+        monaco.KeyMod.Alt |
+        monaco.KeyCode.KeyL,
+      () => formatAllText()
+    );
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () =>
+      saveQuery()
+    );
 
     // Load databases if connection is already selected
     if (selectedConn) {
@@ -677,36 +588,38 @@
 
     const handleExecuteScript = (event) => {
       if (event.detail.tabId === tabId) {
-        runQuery(); // For now, execute script is the same as execute
+        runQuery();
       }
     };
 
     const handleUndo = (event) => {
-      if (event.detail.tabId === tabId && editorView) {
-        import("@codemirror/commands").then(({ undo }) => {
-          undo(editorView);
-        });
+      if (event.detail.tabId === tabId && editor) {
+        editor.trigger("keyboard", "undo", null);
       }
     };
 
     const handleRedo = (event) => {
-      if (event.detail.tabId === tabId && editorView) {
-        import("@codemirror/commands").then(({ redo }) => {
-          redo(editorView);
-        });
+      if (event.detail.tabId === tabId && editor) {
+        editor.trigger("keyboard", "redo", null);
       }
     };
 
     const handlePaste = async (event) => {
-      if (event.detail.tabId === tabId && editorView && event.detail.text) {
-        const selection = editorView.state.selection.main;
-        editorView.dispatch({
-          changes: {
-            from: selection.from,
-            to: selection.to,
-            insert: event.detail.text,
-          },
-        });
+      if (event.detail.tabId === tabId && editor && event.detail.text) {
+        const selection = editor.getSelection();
+        const range = new monaco.Range(
+          selection.startLineNumber,
+          selection.startColumn,
+          selection.endLineNumber,
+          selection.endColumn
+        );
+        editor.executeEdits("paste", [{ range, text: event.detail.text }]);
+      }
+    };
+
+    const handleLoadQuery = (event) => {
+      if (editor && event.detail.query) {
+        editor.setValue(event.detail.query);
       }
     };
 
@@ -715,19 +628,28 @@
     document.addEventListener("editor-undo", handleUndo);
     document.addEventListener("editor-redo", handleRedo);
     document.addEventListener("editor-paste", handlePaste);
+    window.addEventListener("load-query", handleLoadQuery);
 
     return () => {
+      editorContainer.removeEventListener(
+        "contextmenu",
+        handleEditorContextMenu
+      );
       document.removeEventListener("execute-query", handleExecuteQuery);
       document.removeEventListener("execute-script", handleExecuteScript);
       document.removeEventListener("editor-undo", handleUndo);
       document.removeEventListener("editor-redo", handleRedo);
       document.removeEventListener("editor-paste", handlePaste);
+      window.removeEventListener("load-query", handleLoadQuery);
     };
   });
 
   onDestroy(() => {
-    if (editorView) {
-      editorView.destroy();
+    if (editor) {
+      if (editor._completionDisposable) {
+        editor._completionDisposable.dispose();
+      }
+      editor.dispose();
     }
   });
 
@@ -792,29 +714,311 @@
   }
 
   async function runQuery() {
-    if (!selectedConn) {
-      alert("Please select a connection first");
+    if (!selectedConn || !selectedDb) {
+      alert("Please select connection and database first");
       return;
     }
 
-    let query = editorView.state.doc.toString();
-    if (!query.trim()) {
-      alert("Please enter a query");
+    const selection = editor.getSelection();
+    const hasSelection = !(
+      selection.startLineNumber === selection.endLineNumber &&
+      selection.startColumn === selection.endColumn
+    );
+
+    let query = "";
+
+    if (hasSelection) {
+      // Execute selected text if there is a selection
+      query = editor.getModel().getValueInRange(selection);
+      if (!query.trim()) {
+        alert("No text selected");
+        return;
+      }
+    } else {
+      // Execute full query if no selection
+      query = editor.getValue();
+      if (!query.trim()) {
+        alert("Please enter a query");
+        return;
+      }
+    }
+
+    // Use executeQueryText with createNewTab = false
+    executeQueryText(query.trim(), false);
+  }
+
+  function autoSaveQuery() {
+    if (!editor) return;
+
+    // Clear previous timeout
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+
+    // Debounce auto-save: wait 2 seconds after user stops typing
+    autoSaveTimeout = setTimeout(async () => {
+      const queryText = editor.getValue();
+      if (queryText.trim()) {
+        try {
+          // Save to backend file system (.autosave.json)
+          await saveAutoQuery(tabId, queryText, selectedConn?.id, selectedDb);
+
+          // Also save to the actual file if tab has a filePath
+          if (tab?.filePath) {
+            const { invoke } = await import("@tauri-apps/api/core");
+            const configDir = await invoke("get_config_dir");
+
+            // Build full absolute path
+            let fullPath = tab.filePath;
+            if (
+              !fullPath.match(/^[a-zA-Z]:[\\\\/]/) &&
+              !fullPath.startsWith("/")
+            ) {
+              // Relative path, make it absolute
+              const sep = navigator.platform.toLowerCase().includes("win")
+                ? "\\"
+                : "/";
+              fullPath =
+                configDir +
+                sep +
+                "rustdbgrid" +
+                sep +
+                tab.filePath.replace(/\//g, sep);
+            }
+
+            await invoke("auto_save_query_file", {
+              filePath: fullPath,
+              content: queryText,
+            });
+          }
+        } catch (error) {
+          console.error("Failed to auto-save query:", error);
+        }
+      }
+    }, 2000);
+  }
+
+  function clearEditor() {
+    if (editor) {
+      editor.setValue("");
+      tableAliasMap.clear();
+    }
+  }
+
+  function handleEditorContextMenu(event) {
+    const selection = editor?.getSelection();
+    const hasSelection =
+      selection &&
+      !(
+        selection.startLineNumber === selection.endLineNumber &&
+        selection.startColumn === selection.endColumn
+      );
+
+    const menuItems = [
+      {
+        id: "execute-selected",
+        label: "Execute Selected",
+        icon: "fas fa-play",
+        shortcut: "Ctrl+Enter",
+        onClick: () => executeSelectedQuery(),
+        disabled: !hasSelection || !selectedConn || !selectedDb,
+      },
+      {
+        id: "execute-selected-newtab",
+        label: "Execute in New Tab",
+        icon: "fas fa-arrow-right",
+        shortcut: "Ctrl+Shift+Enter",
+        onClick: () => executeSelectedInNewTab(),
+        disabled: !hasSelection || !selectedConn || !selectedDb,
+      },
+      {
+        id: "separator-1",
+        label: "---",
+        disabled: true,
+      },
+      {
+        id: "cut",
+        label: "Cut",
+        icon: "fas fa-cut",
+        shortcut: "Ctrl+X",
+        onClick: () => {
+          if (editor) {
+            editor.focus();
+            document.execCommand("cut");
+          }
+        },
+        disabled: !hasSelection,
+      },
+      {
+        id: "copy",
+        label: "Copy",
+        icon: "fas fa-copy",
+        shortcut: "Ctrl+C",
+        onClick: () => {
+          if (editor) {
+            editor.focus();
+            document.execCommand("copy");
+          }
+        },
+        disabled: !hasSelection,
+      },
+      {
+        id: "paste",
+        label: "Paste",
+        icon: "fas fa-paste",
+        shortcut: "Ctrl+V",
+        onClick: async () => {
+          if (editor) {
+            editor.focus();
+            try {
+              const text = await navigator.clipboard.readText();
+              const selection = editor.getSelection();
+              editor.executeEdits("", [
+                {
+                  range: selection,
+                  text: text,
+                  forceMoveMarkers: true,
+                },
+              ]);
+            } catch (e) {
+              console.error("Paste failed:", e);
+            }
+          }
+        },
+      },
+      {
+        id: "separator-2",
+        label: "---",
+        disabled: true,
+      },
+      {
+        id: "format-selected",
+        label: "Format Selected",
+        icon: "fas fa-align-left",
+        shortcut: "Ctrl+Alt+L",
+        onClick: () => formatSelectedText(),
+        disabled: !hasSelection,
+      },
+      {
+        id: "format-all",
+        label: "Format All",
+        icon: "fas fa-align-justify",
+        shortcut: "Ctrl+Shift+Alt+L",
+        onClick: () => formatAllText(),
+      },
+    ];
+
+    contextMenuComponent.show(event, menuItems);
+  }
+
+  function executeSelectedQuery() {
+    const selection = editor.getSelection();
+    const hasSelection = !(
+      selection.startLineNumber === selection.endLineNumber &&
+      selection.startColumn === selection.endColumn
+    );
+
+    if (!selectedConn || !selectedDb) {
+      alert("Please select connection and database first");
       return;
     }
 
-    // Store original query (without limit) for pagination support
-    const originalQuery = query.trim();
+    let text = "";
 
-    // Auto-add appropriate limit clause based on database type
-    const queryWithLimit = addLimitClause(query, selectedConn.db_type);
+    if (hasSelection) {
+      text = editor.getModel().getValueInRange(selection);
+      if (!text.trim()) {
+        alert("No text selected");
+        return;
+      }
+    } else {
+      text = editor.getValue();
+      if (!text.trim()) {
+        alert("Please enter a query");
+        return;
+      }
+    }
 
+    executeQueryText(text, false);
+  }
+
+  function executeSelectedInNewTab() {
+    const selection = editor.getSelection();
+    const hasSelection = !(
+      selection.startLineNumber === selection.endLineNumber &&
+      selection.startColumn === selection.endColumn
+    );
+
+    if (!selectedConn || !selectedDb) {
+      alert("Please select connection and database first");
+      return;
+    }
+
+    let text = "";
+
+    if (hasSelection) {
+      text = editor.getModel().getValueInRange(selection);
+      if (!text.trim()) {
+        alert("No text selected");
+        return;
+      }
+    } else {
+      text = editor.getValue();
+      if (!text.trim()) {
+        alert("Please enter a query");
+        return;
+      }
+    }
+
+    executeQueryText(text, true);
+  }
+
+  async function executeQueryText(query, createNewTab = false) {
     executing = true;
     try {
+      const queryWithLimit = addLimitClause(query, selectedConn.db_type);
+      const startTime = Date.now();
+
       const result = await executeQuery(selectedConn, queryWithLimit);
-      tabDataStore.setQueryResult(tabId, result);
-      // Store original query so load more/pagination can work correctly
-      tabDataStore.setExecutedQuery(tabId, originalQuery);
+
+      const executionTime = Date.now() - startTime;
+
+      // Add to history
+      queryHistoryStore.addToHistory(
+        query,
+        selectedConn.id,
+        selectedDb,
+        executionTime
+      );
+
+      if (createNewTab) {
+        // Create new result tab inside QueryTabContent
+        window.dispatchEvent(
+          new CustomEvent("execute-new-result-tab", {
+            detail: {
+              tabId,
+              result,
+              query,
+              executionTime,
+            },
+          })
+        );
+      } else {
+        // Update current result tab
+        window.dispatchEvent(
+          new CustomEvent("update-result-tab", {
+            detail: {
+              tabId,
+              result,
+              query,
+              executionTime,
+            },
+          })
+        );
+        // Also update store for persistence
+        tabDataStore.setQueryResult(tabId, result);
+        tabDataStore.setExecutedQuery(tabId, query);
+      }
     } catch (error) {
       alert("Query execution failed: " + error);
       console.error(error);
@@ -822,112 +1026,91 @@
     executing = false;
   }
 
-  function clearEditor() {
-    if (editorView) {
-      editorView.dispatch({
-        changes: { from: 0, to: editorView.state.doc.length, insert: "" },
-      });
-      tableAliasMap.clear(); // Reset alias map when clearing editor
+  function formatSelectedText() {
+    const selection = editor.getSelection();
+    const hasSelection = !(
+      selection.startLineNumber === selection.endLineNumber &&
+      selection.startColumn === selection.endColumn
+    );
+
+    if (!hasSelection) {
+      // If no selection, format all
+      formatAllText();
+      return;
     }
+
+    const text = editor.getModel().getValueInRange(selection);
+    if (!text.trim()) {
+      alert("No text selected");
+      return;
+    }
+
+    const formatted = formatSql(text, false);
+
+    const range = new monaco.Range(
+      selection.startLineNumber,
+      selection.startColumn,
+      selection.endLineNumber,
+      selection.endColumn
+    );
+    editor.executeEdits("format", [{ range, text: formatted }]);
+  }
+
+  function formatAllText() {
+    const text = editor.getValue();
+    const formatted = formatSql(text, true);
+    editor.setValue(formatted);
+  }
+
+  function saveQuery() {
+    // Dispatch event to trigger save via menuHandlers
+    document.dispatchEvent(
+      new CustomEvent("save-query", {
+        detail: { tabId },
+      })
+    );
   }
 </script>
 
 <div class="sql-editor-container h-100 d-flex flex-column">
-  <!-- Connection and Database Selector Bar -->
-  <div
-    class="editor-toolbar d-flex align-items-center justify-content-between border-bottom px-3 py-2"
-    style="min-height: 45px; gap: 12px;"
-  >
-    <div class="d-flex align-items-center gap-3 flex-grow-1">
-      <!-- Connection Selector -->
-      <div class="d-flex align-items-center gap-2" style="min-width: 200px;">
-        <i class="fas fa-plug text-primary" style="font-size: 14px;"></i>
-        <select
-          class="form-select form-select-sm"
-          style="max-width: 250px;"
-          on:change={handleConnectionChange}
-          value={selectedConn?.id || ""}
-        >
-          <option value="" disabled>Select Connection</option>
-          {#each $connections as conn}
-            <option value={conn.id}>{conn.name}</option>
-          {/each}
-        </select>
-      </div>
+  <!-- Editor Area with Action Buttons on Left -->
+  <div class="d-flex flex-grow-1 overflow-hidden">
+    <!-- Action Buttons Sidebar -->
+    <div
+      class="editor-actions-sidebar d-flex flex-column align-items-center py-2 gap-1"
+    >
+      <button
+        class="btn-action btn-execute"
+        on:click={runQuery}
+        disabled={executing || !selectedConn}
+        title="Execute (Ctrl+Enter)"
+      >
+        <i class="fas fa-play"></i>
+      </button>
+      <button
+        class="btn-action btn-execute-new"
+        on:click={executeSelectedInNewTab}
+        disabled={executing || !selectedConn || !selectedDb}
+        title="Execute in New Tab (Ctrl+Shift+Enter)"
+      >
+        <i class="fas fa-play"></i>
+        <i class="fas fa-plus icon-plus"></i>
+      </button>
 
-      <!-- Database Selector -->
-      {#if selectedConn}
-        <div class="d-flex align-items-center gap-2" style="min-width: 200px;">
-          <i class="fas fa-database text-success" style="font-size: 14px;"></i>
-          {#if loadingDatabases}
-            <span
-              class="spinner-border spinner-border-sm text-primary"
-              role="status"
-            >
-              <span class="visually-hidden">Loading...</span>
-            </span>
-          {:else}
-            <select
-              class="form-select form-select-sm"
-              style="max-width: 250px;"
-              on:change={handleDatabaseChange}
-              value={selectedDb || ""}
-              disabled={databases.length === 0}
-            >
-              <option value="" disabled>Select Database</option>
-              {#each databases as db}
-                <option value={db.name}>{db.name}</option>
-              {/each}
-            </select>
-          {/if}
+      {#if executing}
+        <div class="executing-indicator">
+          <i class="fas fa-spinner fa-spin"></i>
         </div>
       {/if}
     </div>
 
-    <!-- Action Buttons -->
-    <div class="d-flex align-items-center gap-2">
-      <div class="btn-group btn-group-sm">
-        <button
-          class="btn btn-success d-flex align-items-center gap-1"
-          on:click={runQuery}
-          disabled={executing || !selectedConn}
-          title="Execute SQL (Ctrl+Enter)"
-        >
-          <i class="fas fa-play"></i>
-          <span>{executing ? "Executing..." : "Execute"}</span>
-        </button>
-        <button
-          class="btn btn-outline-secondary d-flex align-items-center gap-1"
-          on:click={clearEditor}
-          title="Clear editor"
-        >
-          <i class="fas fa-eraser"></i>
-        </button>
-      </div>
-
-      {#if !selectedConn}
-        <span
-          class="badge bg-warning text-dark d-flex align-items-center gap-1"
-          style="font-size: 11px; padding: 4px 8px;"
-        >
-          <i class="fas fa-exclamation-triangle"></i>
-          <span>No connection</span>
-        </span>
-      {:else if !selectedDb}
-        <span
-          class="badge bg-info text-dark d-flex align-items-center gap-1"
-          style="font-size: 11px; padding: 4px 8px;"
-        >
-          <i class="fas fa-info-circle"></i>
-          <span>No database</span>
-        </span>
-      {/if}
-    </div>
+    <!-- Editor Container -->
+    <div bind:this={editorContainer} class="flex-grow-1 editor-wrapper"></div>
   </div>
-
-  <!-- Editor Container -->
-  <div bind:this={editorContainer} class="flex-grow-1 editor-wrapper"></div>
 </div>
+
+<!-- Context Menu -->
+<EditorContextMenu bind:this={contextMenuComponent} />
 
 <style>
   .sql-editor-container {
@@ -937,82 +1120,69 @@
     -ms-user-select: text;
   }
 
-  .editor-toolbar {
-    background: var(--bg-secondary);
+  .editor-actions-sidebar {
+    background: var(--bg-tertiary);
+    border-right: 1px solid var(--border-color);
+    padding: 3px;
+    width: 24px;
+    flex-shrink: 0;
+  }
+
+  .btn-action {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    transition: all 0.15s ease;
+    position: relative;
+  }
+
+  .btn-action:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-execute {
+    background: var(--accent-green, #22c55e);
+    color: white;
+  }
+
+  .btn-execute:hover:not(:disabled) {
+    background: var(--accent-green-hover, #16a34a);
+    transform: scale(1.05);
+  }
+
+  .btn-execute-new {
+    background: var(--accent-blue, #3b82f6);
+    color: white;
+  }
+
+  .btn-execute-new:hover:not(:disabled) {
+    background: var(--accent-blue-hover, #2563eb);
+    transform: scale(1.05);
+  }
+
+  .btn-execute-new .icon-plus {
+    font-size: 5px;
+    position: absolute;
+    bottom: 1px;
+    right: 1px;
+  }
+
+  .executing-indicator {
+    color: var(--accent-blue);
+    font-size: 12px;
+    margin-top: 4px;
   }
 
   .editor-wrapper {
     overflow: auto;
     position: relative;
     background: var(--editor-bg);
-  }
-
-  .sql-editor-container :global(.cm-editor) {
-    height: 100%;
-    user-select: text !important;
-    -webkit-user-select: text !important;
-  }
-
-  .sql-editor-container :global(.cm-scroller) {
-    overflow: auto;
-    user-select: text !important;
-    -webkit-user-select: text !important;
-  }
-
-  .sql-editor-container :global(.cm-content) {
-    user-select: text !important;
-    -webkit-user-select: text !important;
-    -moz-user-select: text !important;
-    cursor: text !important;
-    caret-color: var(--text-primary, #000);
-  }
-
-  .sql-editor-container :global(.cm-line) {
-    user-select: text !important;
-    -webkit-user-select: text !important;
-    cursor: text !important;
-  }
-
-  /* Ensure all syntax tokens are selectable including comments */
-  .sql-editor-container :global(.cm-line *) {
-    user-select: text !important;
-    -webkit-user-select: text !important;
-    pointer-events: auto !important;
-  }
-
-  /* SQL syntax tokens - ensure selection works */
-  .sql-editor-container :global(.tok-comment),
-  .sql-editor-container :global(.tok-lineComment),
-  .sql-editor-container :global(.tok-blockComment),
-  .sql-editor-container :global(.ͼ1c),
-  .sql-editor-container :global(.ͼ1d),
-  .sql-editor-container :global([class*="tok-"]) {
-    user-select: text !important;
-    -webkit-user-select: text !important;
-    pointer-events: auto !important;
-  }
-
-  .sql-editor-container :global(.cm-lineNumbers),
-  .sql-editor-container :global(.cm-gutters) {
-    user-select: none !important;
-    -webkit-user-select: none !important;
-  }
-
-  .sql-editor-container :global(.cm-selectionLayer) {
-    z-index: -1 !important;
-    pointer-events: none !important;
-  }
-
-  .sql-editor-container :global(.cm-selectionBackground) {
-    background: var(--editor-selection, rgba(0, 120, 215, 0.3)) !important;
-  }
-
-  .sql-editor-container :global(.cm-focused .cm-selectionBackground) {
-    background: var(--editor-selection, rgba(0, 120, 215, 0.4)) !important;
-  }
-
-  .sql-editor-container :global(.cm-cursor) {
-    border-left-color: var(--editor-cursor, #000) !important;
-    border-left-width: 2px !important;
   }
 </style>

@@ -1,9 +1,44 @@
-import { writable } from "svelte/store";
+import { writable, get as getStoreValue } from "svelte/store";
 
 // Store untuk menyimpan data per tab
 // Format: { [tabId]: { queryResult, queryText, executedQuery, filters, sortColumn, sortDirection, scrollPosition, viewMode } }
 const createTabDataStore = () => {
-  const { subscribe, set, update } = writable({});
+  const STORAGE_KEY = "rustdbgrid_tab_data";
+
+  // Load initial data from localStorage
+  let initialData = {};
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        initialData = JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error("Failed to load tab data from storage:", e);
+      initialData = {};
+    }
+  }
+
+  const store = writable(initialData);
+  const { subscribe, set, update } = store;
+
+  // Auto-save to localStorage whenever data changes
+  subscribe((data) => {
+    if (typeof window !== "undefined") {
+      // Only save query-related data, not large result sets
+      const dataToSave = {};
+      Object.keys(data).forEach((tabId) => {
+        dataToSave[tabId] = {
+          queryText: data[tabId].queryText,
+          executedQuery: data[tabId].executedQuery,
+          viewMode: data[tabId].viewMode,
+          activeSubTab: data[tabId].activeSubTab,
+          activePropertiesTab: data[tabId].activePropertiesTab,
+        };
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    }
+  });
 
   return {
     subscribe,
@@ -109,10 +144,10 @@ const createTabDataStore = () => {
     },
 
     // Get data untuk tab tertentu
-    getTabData: (tabId) => {
-      let data = null;
-      subscribe((store) => {
-        data = store[tabId] || {
+    get: (tabId) => {
+      const storeData = getStoreValue(store);
+      return (
+        storeData[tabId] || {
           queryResult: null,
           queryText: "",
           executedQuery: "",
@@ -123,9 +158,27 @@ const createTabDataStore = () => {
           viewMode: "grid",
           activeSubTab: "data",
           activePropertiesTab: "Columns",
-        };
-      })();
-      return data;
+        }
+      );
+    },
+
+    // Get data untuk tab tertentu (alias untuk kompatibilitas)
+    getTabData: (tabId) => {
+      const storeData = getStoreValue(store);
+      return (
+        storeData[tabId] || {
+          queryResult: null,
+          queryText: "",
+          executedQuery: "",
+          filters: {},
+          sortColumn: null,
+          sortDirection: "asc",
+          scrollPosition: 0,
+          viewMode: "grid",
+          activeSubTab: "data",
+          activePropertiesTab: "Columns",
+        }
+      );
     },
 
     // Hapus data tab ketika tab ditutup
@@ -148,8 +201,13 @@ const createTabDataStore = () => {
       });
     },
 
-    // Clear all data
-    clear: () => set({}),
+    // Clear all data and localStorage
+    clear: () => {
+      set({});
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    },
   };
 };
 

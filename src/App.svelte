@@ -62,11 +62,12 @@
     setShowAboutModal: (val) => (showAboutModal = val),
     runningQueries,
     getTableData,
+    updateTabs: () => (tabs = tabs), // Force re-render
   });
 
   // Action map for menu events
   const actionHandlers = {
-    newQuery: handleAddQueryTab,
+    newQuery: menuHandlers.handleNewQuery,
     openFile: menuHandlers.handleOpenFile,
     saveQuery: menuHandlers.handleSaveQuery,
     saveAs: menuHandlers.handleSaveAs,
@@ -85,8 +86,6 @@
     execute: menuHandlers.handleExecute,
     executeScript: menuHandlers.handleExecuteScript,
     stop: menuHandlers.handleStop,
-    commit: menuHandlers.handleCommit,
-    rollback: menuHandlers.handleRollback,
     refresh: menuHandlers.handleRefresh,
     documentation: menuHandlers.handleDocumentation,
     about: menuHandlers.handleAbout,
@@ -100,7 +99,7 @@
   };
 
   useKeyboardShortcuts({
-    newQuery: handleAddQueryTab,
+    newQuery: menuHandlers.handleNewQuery,
     openFile: menuHandlers.handleOpenFile,
     saveQuery: menuHandlers.handleSaveQuery,
     saveAs: menuHandlers.handleSaveAs,
@@ -150,6 +149,40 @@
 
     await initializeApplication();
     console.log("[FRONTEND] Application initialized");
+
+    // Validate restored tabs
+    tabStore.validateTabs();
+
+    // Handle execute query in new tab
+    const handleExecuteQueryNewTab = (event) => {
+      const newTabData = event.detail;
+      tabStore.addQueryTab($activeConnection);
+      // Get the newly created tab
+      const newTab = get(tabStore);
+      if (newTab.length > 0) {
+        const lastTab = newTab[newTab.length - 1];
+        tabDataStore.setQueryText(lastTab.id, newTabData.queryText);
+        tabDataStore.setQueryResult(lastTab.id, newTabData.queryResult);
+        tabDataStore.setExecutedQuery(lastTab.id, newTabData.executedQuery);
+        tabStore.selectTab(lastTab);
+      }
+    };
+
+    // Handle save query from editor (Ctrl+S)
+    const handleSaveQuery = (event) => {
+      menuHandlers.handleSaveQuery();
+    };
+
+    window.addEventListener("execute-query-new-tab", handleExecuteQueryNewTab);
+    document.addEventListener("save-query", handleSaveQuery);
+
+    return () => {
+      window.removeEventListener(
+        "execute-query-new-tab",
+        handleExecuteQueryNewTab
+      );
+      document.removeEventListener("save-query", handleSaveQuery);
+    };
   });
 
   // Event handlers
@@ -165,6 +198,129 @@
   function handleTabClose(event) {
     tabDataStore.removeTab(event.detail.id);
     tabStore.closeTab(event.detail);
+  }
+
+  async function handleNewScript(event) {
+    // Create a new query tab
+    await menuHandlers.handleNewQuery();
+  }
+
+  async function handleRevealInExplorer(event) {
+    const tab = event.detail;
+    if (tab && tab.filePath) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+
+        // Convert relative path to absolute if needed
+        let fullPath = tab.filePath;
+        if (!fullPath.match(/^[a-zA-Z]:[\\\\/]/) && !fullPath.startsWith("/")) {
+          // Relative path, make it absolute
+          const configDir = await invoke("get_config_dir");
+          const sep = navigator.platform.toLowerCase().includes("win")
+            ? "\\"
+            : "/";
+          fullPath =
+            configDir +
+            sep +
+            "rustdbgrid" +
+            sep +
+            tab.filePath.replace(/\//g, sep);
+        }
+
+        await invoke("open_path_in_explorer", { path: fullPath });
+      } catch (error) {
+        console.error("Failed to reveal file in explorer:", error);
+      }
+    }
+  }
+
+  async function handleDeleteScript(event) {
+    const tab = event.detail;
+    if (tab && tab.filePath) {
+      try {
+        const { message, ask } = await import("@tauri-apps/plugin-dialog");
+
+        const confirmed = await ask(`Delete "${tab.title}"?`, {
+          title: "Confirm Delete",
+          kind: "warning",
+        });
+
+        if (confirmed) {
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("delete_file", { path: tab.filePath });
+
+          // Close the tab
+          tabDataStore.removeTab(tab.id);
+          tabStore.closeTab(tab);
+
+          const { message: showMsg } = await import(
+            "@tauri-apps/plugin-dialog"
+          );
+          await showMsg("File deleted successfully", { kind: "info" });
+        }
+      } catch (error) {
+        console.error("Failed to delete file:", error);
+        const { message: showError } = await import(
+          "@tauri-apps/plugin-dialog"
+        );
+        await showError("Failed to delete file: " + error.message, {
+          kind: "error",
+        });
+      }
+    }
+  }
+
+  async function handleRenameFile(event) {
+    const tab = event.detail;
+    if (tab) {
+      try {
+        // Use browser prompt as fallback since tauri dialog input is not working
+        const newName = prompt("Enter new filename:", tab.title);
+
+        if (newName && newName !== tab.title) {
+          // If file has been saved to disk, rename the file
+          if (tab.filePath) {
+            const { invoke } = await import("@tauri-apps/api/core");
+
+            // Get the directory path
+            const lastSlash = tab.filePath.lastIndexOf("/");
+            const lastBackslash = tab.filePath.lastIndexOf("\\");
+            const separatorIndex = Math.max(lastSlash, lastBackslash);
+            const directory = tab.filePath.substring(0, separatorIndex);
+
+            const newFilePath = directory + "/" + newName;
+
+            await invoke("rename_file", {
+              oldPath: tab.filePath,
+              newPath: newFilePath,
+            });
+
+            // Update file path
+            tab.filePath = newFilePath;
+          }
+
+          // Update tab title (always, whether saved or not)
+          tab.title = newName;
+          tabStore.updateTab(tab);
+
+          const { message: showMsg } = await import(
+            "@tauri-apps/plugin-dialog"
+          );
+          const msgText = tab.filePath
+            ? "File renamed successfully"
+            : "Tab title updated (will be saved with new name)";
+          await showMsg(msgText, { kind: "info" });
+        }
+      } catch (error) {
+        console.error("Failed to rename file:", error);
+        const { message: showError } = await import(
+          "@tauri-apps/plugin-dialog"
+        );
+        await showError("Failed to rename file: " + error.message, {
+          kind: "error",
+        });
+      }
+    }
   }
 
   function handleMouseMove(event) {
@@ -211,8 +367,6 @@
   on:execute={handleMenuAction}
   on:executeScript={handleMenuAction}
   on:stop={handleMenuAction}
-  on:commit={handleMenuAction}
-  on:rollback={handleMenuAction}
   on:refresh={handleMenuAction}
 >
   <svelte:fragment slot="sidebar">
@@ -243,6 +397,11 @@
       on:tabClose={handleTabClose}
       on:newTab={handleAddQueryTab}
       on:newQuery={handleAddQueryTab}
+      on:newScript={handleNewScript}
+      on:revealInExplorer={handleRevealInExplorer}
+      on:copyFilePath={() => {}}
+      on:deleteScript={handleDeleteScript}
+      on:renameFile={handleRenameFile}
       on:newConnection={handleShowModal}
       on:toggleSidebar={handleToggleSidebar}
       on:keyboardShortcuts={handleShowKeyboardShortcuts}

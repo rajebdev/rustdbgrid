@@ -28,7 +28,7 @@ export const fileService = {
    */
   async openFile() {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const file = await open({
+    const filePath = await open({
       title: "Open SQL File",
       filters: [
         {
@@ -38,12 +38,13 @@ export const fileService = {
       ],
     });
 
-    if (file) {
+    if (filePath) {
       const { readTextFile } = await import("@tauri-apps/plugin-fs");
-      const content = await readTextFile(file.path);
+      const content = await readTextFile(filePath);
+      const fileName = filePath.split(/[\\/]/).pop();
       return {
-        name: file.name,
-        path: file.path,
+        name: fileName,
+        path: filePath,
         content,
       };
     }
@@ -134,5 +135,37 @@ export const fileService = {
       return file;
     }
     return null;
+  },
+
+  /**
+   * Auto-save query to queries folder
+   */
+  async autoSaveQuery(fileName, content) {
+    const { invoke } = await import("@tauri-apps/api/core");
+
+    try {
+      // Get config directory and create queries folder path
+      const configDir = await invoke("get_config_dir");
+
+      // Use proper path separator for current OS
+      const queriesDir = configDir + "/rustdbgrid/queries";
+
+      // Create full file path with proper separator
+      const filePath = queriesDir + "/" + fileName;
+
+      // Invoke Rust command to auto-save
+      const result = await invoke("auto_save_query_file", {
+        filePath,
+        content,
+      });
+
+      return {
+        path: result.path || filePath,
+        name: fileName,
+      };
+    } catch (error) {
+      console.error("Failed to auto-save query:", error);
+      throw error;
+    }
   },
 };
