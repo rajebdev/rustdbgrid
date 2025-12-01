@@ -15,6 +15,7 @@
   let resultTabs = [];
   let activeResultTabId = null;
   let hasUserClosedAllTabs = false;
+  let isExecuting = false;
 
   // Initialize result tabs from currentTabData
   $: if (
@@ -33,6 +34,18 @@
       },
     ];
     activeResultTabId = 1;
+  }
+
+  // Listen for query execution start
+  function handleQueryExecutionStart(event) {
+    if (event.detail.tabId !== tabId) return;
+    isExecuting = true;
+  }
+
+  // Listen for query execution end
+  function handleQueryExecutionEnd(event) {
+    if (event.detail.tabId !== tabId) return;
+    isExecuting = false;
   }
 
   // Listen for new tab result events
@@ -127,10 +140,20 @@
   $: activeResultTab = resultTabs.find((t) => t.id === activeResultTabId);
 
   onMount(() => {
+    window.addEventListener("query-execution-start", handleQueryExecutionStart);
+    window.addEventListener("query-execution-end", handleQueryExecutionEnd);
     window.addEventListener("execute-new-result-tab", handleExecuteNewTab);
     window.addEventListener("update-result-tab", handleUpdateResult);
 
     return () => {
+      window.removeEventListener(
+        "query-execution-start",
+        handleQueryExecutionStart
+      );
+      window.removeEventListener(
+        "query-execution-end",
+        handleQueryExecutionEnd
+      );
       window.removeEventListener("execute-new-result-tab", handleExecuteNewTab);
       window.removeEventListener("update-result-tab", handleUpdateResult);
     };
@@ -208,7 +231,7 @@
     </div>
 
     <!-- Active Result Content -->
-    <div class="flex-grow-1 overflow-hidden">
+    <div class="flex-grow-1 overflow-hidden position-relative">
       {#if activeResultTab}
         {#key activeResultTabId}
           <DataGrid
@@ -218,6 +241,15 @@
             connection={$activeConnection}
           />
         {/key}
+      {/if}
+
+      {#if isExecuting}
+        <div class="loading-overlay">
+          <div class="loading-content">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Executing query...</p>
+          </div>
+        </div>
       {/if}
     </div>
   {/if}
@@ -297,5 +329,41 @@
   .btn-close-tab:hover {
     opacity: 1;
     color: var(--danger);
+  }
+
+  .loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-secondary);
+    padding: 24px 40px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .loading-content i {
+    font-size: 48px;
+    color: var(--accent-blue);
+  }
+
+  .loading-content p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 500;
   }
 </style>

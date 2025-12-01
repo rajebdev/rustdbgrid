@@ -768,3 +768,168 @@ pub async fn get_next_query_number() -> Result<usize, String> {
 
     Ok(max_number + 1)
 }
+
+#[derive(serde::Serialize)]
+pub struct QueryFileInfo {
+    name: String,
+    path: String,
+    created: Option<String>,
+    modified: Option<String>,
+}
+
+#[tauri::command]
+pub async fn list_query_files(folder_path: String) -> Result<Vec<QueryFileInfo>, String> {
+    use std::fs;
+    use std::path::Path;
+
+    let path = Path::new(&folder_path);
+
+    // Create queries directory if it doesn't exist
+    if !path.exists() {
+        fs::create_dir_all(path)
+            .map_err(|e| format!("Failed to create queries directory: {}", e))?;
+        return Ok(vec![]);
+    }
+
+    let mut files = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_file() {
+                    if let Some(file_name) = entry.file_name().to_str() {
+                        // Only include .sql files
+                        if file_name.ends_with(".sql") {
+                            let file_path = entry.path();
+                            
+                            let created = metadata.created().ok()
+                                .and_then(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339_opts(chrono::SecondsFormat::Secs, true).into());
+                            
+                            let modified = metadata.modified().ok()
+                                .and_then(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339_opts(chrono::SecondsFormat::Secs, true).into());
+
+                            files.push(QueryFileInfo {
+                                name: file_name.to_string(),
+                                path: file_path.to_string_lossy().to_string(),
+                                created,
+                                modified,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by modified time (newest first)
+    files.sort_by(|a, b| {
+        b.modified.cmp(&a.modified)
+    });
+
+    Ok(files)
+}
+
+#[tauri::command]
+pub async fn delete_query_file(file_path: String) -> Result<bool, String> {
+    use std::fs;
+    use std::path::Path;
+
+    let path = Path::new(&file_path);
+
+    if !path.exists() {
+        return Err("File does not exist".to_string());
+    }
+
+    fs::remove_file(path)
+        .map_err(|e| format!("Failed to delete file: {}", e))?;
+
+    tracing::info!("🗑️ [DELETE] Query file deleted: {}", file_path);
+
+    Ok(true)
+}
+
+#[derive(serde::Serialize)]
+pub struct QueryFileWithContent {
+    id: String,
+    title: String,
+    content: String,
+    description: String,
+    file_path: String,
+    created_at: String,
+    last_modified: String,
+    is_file: bool,
+}
+
+#[tauri::command]
+pub async fn list_query_files_with_content(folder_path: String) -> Result<Vec<QueryFileWithContent>, String> {
+    use std::fs;
+    use std::path::Path;
+
+    let path = Path::new(&folder_path);
+
+    // Create queries directory if it doesn't exist
+    if !path.exists() {
+        fs::create_dir_all(path)
+            .map_err(|e| format!("Failed to create queries directory: {}", e))?;
+        return Ok(vec![]);
+    }
+
+    let mut queries = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_file() {
+                    if let Some(file_name) = entry.file_name().to_str() {
+                        // Only include .sql files
+                        if file_name.ends_with(".sql") {
+                            let file_path = entry.path();
+                            
+                            // Read file content
+                            match fs::read_to_string(&file_path) {
+                                Ok(content) => {
+                                    let created = metadata.created().ok()
+                                        .and_then(|t| {
+                                            let datetime: chrono::DateTime<chrono::Utc> = t.into();
+                                            Some(datetime.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+                                        })
+                                        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+                                    
+                                    let modified = metadata.modified().ok()
+                                        .and_then(|t| {
+                                            let datetime: chrono::DateTime<chrono::Utc> = t.into();
+                                            Some(datetime.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+                                        })
+                                        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+
+                                    let path_str = file_path.to_string_lossy().to_string();
+                                    
+                                    queries.push(QueryFileWithContent {
+                                        id: path_str.clone(),
+                                        title: file_name.replace(".sql", ""),
+                                        content,
+                                        description: String::new(),
+                                        file_path: path_str,
+                                        created_at: created,
+                                        last_modified: modified,
+                                        is_file: true,
+                                    });
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to read query file {}: {}", file_name, e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by modified time (newest first)
+    queries.sort_by(|a, b| {
+        b.last_modified.cmp(&a.last_modified)
+    });
+
+    Ok(queries)
+}

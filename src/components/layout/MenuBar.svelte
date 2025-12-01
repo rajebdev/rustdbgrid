@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import { themePreference, activeTheme } from "../../stores/theme";
+  import { recentFilesStore } from "../../stores/recentFiles";
   import {
     setLightTheme,
     setDarkTheme,
@@ -19,8 +20,8 @@
     activeMenu = null;
   }
 
-  function handleAction(action) {
-    dispatch(action);
+  function handleAction(action, data = null) {
+    dispatch(action, data);
     closeMenu();
   }
 
@@ -29,6 +30,14 @@
     else if (theme === "dark") setDarkTheme();
     else setAutoTheme();
     closeMenu();
+  }
+
+  function openRecentFile(file) {
+    handleAction("openRecentFile", file);
+  }
+
+  function clearRecentFiles() {
+    recentFilesStore.clearAll();
   }
 </script>
 
@@ -59,6 +68,44 @@
             <i class="fas fa-folder-open"></i> Open File...
             <span class="shortcut">Ctrl+O</span>
           </button>
+          <button
+            class="dropdown-item"
+            on:click={() => handleAction("openQuery")}
+          >
+            <i class="fas fa-list"></i> Open Query...
+            <span class="shortcut">Ctrl+Shift+O</span>
+          </button>
+          <div class="dropdown-submenu">
+            <button
+              class="dropdown-item submenu-trigger"
+              on:click|stopPropagation={() => {}}
+            >
+              <i class="fas fa-clock-rotate-left"></i> Open Recent
+              <i class="fas fa-chevron-right submenu-arrow"></i>
+            </button>
+            <div class="submenu recent-files-submenu">
+              {#if $recentFilesStore.length > 0}
+                {#each $recentFilesStore as file (file.path)}
+                  <button
+                    class="dropdown-item recent-file-item"
+                    on:click={() => openRecentFile(file)}
+                    title={file.path}
+                  >
+                    <i class="fas fa-file-code"></i>
+                    <span class="file-name">{file.name}</span>
+                  </button>
+                {/each}
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item" on:click={clearRecentFiles}>
+                  <i class="fas fa-trash"></i> Clear Recent Files
+                </button>
+              {:else}
+                <div class="dropdown-item disabled">
+                  <i class="fas fa-info-circle"></i> No recent files
+                </div>
+              {/if}
+            </div>
+          </div>
           <div class="dropdown-divider"></div>
           <button
             class="dropdown-item"
@@ -373,5 +420,28 @@
   .check-icon {
     margin-left: auto;
     color: var(--accent-blue);
+  }
+
+  .recent-files-submenu {
+    max-height: 400px;
+    overflow-y: auto;
+    min-width: 280px;
+  }
+
+  .recent-file-item {
+    font-family: "Consolas", "Monaco", monospace;
+  }
+
+  .recent-file-item .file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 240px;
+  }
+
+  .dropdown-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
   }
 </style>

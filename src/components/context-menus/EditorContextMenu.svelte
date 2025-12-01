@@ -85,7 +85,7 @@
 {#if visible}
   <div
     bind:this={menuElement}
-    class="context-menu dropdown-menu show"
+    class="context-menu"
     style="position: fixed; left: {adjustedX || x}px; top: {adjustedY ||
       y}px; z-index: 10000;"
     role="menu"
@@ -98,24 +98,22 @@
   >
     {#each menuItems as item (item.id)}
       {#if item.label === "---"}
-        <div class="dropdown-divider"></div>
+        <div class="context-menu-divider"></div>
       {:else}
         <button
-          class="dropdown-item d-flex align-items-center justify-content-between"
+          class="context-menu-item"
           class:disabled={item.disabled}
           on:click={() => !item.disabled && handleClick(item)}
           role="menuitem"
           disabled={item.disabled}
           title={item.title || ""}
         >
-          <span class="d-flex align-items-center">
-            {#if item.icon}
-              <i class="{item.icon} me-2"></i>
-            {/if}
-            <span>{item.label}</span>
-          </span>
+          {#if item.icon}
+            <i class={item.icon}></i>
+          {/if}
+          <span>{item.label}</span>
           {#if item.shortcut}
-            <span class="text-muted ms-3 small">{item.shortcut}</span>
+            <kbd>{item.shortcut}</kbd>
           {/if}
         </button>
       {/if}
@@ -125,62 +123,65 @@
 
 <style>
   .context-menu {
-    min-width: 250px;
-    box-shadow: var(--shadow-dropdown);
-    border: 1px solid var(--border-color);
-    padding: 4px 0;
     background: var(--bg-dropdown);
+    border: 1px solid var(--border-color);
     border-radius: 6px;
+    box-shadow: var(--shadow-dropdown);
+    min-width: 240px;
+    padding: 4px;
+    font-size: 12px;
   }
 
-  .dropdown-item {
-    padding: 6px 16px;
-    font-size: 13px;
-    cursor: pointer;
-    border: none;
-    background: none;
-    width: 100%;
-    text-align: left;
+  .context-menu-item {
     display: flex;
     align-items: center;
-    color: var(--text-primary);
-    transition: background-color 0.15s ease;
-  }
-
-  .dropdown-item:hover:not(:disabled) {
-    background-color: var(--hover-bg);
-  }
-
-  .dropdown-item:focus:not(:disabled) {
-    background-color: var(--accent-blue-light);
-    outline: none;
-  }
-
-  .dropdown-item:disabled,
-  .dropdown-item.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .dropdown-item i {
-    width: 16px;
-    text-align: center;
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  .dropdown-item:hover:not(:disabled) i {
-    color: var(--text-primary);
-  }
-
-  .dropdown-divider {
-    height: 1px;
-    margin: 4px 0;
-    background-color: var(--border-light);
+    gap: 8px;
+    padding: 6px 12px;
+    background: transparent;
     border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    border-radius: 4px;
+    transition: background-color 0.15s;
+    width: 100%;
+    white-space: nowrap;
   }
 
-  .small {
+  .context-menu-item:hover:not(:disabled) {
+    background: var(--hover-bg);
+  }
+
+  .context-menu-item:disabled,
+  .context-menu-item.disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .context-menu-item i {
+    width: 16px;
     font-size: 11px;
+    text-align: center;
+  }
+
+  .context-menu-item span {
+    flex: 1;
+  }
+
+  .context-menu-item kbd {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    font-family: monospace;
+    margin-left: auto;
+  }
+
+  .context-menu-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 0;
   }
 </style>

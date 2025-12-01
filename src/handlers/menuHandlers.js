@@ -2,6 +2,7 @@ import { fileService, showMessage, showError } from "../services/fileService";
 import { get } from "svelte/store";
 import { buildPaginatedQuery } from "../utils/defaultQueries";
 import { executeQuery, getNextQueryNumber } from "../utils/tauri";
+import { recentFilesStore } from "../stores/recentFiles";
 
 /**
  * Handle opening table tab
@@ -181,6 +182,9 @@ export function createMenuHandlers(context) {
         const file = await fileService.openFile();
 
         if (file) {
+          // Add to recent files
+          recentFilesStore.addFile(file.path, file.name);
+
           // Create new query tab
           tabStore.addQueryTab(get(activeConnection), file.content);
 
@@ -196,6 +200,34 @@ export function createMenuHandlers(context) {
       } catch (error) {
         console.error("Failed to open file:", error);
         await showError("Failed to open file: " + error.message);
+      }
+    },
+
+    async handleOpenRecentFile(file) {
+      try {
+        // Read file content
+        const { readTextFile } = await import("@tauri-apps/plugin-fs");
+        const content = await readTextFile(file.path);
+
+        // Update recent files (move to top)
+        recentFilesStore.addFile(file.path, file.name);
+
+        // Create new query tab
+        tabStore.addQueryTab(get(activeConnection), content);
+
+        // Get the newly created tab
+        const newTab = get(tabStore.activeTab);
+        if (newTab) {
+          // Update with file info
+          newTab.filePath = file.path;
+          newTab.title = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
+          context.updateTabs();
+        }
+      } catch (error) {
+        console.error("Failed to open recent file:", error);
+        await showError("Failed to open file: " + error.message);
+        // Remove from recent files if it doesn't exist
+        recentFilesStore.removeFile(file.path);
       }
     },
 
@@ -238,6 +270,10 @@ export function createMenuHandlers(context) {
           currentTab.filePath = result.path;
           currentTab.modified = false;
           context.updateTabs();
+
+          // Add to recent files
+          const fileName = result.path.split(/[\\/]/).pop();
+          recentFilesStore.addFile(result.path, fileName);
 
           // Show success in status bar
           saveStatus.set({
@@ -308,6 +344,10 @@ export function createMenuHandlers(context) {
           currentTab.modified = false;
           currentTab.title = result.name;
           context.updateTabs();
+
+          // Add to recent files
+          const fileName = result.path.split(/[\\/]/).pop();
+          recentFilesStore.addFile(result.path, fileName);
 
           // Show success in status bar
           saveStatus.set({

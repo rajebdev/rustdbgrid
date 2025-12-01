@@ -7,9 +7,12 @@
   import ConnectionModal from "./components/modals/ConnectionModal.svelte";
   import AboutModal from "./components/modals/AboutModal.svelte";
   import KeyboardShortcutsModal from "./components/modals/KeyboardShortcutsModal.svelte";
+  import InputModal from "./components/modals/InputModal.svelte";
+  import QueryListModal from "./components/modals/QueryListModal.svelte";
   import { activeConnection } from "./stores/connections";
   import { tabDataStore } from "./stores/tabData";
   import { tabStore } from "./stores/tabs";
+  import { queryListStore } from "./stores/queryList";
   import { getTableData } from "./utils/tauri";
   import { useKeyboardShortcuts } from "./composables/useKeyboardShortcuts";
   import {
@@ -30,7 +33,12 @@
   let showModal = false;
   let showAboutModal = false;
   let showKeyboardShortcutsModal = false;
+  let showQueryListModal = false;
   let showToolbar = true;
+  let showRenameModal = false;
+  let renameModalTitle = "";
+  let renameModalValue = "";
+  let renameModalCallback = null;
 
   // Resize state
   let sidebarWidth = 320;
@@ -50,6 +58,26 @@
   const handleToggleSidebar = () => (showSidebar = !showSidebar);
   const handleShowModal = () => (showModal = true);
   const handleShowKeyboardShortcuts = () => (showKeyboardShortcutsModal = true);
+  const handleShowQueryList = () => (showQueryListModal = true);
+
+  function handleOpenQueryFromList(event) {
+    const query = event.detail;
+
+    // Mark query as used
+    queryListStore.markUsed(query.id);
+
+    // Create new query tab with the query content
+    tabStore.addQueryTab(get(activeConnection), query.content);
+
+    // Get the newly created tab and update its title
+    const newTab = get(tabStore.activeTab);
+    if (newTab) {
+      newTab.title = query.title;
+      tabs = tabs; // Force reactivity
+    }
+
+    showQueryListModal = false;
+  }
 
   // Menu handlers
   const menuHandlers = createMenuHandlers({
@@ -69,6 +97,8 @@
   const actionHandlers = {
     newQuery: menuHandlers.handleNewQuery,
     openFile: menuHandlers.handleOpenFile,
+    openQuery: handleShowQueryList,
+    openRecentFile: (event) => menuHandlers.handleOpenRecentFile(event.detail),
     saveQuery: menuHandlers.handleSaveQuery,
     saveAs: menuHandlers.handleSaveAs,
     export: menuHandlers.handleExportData,
@@ -101,6 +131,7 @@
   useKeyboardShortcuts({
     newQuery: menuHandlers.handleNewQuery,
     openFile: menuHandlers.handleOpenFile,
+    openQuery: handleShowQueryList,
     saveQuery: menuHandlers.handleSaveQuery,
     saveAs: menuHandlers.handleSaveAs,
     toggleSidebar: handleToggleSidebar,
@@ -273,53 +304,81 @@
   async function handleRenameFile(event) {
     const tab = event.detail;
     if (tab) {
-      try {
-        // Use browser prompt as fallback since tauri dialog input is not working
-        const newName = prompt("Enter new filename:", tab.title);
-
+      renameModalTitle = "Rename File";
+      renameModalValue = tab.title;
+      renameModalCallback = async (newName) => {
         if (newName && newName !== tab.title) {
-          // If file has been saved to disk, rename the file
-          if (tab.filePath) {
-            const { invoke } = await import("@tauri-apps/api/core");
+          try {
+            // Import saveStatus store
+            const { saveStatus } = await import("./stores/connections");
 
-            // Get the directory path
-            const lastSlash = tab.filePath.lastIndexOf("/");
-            const lastBackslash = tab.filePath.lastIndexOf("\\");
-            const separatorIndex = Math.max(lastSlash, lastBackslash);
-            const directory = tab.filePath.substring(0, separatorIndex);
+            // If file has been saved to disk, rename the file
+            if (tab.filePath) {
+              const { invoke } = await import("@tauri-apps/api/core");
 
-            const newFilePath = directory + "/" + newName;
+              // Get the directory path
+              const lastSlash = tab.filePath.lastIndexOf("/");
+              const lastBackslash = tab.filePath.lastIndexOf("\\");
+              const separatorIndex = Math.max(lastSlash, lastBackslash);
+              const directory = tab.filePath.substring(0, separatorIndex);
 
-            await invoke("rename_file", {
-              oldPath: tab.filePath,
-              newPath: newFilePath,
+              const newFilePath = directory + "/" + newName;
+
+              await invoke("rename_file", {
+                oldPath: tab.filePath,
+                newPath: newFilePath,
+              });
+
+              // Update file path
+              tab.filePath = newFilePath;
+            }
+
+            // Update tab title (always, whether saved or not)
+            tab.title = newName;
+            tabStore.updateTab(tab);
+
+            // Show success in status bar
+            const msgText = tab.filePath
+              ? "File renamed successfully"
+              : "Tab title updated";
+            saveStatus.set({
+              message: msgText,
+              type: "success",
+              timestamp: Date.now(),
             });
 
-            // Update file path
-            tab.filePath = newFilePath;
+            // Clear status after 3 seconds
+            setTimeout(() => {
+              saveStatus.set({ message: null, type: null, timestamp: null });
+            }, 3000);
+          } catch (error) {
+            console.error("Failed to rename file:", error);
+
+            // Show error in status bar
+            const { saveStatus } = await import("./stores/connections");
+            saveStatus.set({
+              message: `Rename failed: ${error.message}`,
+              type: "error",
+              timestamp: Date.now(),
+            });
+
+            // Clear error after 5 seconds
+            setTimeout(() => {
+              saveStatus.set({ message: null, type: null, timestamp: null });
+            }, 5000);
           }
-
-          // Update tab title (always, whether saved or not)
-          tab.title = newName;
-          tabStore.updateTab(tab);
-
-          const { message: showMsg } = await import(
-            "@tauri-apps/plugin-dialog"
-          );
-          const msgText = tab.filePath
-            ? "File renamed successfully"
-            : "Tab title updated (will be saved with new name)";
-          await showMsg(msgText, { kind: "info" });
         }
-      } catch (error) {
-        console.error("Failed to rename file:", error);
-        const { message: showError } = await import(
-          "@tauri-apps/plugin-dialog"
-        );
-        await showError("Failed to rename file: " + error.message, {
-          kind: "error",
-        });
-      }
+      };
+      showRenameModal = true;
+    }
+  }
+
+  function handleRenameSubmit(event) {
+    const newName = event.detail;
+    if (renameModalCallback) {
+      renameModalCallback(newName).catch((error) => {
+        console.error("Failed to rename:", error);
+      });
     }
   }
 
@@ -348,6 +407,8 @@
   activeTabId={$activeTab?.id}
   on:newQuery={handleMenuAction}
   on:openFile={handleMenuAction}
+  on:openQuery={handleMenuAction}
+  on:openRecentFile={handleMenuAction}
   on:saveQuery={handleMenuAction}
   on:saveAs={handleMenuAction}
   on:export={handleMenuAction}
@@ -424,4 +485,20 @@
 <KeyboardShortcutsModal
   bind:show={showKeyboardShortcutsModal}
   on:close={() => (showKeyboardShortcutsModal = false)}
+/>
+
+<QueryListModal
+  bind:show={showQueryListModal}
+  on:open={handleOpenQueryFromList}
+  on:close={() => (showQueryListModal = false)}
+/>
+
+<InputModal
+  bind:show={showRenameModal}
+  title={renameModalTitle}
+  label="Enter new filename:"
+  value={renameModalValue}
+  placeholder="Filename"
+  on:submit={handleRenameSubmit}
+  on:cancel={() => (showRenameModal = false)}
 />

@@ -975,6 +975,14 @@
 
   async function executeQueryText(query, createNewTab = false) {
     executing = true;
+
+    // Dispatch execution start event
+    window.dispatchEvent(
+      new CustomEvent("query-execution-start", {
+        detail: { tabId },
+      })
+    );
+
     try {
       const queryWithLimit = addLimitClause(query, selectedConn.db_type);
       const startTime = Date.now();
@@ -1022,8 +1030,16 @@
     } catch (error) {
       alert("Query execution failed: " + error);
       console.error(error);
+    } finally {
+      executing = false;
+
+      // Dispatch execution end event
+      window.dispatchEvent(
+        new CustomEvent("query-execution-end", {
+          detail: { tabId },
+        })
+      );
     }
-    executing = false;
   }
 
   function formatSelectedText() {

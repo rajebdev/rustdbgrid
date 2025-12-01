@@ -77,165 +77,199 @@
   }
 </script>
 
-<div
-  class="position-fixed bg-body border shadow-sm"
-  style="left: {x}px; top: {y}px; min-width: 220px; z-index: 99999; border-radius: 4px; overflow: hidden;"
->
-  <button
-    class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-    on:click={close}
-  >
-    <span class="flex-grow-1" style="font-size: 13px;">Close</span>
-  </button>
+<div class="context-menu" style="left: {x}px; top: {y}px;">
+  <div class="context-menu-section">
+    <button class="context-menu-item" on:click={close}>
+      <i class="fas fa-times"></i>
+      <span>Close</span>
+    </button>
 
-  <button
-    class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-    on:click={closeOthers}
-    disabled={!canCloseOthers}
-  >
-    <span class="flex-grow-1" style="font-size: 13px;">Close Others</span>
-  </button>
-
-  <button
-    class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-    on:click={closeToLeft}
-    disabled={!canCloseLeft}
-  >
-    <span class="flex-grow-1" style="font-size: 13px;"
-      >Close Tabs to the Left</span
+    <button
+      class="context-menu-item"
+      on:click={closeOthers}
+      disabled={!canCloseOthers}
     >
-  </button>
+      <i class="fas fa-times-circle"></i>
+      <span>Close Others</span>
+    </button>
 
-  <button
-    class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-    on:click={closeToRight}
-    disabled={!canCloseRight}
-  >
-    <span class="flex-grow-1" style="font-size: 13px;"
-      >Close Tabs to the Right</span
+    <button
+      class="context-menu-item"
+      on:click={closeToLeft}
+      disabled={!canCloseLeft}
     >
-  </button>
+      <i class="fas fa-arrow-left"></i>
+      <span>Close Tabs to the Left</span>
+    </button>
 
-  <button
-    class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-    on:click={closeAll}
-  >
-    <span class="flex-grow-1" style="font-size: 13px;">Close All</span>
-  </button>
-
-  <div class="border-top my-1"></div>
-
-  <button
-    class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-    on:click={detach}
-    disabled={true}
-    title="TODO: Not yet implemented"
-  >
-    <span class="flex-grow-1" style="font-size: 13px;"
-      >Detach <span class="text-muted" style="font-size: 11px;">(TODO)</span
-      ></span
+    <button
+      class="context-menu-item"
+      on:click={closeToRight}
+      disabled={!canCloseRight}
     >
-  </button>
+      <i class="fas fa-arrow-right"></i>
+      <span>Close Tabs to the Right</span>
+    </button>
+
+    <button class="context-menu-item" on:click={closeAll}>
+      <i class="fas fa-window-close"></i>
+      <span>Close All</span>
+    </button>
+  </div>
+
+  <div class="context-menu-divider"></div>
+
+  <div class="context-menu-section">
+    <button class="context-menu-item" on:click={detach} disabled>
+      <i class="fas fa-external-link-alt"></i>
+      <span>Detach <span class="text-muted">(TODO)</span></span>
+    </button>
+  </div>
 
   {#if tabType === "table"}
-    <div class="border-top my-1"></div>
-    <button
-      class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-      on:click={copyObjectName}
-    >
-      <span class="flex-grow-1" style="font-size: 13px;">Copy Object Name</span>
-    </button>
+    <div class="context-menu-divider"></div>
 
-    <button
-      class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-      on:click={addBookmark}
-      disabled={true}
-      title="TODO: Not yet implemented"
-    >
-      <i class="fas fa-star text-warning" style="font-size: 12px; width: 16px;"
-      ></i>
-      <span class="flex-grow-1" style="font-size: 13px;"
-        >Add Bookmark <span class="text-muted" style="font-size: 11px;"
-          >(TODO)</span
-        ></span
-      >
-      <span class="text-secondary" style="font-size: 11px;"
-        >Ctrl+Alt+Shift+D</span
-      >
-    </button>
+    <div class="context-menu-section">
+      <button class="context-menu-item" on:click={copyObjectName}>
+        <i class="fas fa-copy"></i>
+        <span>Copy Object Name</span>
+      </button>
+
+      <button class="context-menu-item" on:click={addBookmark} disabled>
+        <i class="fas fa-star text-warning"></i>
+        <span>Add Bookmark <span class="text-muted">(TODO)</span></span>
+        <kbd>Ctrl+Alt+Shift+D</kbd>
+      </button>
+    </div>
   {/if}
 
   {#if tabType === "query"}
-    <div class="border-top my-1"></div>
+    <div class="context-menu-divider"></div>
 
-    <button
-      class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-      on:click={newScript}
-    >
-      <i class="fas fa-file-code" style="font-size: 12px; width: 16px;"></i>
-      <span class="flex-grow-1" style="font-size: 13px;">New Script</span>
-    </button>
+    <div class="context-menu-section">
+      <button class="context-menu-item" on:click={newScript}>
+        <i class="fas fa-file-code"></i>
+        <span>New Script</span>
+      </button>
 
-    <button
-      class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-      on:click={revealInExplorer}
-      disabled={canDisableFilePathOps}
-      title={canDisableFilePathOps ? "Save the query first" : ""}
-      style={canDisableFilePathOps ? "opacity: 0.5; cursor: not-allowed;" : ""}
-    >
-      <i class="fas fa-folder-open" style="font-size: 12px; width: 16px;"></i>
-      <span class="flex-grow-1" style="font-size: 13px;"
-        >Reveal in Explorer</span
+      <button
+        class="context-menu-item"
+        on:click={revealInExplorer}
+        disabled={canDisableFilePathOps}
+        title={canDisableFilePathOps ? "Save the query first" : ""}
       >
-    </button>
+        <i class="fas fa-folder-open"></i>
+        <span>Reveal in Explorer</span>
+      </button>
 
-    <button
-      class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-      on:click={copyFilePath}
-      disabled={canDisableFilePathOps}
-      title={canDisableFilePathOps ? "Save the query first" : ""}
-      style={canDisableFilePathOps ? "opacity: 0.5; cursor: not-allowed;" : ""}
-    >
-      <i class="fas fa-copy" style="font-size: 12px; width: 16px;"></i>
-      <span class="flex-grow-1" style="font-size: 13px;">Copy File Path</span>
-    </button>
-
-    <div class="border-top my-1"></div>
-
-    <button
-      class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-      on:click={renameFile}
-    >
-      <i class="fas fa-edit" style="font-size: 12px; width: 16px;"></i>
-      <span class="flex-grow-1" style="font-size: 13px;">Rename File</span>
-    </button>
-
-    <button
-      class="context-menu-item d-flex align-items-center gap-2 w-100 border-0 bg-transparent px-3 py-2 text-start"
-      on:click={deleteScript}
-    >
-      <i class="fas fa-trash text-danger" style="font-size: 12px; width: 16px;"
-      ></i>
-      <span class="flex-grow-1 text-danger" style="font-size: 13px;"
-        >Delete This Script</span
+      <button
+        class="context-menu-item"
+        on:click={copyFilePath}
+        disabled={canDisableFilePathOps}
+        title={canDisableFilePathOps ? "Save the query first" : ""}
       >
-    </button>
+        <i class="fas fa-copy"></i>
+        <span>Copy File Path</span>
+      </button>
+    </div>
+
+    <div class="context-menu-divider"></div>
+
+    <div class="context-menu-section">
+      <button class="context-menu-item" on:click={renameFile}>
+        <i class="fas fa-edit"></i>
+        <span>Rename File</span>
+      </button>
+
+      <button class="context-menu-item text-danger" on:click={deleteScript}>
+        <i class="fas fa-trash"></i>
+        <span>Delete This Script</span>
+      </button>
+    </div>
   {/if}
 </div>
 
 <style>
-  .context-menu-item:hover:not(:disabled) {
-    background-color: var(--hover-bg);
+  .context-menu {
+    position: fixed;
+    background: var(--bg-dropdown);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: var(--shadow-dropdown);
+    z-index: 10000;
+    min-width: 240px;
+    padding: 4px;
+    font-size: 12px;
   }
 
-  .context-menu-item:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .context-menu-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
   }
 
   .context-menu-item {
-    cursor: pointer;
-    transition: background-color 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: transparent;
+    border: none;
     color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    border-radius: 4px;
+    transition: background-color 0.15s;
+    width: 100%;
+    white-space: nowrap;
+  }
+
+  .context-menu-item:hover:not(:disabled) {
+    background: var(--hover-bg);
+  }
+
+  .context-menu-item:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .context-menu-item.text-danger {
+    color: var(--danger-color);
+  }
+
+  .context-menu-item.text-danger:hover:not(:disabled) {
+    background: var(--danger-bg-subtle);
+  }
+
+  .context-menu-item i:first-child {
+    width: 16px;
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .context-menu-item span {
+    flex: 1;
+  }
+
+  .context-menu-item kbd {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    font-family: monospace;
+    margin-left: auto;
+  }
+
+  .context-menu-item .text-muted {
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .context-menu-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 0;
   }
 </style>

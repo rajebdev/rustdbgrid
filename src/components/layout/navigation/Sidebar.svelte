@@ -27,6 +27,7 @@
 
   const dispatch = createEventDispatcher();
   import ConnectionModal from "../../modals/ConnectionModal.svelte";
+  import InputModal from "../../modals/InputModal.svelte";
   import ConnectionContextMenu from "../../context-menus/ConnectionContextMenu.svelte";
   import TableContextMenu from "../../context-menus/TableContextMenu.svelte";
   import DatabaseContextMenu from "../../context-menus/DatabaseContextMenu.svelte";
@@ -36,6 +37,10 @@
   let tables = [];
   let showModal = false;
   let editingConnection = null;
+  let showRenameModal = false;
+  let renameModalTitle = "";
+  let renameModalValue = "";
+  let renameModalCallback = null;
   let expandedConnections = {};
   let expandedDatabases = {};
   let expandedTables = {};
@@ -834,22 +839,32 @@
 
   async function handleRenameConnection(conn) {
     // Rename connection
-    const newName = prompt(`Rename connection "${conn.name}" to:`, conn.name);
-    if (newName && newName !== conn.name) {
-      try {
-        // Update connection with new name
-        const updatedConn = { ...conn, name: newName };
-        await saveConnection(updatedConn);
-        // Reload connections list
-        await loadConnections();
-        closeContextMenu();
-      } catch (error) {
-        console.error("Failed to rename connection:", error);
-        alert(`Failed to rename connection: ${error}`);
-        closeContextMenu();
+    renameModalTitle = "Rename Connection";
+    renameModalValue = conn.name;
+    renameModalCallback = async (newName) => {
+      if (newName && newName !== conn.name) {
+        try {
+          // Update connection with new name
+          const updatedConn = { ...conn, name: newName };
+          await saveConnection(updatedConn);
+          // Reload connections list
+          await loadConnections();
+        } catch (error) {
+          console.error("Failed to rename connection:", error);
+          alert(`Failed to rename connection: ${error}`);
+        }
       }
-    } else {
-      closeContextMenu();
+    };
+    showRenameModal = true;
+    closeContextMenu();
+  }
+
+  function handleRenameSubmit(event) {
+    const newName = event.detail;
+    if (renameModalCallback) {
+      renameModalCallback(newName).catch((error) => {
+        console.error("Failed to rename:", error);
+      });
     }
   }
 
@@ -1017,11 +1032,15 @@
         break;
       case "rename":
         // Rename schema
-        const newName = prompt(`Rename schema "${schema}" to:`, schema);
-        if (newName && newName !== schema) {
-          console.log("Rename Schema:", schema, "to", newName);
-          // TODO: Implement rename schema
-        }
+        renameModalTitle = "Rename Schema";
+        renameModalValue = schema;
+        renameModalCallback = async (newName) => {
+          if (newName && newName !== schema) {
+            console.log("Rename Schema:", schema, "to", newName);
+            // TODO: Implement rename schema
+          }
+        };
+        showRenameModal = true;
         break;
       case "refresh":
         // Refresh schema (reload tables)
@@ -1096,14 +1115,15 @@
         break;
       case "rename":
         // Rename database
-        const newName = prompt(
-          `Rename database "${database.name}" to:`,
-          database.name
-        );
-        if (newName && newName !== database.name) {
-          console.log("Rename Database:", database.name, "to", newName);
-          // TODO: Implement rename database
-        }
+        renameModalTitle = "Rename Database";
+        renameModalValue = database.name;
+        renameModalCallback = async (newName) => {
+          if (newName && newName !== database.name) {
+            console.log("Rename Database:", database.name, "to", newName);
+            // TODO: Implement rename database
+          }
+        };
+        showRenameModal = true;
         break;
       case "refresh":
         // Refresh database (reload tables)
@@ -1168,11 +1188,15 @@
         break;
       case "rename":
         // Rename table
-        const newName = prompt(`Rename table "${table.name}" to:`, table.name);
-        if (newName && newName !== table.name) {
-          console.log("Rename Table:", table.name, "to", newName);
-          // TODO: Implement rename table
-        }
+        renameModalTitle = "Rename Table";
+        renameModalValue = table.name;
+        renameModalCallback = async (newName) => {
+          if (newName && newName !== table.name) {
+            console.log("Rename Table:", table.name, "to", newName);
+            // TODO: Implement rename table
+          }
+        };
+        showRenameModal = true;
         break;
       case "refresh":
         // Refresh table list
@@ -3544,6 +3568,16 @@
     on:save={handleSaveConnection}
   />
 {/if}
+
+<InputModal
+  bind:show={showRenameModal}
+  title={renameModalTitle}
+  label="Enter new name:"
+  value={renameModalValue}
+  placeholder="Name"
+  on:submit={handleRenameSubmit}
+  on:cancel={() => (showRenameModal = false)}
+/>
 
 <style>
   /* Sidebar container styles */

@@ -18,6 +18,8 @@
   <MenuBar
     on:newQuery={forwardEvent}
     on:openFile={forwardEvent}
+    on:openQuery={forwardEvent}
+    on:openRecentFile={forwardEvent}
     on:saveQuery={forwardEvent}
     on:saveAs={forwardEvent}
     on:export={forwardEvent}

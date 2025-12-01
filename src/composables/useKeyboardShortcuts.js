@@ -17,9 +17,22 @@ export function useKeyboardShortcuts(handlers) {
         handlers.newQuery?.();
       }
       // Ctrl/Cmd + O: Open File
-      else if ((event.ctrlKey || event.metaKey) && event.key === "o") {
+      else if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key === "o" &&
+        !event.shiftKey
+      ) {
         event.preventDefault();
         handlers.openFile?.();
+      }
+      // Ctrl/Cmd + Shift + O: Open Query
+      else if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key === "O"
+      ) {
+        event.preventDefault();
+        handlers.openQuery?.();
       }
       // Ctrl/Cmd + S: Save Query
       else if (
