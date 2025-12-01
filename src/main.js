@@ -1,7 +1,10 @@
-import "@fortawesome/fontawesome-free/css/all.css";
+// Critical CSS - load synchronously
 import "bootstrap/dist/css/bootstrap.min.css";
-import "bootstrap/dist/js/bootstrap.bundle.min.js";
 import "./app.css";
+
+// Bootstrap JS - load synchronously (needed for dropdowns, modals)
+import "bootstrap/dist/js/bootstrap.bundle.min.js";
+
 import App from "./App.svelte";
 import { overrideConsole } from "./utils/logger.js";
 
@@ -10,6 +13,18 @@ try {
   overrideConsole();
 } catch (e) {
   console.error("Failed to load logger:", e);
+}
+
+// Lazy load FontAwesome CSS (non-blocking)
+const loadFontAwesome = () => {
+  import("@fortawesome/fontawesome-free/css/all.css");
+};
+
+// Load FontAwesome after app is interactive
+if (document.readyState === "complete") {
+  loadFontAwesome();
+} else {
+  window.addEventListener("load", loadFontAwesome, { once: true });
 }
 
 const app = new App({

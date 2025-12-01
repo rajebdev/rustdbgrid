@@ -1,5 +1,5 @@
-@import 'bootstrap/dist/css/bootstrap.min.css';
-@import '@fortawesome/fontawesome-free/css/all.min.css';
+/* Bootstrap is imported in main.js */
+/* FontAwesome is lazy-loaded in main.js for faster startup */
 
 /* ============================================
    THEME SYSTEM - CSS CUSTOM PROPERTIES
