@@ -157,6 +157,12 @@
   }
 
   async function handleSave() {
+    // Validate connection name is not empty
+    if (!formData.name || !formData.name.trim()) {
+      testResult = { success: false, message: "Connection name is required" };
+      return;
+    }
+
     saving = true;
     isSaving.set(true);
     try {

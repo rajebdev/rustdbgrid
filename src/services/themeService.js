@@ -119,6 +119,10 @@ export function getEditorTheme(theme = null) {
       ".cm-activeLine": {
         backgroundColor: "var(--editor-line-active)",
       },
+      ".cm-selectionLayer": {
+        zIndex: "-1 !important",
+        pointerEvents: "none !important",
+      },
       ".cm-selectionBackground": {
         backgroundColor: "var(--editor-selection) !important",
       },
@@ -127,6 +131,10 @@ export function getEditorTheme(theme = null) {
       },
       "::selection": {
         backgroundColor: "var(--editor-selection)",
+      },
+      ".cm-line, .cm-line *": {
+        userSelect: "text !important",
+        WebkitUserSelect: "text !important",
       },
       ".cm-cursor, .cm-dropCursor": {
         borderLeftColor: "var(--editor-cursor)",
@@ -184,6 +192,10 @@ export function getEditorTheme(theme = null) {
     ".cm-activeLine": {
       backgroundColor: "var(--editor-line-active)",
     },
+    ".cm-selectionLayer": {
+      zIndex: "-1 !important",
+      pointerEvents: "none !important",
+    },
     ".cm-selectionBackground": {
       backgroundColor: "var(--editor-selection) !important",
     },
@@ -192,6 +204,10 @@ export function getEditorTheme(theme = null) {
     },
     "::selection": {
       backgroundColor: "var(--editor-selection)",
+    },
+    ".cm-line, .cm-line *": {
+      userSelect: "text !important",
+      WebkitUserSelect: "text !important",
     },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: "var(--editor-cursor)",

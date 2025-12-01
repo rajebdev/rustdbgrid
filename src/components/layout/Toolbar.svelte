@@ -1,10 +1,93 @@
 <script>
   import { createEventDispatcher } from "svelte";
+  import { tabStore } from "../../stores/tabs";
 
   const dispatch = createEventDispatcher();
+  const { activeTab } = tabStore;
 
   function handleAction(action) {
     dispatch(action);
+  }
+
+  // Get connection and database info from active tab
+  $: activeConnection = getConnectionInfo($activeTab);
+  $: activeDatabase = getDatabaseInfo($activeTab);
+  $: connectionDbType = getConnectionDbType($activeTab);
+  $: databaseIcon = getDatabaseIcon($activeTab);
+
+  function getConnectionInfo(tab) {
+    if (!tab) return null;
+    if (tab.type === "table" && tab.tableInfo?.connection) {
+      return tab.tableInfo.connection.name;
+    }
+    if (tab.type === "procedure" && tab.procedureInfo?.connection) {
+      return tab.procedureInfo.connection.name;
+    }
+    if (tab.type === "query" && tab.connection) {
+      return tab.connection.name;
+    }
+    return null;
+  }
+
+  function getConnectionDbType(tab) {
+    if (!tab) return null;
+    if (tab.type === "table" && tab.tableInfo?.connection) {
+      return tab.tableInfo.connection.db_type;
+    }
+    if (tab.type === "procedure" && tab.procedureInfo?.connection) {
+      return tab.procedureInfo.connection.db_type;
+    }
+    if (tab.type === "query" && tab.connection) {
+      return tab.connection.db_type;
+    }
+    return null;
+  }
+
+  function getDatabaseInfo(tab) {
+    if (!tab) return null;
+
+    let database = null;
+    let schema = null;
+    let connection = null;
+
+    if (tab.type === "table" && tab.tableInfo) {
+      database = tab.tableInfo.database;
+      schema = tab.tableInfo.schema;
+      connection = tab.tableInfo.connection;
+    } else if (tab.type === "procedure" && tab.procedureInfo) {
+      database = tab.procedureInfo.database;
+      schema = tab.procedureInfo.schema;
+      connection = tab.procedureInfo.connection;
+    } else if (tab.type === "query" && tab.connection) {
+      database = tab.connection.database;
+      connection = tab.connection;
+    }
+
+    if (!database) return null;
+
+    // Format: schema@database for PostgreSQL/MSSQL with schema, otherwise just database
+    if (
+      schema &&
+      (connection?.db_type === "PostgreSQL" || connection?.db_type === "MSSQL")
+    ) {
+      return `${schema}@${database}`;
+    }
+
+    return database;
+  }
+
+  function getDatabaseIcon(tab) {
+    if (!tab) return null;
+    if (tab.type === "table" && tab.tableInfo?.connection) {
+      return tab.tableInfo.connection.db_type;
+    }
+    if (tab.type === "procedure" && tab.procedureInfo?.connection) {
+      return tab.procedureInfo.connection.db_type;
+    }
+    if (tab.type === "query" && tab.connection) {
+      return tab.connection.db_type;
+    }
+    return null;
   }
 </script>
 
@@ -76,6 +159,39 @@
   >
     <i class="fas fa-sync-alt"></i>
   </button>
+
+  <!-- Connection and Database Info -->
+  {#if activeConnection || activeDatabase}
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-info">
+      {#if activeConnection}
+        <span class="info-item connection-item" title="Active Connection">
+          {#if connectionDbType === "MySQL"}
+            <span class="db-icon">🐬</span>
+          {:else if connectionDbType === "PostgreSQL"}
+            <span class="db-icon">🐘</span>
+          {:else if connectionDbType === "MongoDB"}
+            <span class="db-icon">🍃</span>
+          {:else if connectionDbType === "Redis"}
+            <i class="fas fa-database"></i>
+          {:else if connectionDbType === "Ignite"}
+            <span class="db-icon">🔥</span>
+          {:else if connectionDbType === "MSSQL"}
+            <span class="db-icon">🗄️</span>
+          {:else}
+            <i class="fas fa-server"></i>
+          {/if}
+          <span class="info-text">{activeConnection}</span>
+        </span>
+      {/if}
+      {#if activeDatabase}
+        <span class="info-item database-item" title="Active Database">
+          <i class="fas fa-database"></i>
+          <span class="info-text">{activeDatabase}</span>
+        </span>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -129,5 +245,46 @@
 
   .icon-danger {
     color: var(--accent-red);
+  }
+
+  .toolbar-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: auto;
+    padding-right: 8px;
+  }
+
+  .info-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .info-item i {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .connection-item i {
+    color: var(--accent-blue, #3b82f6);
+  }
+
+  .database-item i {
+    color: var(--accent-orange, #f59e0b);
+  }
+
+  .info-text {
+    font-weight: 500;
+  }
+
+  .db-icon {
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 </style>

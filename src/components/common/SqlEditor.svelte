@@ -2,7 +2,11 @@
   import { onMount, onDestroy } from "svelte";
   import { EditorView, basicSetup } from "codemirror";
   import { EditorState } from "@codemirror/state";
-  import { drawSelection, highlightActiveLineGutter } from "@codemirror/view";
+  import {
+    drawSelection,
+    highlightActiveLineGutter,
+    crosshairCursor,
+  } from "@codemirror/view";
   import { sql } from "@codemirror/lang-sql";
   import { autocompletion } from "@codemirror/autocomplete";
   import { oneDark } from "@codemirror/theme-one-dark";
@@ -568,7 +572,10 @@
 
     const extensions = [
       basicSetup,
-      drawSelection(),
+      drawSelection({
+        drawRangeCursor: true,
+        cursorBlinkRate: 1200,
+      }),
       highlightActiveLineGutter(),
       sql(),
       autocompletion({
@@ -576,6 +583,11 @@
         activateOnTyping: true,
       }),
       EditorView.lineWrapping,
+      // Ensure proper selection handling
+      EditorState.allowMultipleSelections.of(true),
+      EditorView.contentAttributes.of({
+        style: "user-select: text; -webkit-user-select: text;",
+      }),
     ];
 
     // Add theme based on current theme
@@ -609,7 +621,10 @@
   onMount(() => {
     const extensions = [
       basicSetup,
-      drawSelection(),
+      drawSelection({
+        drawRangeCursor: true,
+        cursorBlinkRate: 1200,
+      }),
       highlightActiveLineGutter(),
       sql(),
       autocompletion({
@@ -617,6 +632,11 @@
         activateOnTyping: true,
       }),
       EditorView.lineWrapping,
+      // Ensure proper selection handling
+      EditorState.allowMultipleSelections.of(true),
+      EditorView.contentAttributes.of({
+        style: "user-select: text; -webkit-user-select: text;",
+      }),
     ];
 
     // Add theme based on current theme
@@ -734,23 +754,67 @@
     await loadTablesAndSchema();
   }
 
+  function addLimitClause(query, dbType) {
+    let trimmedQuery = query.trim();
+    const upperQuery = trimmedQuery.toUpperCase();
+
+    // Remove trailing semicolon if present
+    if (trimmedQuery.endsWith(";")) {
+      trimmedQuery = trimmedQuery.slice(0, -1).trim();
+    }
+
+    // Only add limit to SELECT queries (check if contains SELECT, not just starts with)
+    // This handles cases with comments at the beginning
+    if (!upperQuery.includes("SELECT")) {
+      return trimmedQuery;
+    }
+
+    // Check if query already has a limit/top clause
+    if (
+      upperQuery.includes("LIMIT") ||
+      upperQuery.includes("TOP ") ||
+      upperQuery.includes("ROWNUM") ||
+      upperQuery.includes("FETCH")
+    ) {
+      return trimmedQuery;
+    }
+
+    // Add appropriate limit clause based on database type
+    const dbTypeUpper = (dbType || "").toUpperCase();
+
+    if (dbTypeUpper.includes("MSSQL")) {
+      // SQL Server: insert TOP before SELECT
+      return trimmedQuery.replace(/SELECT\s+/i, "SELECT TOP 200 ");
+    } else {
+      // MySQL, PostgreSQL, SQLite, etc.: append LIMIT
+      return trimmedQuery + " LIMIT 200";
+    }
+  }
+
   async function runQuery() {
     if (!selectedConn) {
       alert("Please select a connection first");
       return;
     }
 
-    const query = editorView.state.doc.toString();
+    let query = editorView.state.doc.toString();
     if (!query.trim()) {
       alert("Please enter a query");
       return;
     }
 
+    // Store original query (without limit) for pagination support
+    const originalQuery = query.trim();
+
+    // Auto-add appropriate limit clause based on database type
+    const queryWithLimit = addLimitClause(query, selectedConn.db_type);
+
     executing = true;
     try {
-      const result = await executeQuery(selectedConn, query);
+      const result = await executeQuery(selectedConn, queryWithLimit);
       tabDataStore.setQueryResult(tabId, result);
-      tabDataStore.setExecutedQuery(tabId, query);
+      // Store original query so load more/pagination can work correctly
+      tabDataStore.setExecutedQuery(tabId, originalQuery);
     } catch (error) {
       alert("Query execution failed: " + error);
       console.error(error);
@@ -885,22 +949,70 @@
 
   .sql-editor-container :global(.cm-editor) {
     height: 100%;
+    user-select: text !important;
+    -webkit-user-select: text !important;
   }
 
   .sql-editor-container :global(.cm-scroller) {
     overflow: auto;
+    user-select: text !important;
+    -webkit-user-select: text !important;
   }
 
-  .sql-editor-container :global(.cm-content),
-  .sql-editor-container :global(.cm-line),
-  .sql-editor-container :global(.cm-lineNumbers),
-  .sql-editor-container :global(.cm-gutters) {
+  .sql-editor-container :global(.cm-content) {
     user-select: text !important;
     -webkit-user-select: text !important;
     -moz-user-select: text !important;
+    cursor: text !important;
+    caret-color: var(--text-primary, #000);
+  }
+
+  .sql-editor-container :global(.cm-line) {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    cursor: text !important;
+  }
+
+  /* Ensure all syntax tokens are selectable including comments */
+  .sql-editor-container :global(.cm-line *) {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    pointer-events: auto !important;
+  }
+
+  /* SQL syntax tokens - ensure selection works */
+  .sql-editor-container :global(.tok-comment),
+  .sql-editor-container :global(.tok-lineComment),
+  .sql-editor-container :global(.tok-blockComment),
+  .sql-editor-container :global(.ͼ1c),
+  .sql-editor-container :global(.ͼ1d),
+  .sql-editor-container :global([class*="tok-"]) {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    pointer-events: auto !important;
+  }
+
+  .sql-editor-container :global(.cm-lineNumbers),
+  .sql-editor-container :global(.cm-gutters) {
+    user-select: none !important;
+    -webkit-user-select: none !important;
   }
 
   .sql-editor-container :global(.cm-selectionLayer) {
-    z-index: 1;
+    z-index: -1 !important;
+    pointer-events: none !important;
+  }
+
+  .sql-editor-container :global(.cm-selectionBackground) {
+    background: var(--editor-selection, rgba(0, 120, 215, 0.3)) !important;
+  }
+
+  .sql-editor-container :global(.cm-focused .cm-selectionBackground) {
+    background: var(--editor-selection, rgba(0, 120, 215, 0.4)) !important;
+  }
+
+  .sql-editor-container :global(.cm-cursor) {
+    border-left-color: var(--editor-cursor, #000) !important;
+    border-left-width: 2px !important;
   }
 </style>

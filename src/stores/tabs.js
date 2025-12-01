@@ -33,13 +33,14 @@ function createTabStore() {
      */
     addTableTab: (table, database, connection) => {
       tabs.update((currentTabs) => {
-        // Check if tab already exists
+        // Check if tab already exists (including connection ID to support same table names across different connections)
         const existingTab = currentTabs.find(
           (t) =>
             t.type === "table" &&
             t.tableInfo?.name === table.name &&
             t.tableInfo?.schema === table.schema &&
-            t.tableInfo?.database === database.name
+            t.tableInfo?.database === database.name &&
+            t.tableInfo?.connection?.id === connection.id
         );
 
         if (existingTab) {

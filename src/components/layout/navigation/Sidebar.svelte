@@ -603,8 +603,14 @@
     }
   }
 
-  function selectTable(table, connId, dbName) {
-    selectedTable.set(table);
+  function selectTable(table, connId, dbName, schemaName = null) {
+    // Store table with full parent hierarchy for proper identification
+    selectedTable.set({
+      ...table,
+      _connId: connId,
+      _dbName: dbName,
+      _schema: schemaName || table.schema || null,
+    });
     // Ensure active connection and database are set correctly
     if (connId && dbName) {
       const conn = $connections.find((c) => c.id === connId);
@@ -1282,7 +1288,8 @@
                   {#each caches as cache (cache.name)}
                     <tr
                       class="table-item-row"
-                      class:table-active={$selectedTable?.name === cache.name}
+                      class:table-active={$selectedTable?.name === cache.name &&
+                        $selectedTable?._connId === conn.id}
                       style="cursor: pointer; line-height: 1.5;"
                     >
                       <td
@@ -1512,11 +1519,17 @@
                                               style="padding-left: 8px;"
                                             >
                                               <tbody>
-                                                {#each schemaTables as table (table.name)}
+                                                {#each schemaTables as table (`${conn.id}-${db.name}-${schemaName}-${table.name}`)}
                                                   <tr
                                                     class="table-item-row"
-                                                    class:table-active={$selectedTable?.name ===
-                                                      table.name ||
+                                                    class:table-active={($selectedTable?.name ===
+                                                      table.name &&
+                                                      $selectedTable?._connId ===
+                                                        conn.id &&
+                                                      $selectedTable?._dbName ===
+                                                        db.name &&
+                                                      $selectedTable?._schema ===
+                                                        schemaName) ||
                                                       activeContextTable ===
                                                         `${conn.id}-${db.name}-${schemaName}-${table.name}`}
                                                     style="cursor: pointer; line-height: 1.5;"
@@ -1541,7 +1554,8 @@
                                                           selectTable(
                                                             table,
                                                             conn.id,
-                                                            db.name
+                                                            db.name,
+                                                            schemaName
                                                           )}
                                                         on:dblclick={() =>
                                                           handleTableDoubleClick(
@@ -2160,11 +2174,17 @@
                                         style="padding-left: 8px;"
                                       >
                                         <tbody>
-                                          {#each schemaTables as table (table.name)}
+                                          {#each schemaTables as table (`${conn.id}-${db.name}-${schemaName}-${table.name}`)}
                                             <tr
                                               class="table-item-row"
-                                              class:table-active={$selectedTable?.name ===
-                                                table.name ||
+                                              class:table-active={($selectedTable?.name ===
+                                                table.name &&
+                                                $selectedTable?._connId ===
+                                                  conn.id &&
+                                                $selectedTable?._dbName ===
+                                                  db.name &&
+                                                $selectedTable?._schema ===
+                                                  schemaName) ||
                                                 activeContextTable ===
                                                   `${conn.id}-${db.name}-${schemaName}-${table.name}`}
                                               style="cursor: pointer; line-height: 1.5;"
@@ -2189,7 +2209,8 @@
                                                     selectTable(
                                                       table,
                                                       conn.id,
-                                                      db.name
+                                                      db.name,
+                                                      schemaName
                                                     )}
                                                   on:dblclick={() =>
                                                     handleTableDoubleClick(
@@ -2748,11 +2769,17 @@
                                 style="padding-left: 8px;"
                               >
                                 <tbody>
-                                  {#each expandedDatabases[`${conn.id}-${db.name}`].tables || [] as table (table.name)}
+                                  {#each expandedDatabases[`${conn.id}-${db.name}`].tables || [] as table (`${conn.id}-${db.name}-${table.schema || "default"}-${table.name}`)}
                                     <tr
                                       class="table-item-row"
-                                      class:table-active={$selectedTable?.name ===
-                                        table.name ||
+                                      class:table-active={($selectedTable?.name ===
+                                        table.name &&
+                                        $selectedTable?._connId === conn.id &&
+                                        $selectedTable?._dbName === db.name &&
+                                        ($selectedTable?._schema ===
+                                          table.schema ||
+                                          $selectedTable?._schema ===
+                                            (table.schema || null))) ||
                                         activeContextTable ===
                                           `${conn.id}-${db.name}-${table.schema || "public"}-${table.name}`}
                                       style="cursor: pointer; line-height: 1.5;"
@@ -2780,7 +2807,8 @@
                                             selectTable(
                                               table,
                                               conn.id,
-                                              db.name
+                                              db.name,
+                                              table.schema
                                             )}
                                           on:dblclick={() =>
                                             handleTableDoubleClick(
