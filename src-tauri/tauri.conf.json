@@ -1,6 +1,6 @@
 {
   "productName": "RustDBGrid",
-  "version": "",
+  "version": "0.3.0",
   "identifier": "com.rustdbgrid.app",
   "build": {
     "beforeDevCommand": "npm run dev",
