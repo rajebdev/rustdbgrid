@@ -16,7 +16,9 @@ export async function handleOpenTableTab(event, tabStore, tabDataStore) {
   tabStore.addTableTab(table, database, connection);
 
   const newTab = get(tabStore.activeTab);
-  if (!newTab) return;
+  if (!newTab) {
+    return;
+  }
 
   try {
     // Use new loadTableData API
@@ -40,9 +42,15 @@ export async function handleOpenTableTab(event, tabStore, tabDataStore) {
     if (tableData.final_query) {
       tabDataStore.setExecutedQuery(newTab.id, tableData.final_query);
     }
+
+    // Clear any previous errors
+    tabDataStore.clearError(newTab.id);
   } catch (error) {
-    console.error("Failed to load table data:", error);
-    await showError(`Failed to load table data: ${error.message || error}`);
+    // Store error to display in tab
+    const errorMessage = error.message || error;
+    tabDataStore.setError(newTab.id, errorMessage);
+    // Also show as toast notification
+    await showError(`Failed to load table data: ${errorMessage}`);
   }
 }
 

@@ -121,6 +121,28 @@ const createTabDataStore = () => {
       }));
     },
 
+    // Set error state untuk tab tertentu
+    setError: (tabId, error) => {
+      update((store) => ({
+        ...store,
+        [tabId]: {
+          ...store[tabId],
+          error,
+        },
+      }));
+    },
+
+    // Clear error state untuk tab tertentu
+    clearError: (tabId) => {
+      update((store) => ({
+        ...store,
+        [tabId]: {
+          ...store[tabId],
+          error: null,
+        },
+      }));
+    },
+
     // Set active subtab untuk table tab tertentu
     setActiveSubTab: (tabId, activeSubTab) => {
       update((store) => ({

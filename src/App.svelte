@@ -171,16 +171,52 @@
   });
 
   onMount(async () => {
-    console.log("[FRONTEND] App onMount starting...");
     // Initialize theme system first
     await initializeTheme();
-    console.log("[FRONTEND] Theme initialized");
 
     await initializeApplication();
-    console.log("[FRONTEND] Application initialized");
 
     // Validate restored tabs
     tabStore.validateTabs();
+
+    // Auto-load table data for restored table tabs
+    const { loadTableData } = await import("./utils/tauri");
+    const restoredTabs = get(tabStore);
+
+    for (const tab of restoredTabs) {
+      if (tab.type === "table" && tab.tableInfo) {
+        const tabData = $tabDataStore[tab.id];
+        // Only load if queryResult is missing but tab has tableInfo
+        if (!tabData?.queryResult && tab.tableInfo?.connection) {
+          try {
+            const tableData = await loadTableData(
+              tab.tableInfo.connection.id,
+              tab.tableInfo.connection.db_type,
+              tab.tableInfo.name,
+              {
+                database: tab.tableInfo.database,
+                schema: tab.tableInfo.schema || null,
+                limit: 200,
+                offset: 0,
+                filters: [],
+                orderBy: [],
+              }
+            );
+
+            tabDataStore.setQueryResult(tab.id, tableData);
+
+            if (tableData.final_query) {
+              tabDataStore.setExecutedQuery(tab.id, tableData.final_query);
+            }
+
+            tabDataStore.clearError(tab.id);
+          } catch (error) {
+            const errorMessage = error.message || "Failed to load table data";
+            tabDataStore.setError(tab.id, errorMessage);
+          }
+        }
+      }
+    }
 
     // Handle execute query in new tab
     const handleExecuteQueryNewTab = (event) => {
