@@ -1,5 +1,6 @@
 use crate::db::traits::DatabaseConnection;
 use crate::db::mssql::type_converter::{row_value_to_json_typed, MssqlColType};
+use crate::db::mssql::metadata_ops::MSSQLMetadataOps;
 use crate::models::{connection::*, query_result::*, schema::*};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -451,6 +452,38 @@ impl DatabaseConnection for MSSQLConnection {
             indexes,
             foreign_keys,
         })
+    }
+
+    async fn get_views(&mut self, database: &str, schema: Option<&str>) -> Result<Vec<View>> {
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?.clone();
+        MSSQLMetadataOps::get_views(&pool, database, schema).await
+    }
+
+    async fn get_indexes(
+        &mut self,
+        database: &str,
+        schema: Option<&str>,
+    ) -> Result<Vec<DbIndex>> {
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?.clone();
+        MSSQLMetadataOps::get_indexes(&pool, database, schema).await
+    }
+
+    async fn get_procedures(
+        &mut self,
+        database: &str,
+        schema: Option<&str>,
+    ) -> Result<Vec<Procedure>> {
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?.clone();
+        MSSQLMetadataOps::get_procedures(&pool, database, schema).await
+    }
+
+    async fn get_triggers(
+        &mut self,
+        database: &str,
+        schema: Option<&str>,
+    ) -> Result<Vec<Trigger>> {
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?.clone();
+        MSSQLMetadataOps::get_triggers(&pool, database, schema).await
     }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {

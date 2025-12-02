@@ -1,11 +1,11 @@
 <script>
   import { onMount, createEventDispatcher } from "svelte";
-  import TreeView from "./TreeView.svelte";
-  import ConnectionItem from "./ConnectionItem.svelte";
-  import DatabaseItem from "./DatabaseItem.svelte";
-  import SchemaItem from "./SchemaItem.svelte";
-  import ObjectGroup from "./ObjectGroup.svelte";
-  import ObjectItem from "./ObjectItem.svelte";
+  import TreeView from "./tree/TreeView.svelte";
+  import ConnectionItem from "./tree/ConnectionItem.svelte";
+  import DatabaseItem from "./tree/DatabaseItem.svelte";
+  import SchemaItem from "./tree/SchemaItem.svelte";
+  import ObjectGroup from "./tree/ObjectGroup.svelte";
+  import ObjectItem from "./tree/ObjectItem.svelte";
 
   // Stores
   import {
@@ -786,8 +786,166 @@
                             {/if}
                           </ObjectGroup>
 
-                          <!-- Views, Indexes, Procedures, Triggers for schema -->
-                          <!-- Similar to PostgreSQL but uses schema-filtered data -->
+                          <!-- Views -->
+                          <ObjectGroup
+                            type="views"
+                            count={getCount(schemaKey, "views")}
+                            expanded={!!expandedGroups[
+                              getGroupKey(conn.id, db.name, "views", schemaName)
+                            ]}
+                            indent={3}
+                            on:toggle={() =>
+                              handleGroupToggle(
+                                getGroupKey(
+                                  conn.id,
+                                  db.name,
+                                  "views",
+                                  schemaName
+                                )
+                              )}
+                          >
+                            {#if expandedGroups[getGroupKey(conn.id, db.name, "views", schemaName)]}
+                              {#each getData(schemaKey, "views") as view (view.name)}
+                                <ObjectItem
+                                  item={{ ...view, schema: schemaName }}
+                                  name={view.name}
+                                  type="view"
+                                  indent={4}
+                                  on:dblclick={() =>
+                                    handleViewDblClick(
+                                      { ...view, schema: schemaName },
+                                      conn,
+                                      db,
+                                      schemaName
+                                    )}
+                                  on:contextmenu={(e) =>
+                                    handleViewContextMenu(e, conn, db)}
+                                />
+                              {/each}
+                            {/if}
+                          </ObjectGroup>
+
+                          <!-- Indexes -->
+                          <ObjectGroup
+                            type="indexes"
+                            count={getCount(schemaKey, "indexes")}
+                            expanded={!!expandedGroups[
+                              getGroupKey(
+                                conn.id,
+                                db.name,
+                                "indexes",
+                                schemaName
+                              )
+                            ]}
+                            indent={3}
+                            on:toggle={() =>
+                              handleGroupToggle(
+                                getGroupKey(
+                                  conn.id,
+                                  db.name,
+                                  "indexes",
+                                  schemaName
+                                )
+                              )}
+                          >
+                            {#if expandedGroups[getGroupKey(conn.id, db.name, "indexes", schemaName)]}
+                              {#each getData(schemaKey, "indexes") as idx (`${idx.table_name}-${idx.name}`)}
+                                <ObjectItem
+                                  item={idx}
+                                  name="{idx.table_name}.{idx.name}"
+                                  type="index"
+                                  badge={idx.is_unique ? "U" : "I"}
+                                  badgeType={idx.is_unique
+                                    ? "info"
+                                    : "secondary"}
+                                  indent={4}
+                                />
+                              {/each}
+                            {/if}
+                          </ObjectGroup>
+
+                          <!-- Procedures/Functions -->
+                          <ObjectGroup
+                            type="procedures"
+                            count={getCount(schemaKey, "procedures")}
+                            expanded={!!expandedGroups[
+                              getGroupKey(
+                                conn.id,
+                                db.name,
+                                "procedures",
+                                schemaName
+                              )
+                            ]}
+                            indent={3}
+                            on:toggle={() =>
+                              handleGroupToggle(
+                                getGroupKey(
+                                  conn.id,
+                                  db.name,
+                                  "procedures",
+                                  schemaName
+                                )
+                              )}
+                          >
+                            {#if expandedGroups[getGroupKey(conn.id, db.name, "procedures", schemaName)]}
+                              {#each getData(schemaKey, "procedures") as proc (proc.oid || proc.name)}
+                                <ObjectItem
+                                  item={proc}
+                                  name={proc.name}
+                                  type="procedure"
+                                  badge={proc.procedure_type === "FUNCTION"
+                                    ? "F"
+                                    : "P"}
+                                  badgeType={proc.procedure_type === "FUNCTION"
+                                    ? "success"
+                                    : "secondary"}
+                                  indent={4}
+                                  on:dblclick={() =>
+                                    handleProcedureDblClick(
+                                      proc,
+                                      conn,
+                                      db,
+                                      schemaName
+                                    )}
+                                />
+                              {/each}
+                            {/if}
+                          </ObjectGroup>
+
+                          <!-- Triggers -->
+                          <ObjectGroup
+                            type="triggers"
+                            count={getCount(schemaKey, "triggers")}
+                            expanded={!!expandedGroups[
+                              getGroupKey(
+                                conn.id,
+                                db.name,
+                                "triggers",
+                                schemaName
+                              )
+                            ]}
+                            indent={3}
+                            on:toggle={() =>
+                              handleGroupToggle(
+                                getGroupKey(
+                                  conn.id,
+                                  db.name,
+                                  "triggers",
+                                  schemaName
+                                )
+                              )}
+                          >
+                            {#if expandedGroups[getGroupKey(conn.id, db.name, "triggers", schemaName)]}
+                              {#each getData(schemaKey, "triggers") as trigger (`${trigger.table_name}-${trigger.name}`)}
+                                <ObjectItem
+                                  item={trigger}
+                                  name={trigger.name}
+                                  type="trigger"
+                                  indent={4}
+                                />
+                              {/each}
+                            {/if}
+                          </ObjectGroup>
                         {/if}
                       </SchemaItem>
                     {/each}

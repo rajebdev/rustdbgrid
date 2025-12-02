@@ -95,17 +95,19 @@ pub async fn get_database_object(
                 .map(|t| {
                     json!({
                         "name": t.name,
+                        "schema": t.schema,
                         "size": format_size(t.size_bytes)
                     })
                 })
                 .collect();
 
-            // Format views without definition
+            // Format views with schema
             let view_list: Vec<_> = views
                 .iter()
                 .map(|v| {
                     json!({
-                        "name": v.name
+                        "name": v.name,
+                        "schema": v.schema
                     })
                 })
                 .collect();
