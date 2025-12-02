@@ -76,11 +76,6 @@
     padding: 0;
   }
 
-  .resize-handle:hover,
-  .resize-handle.resizing {
-    background-color: var(--accent-blue);
-  }
-
   .resize-handle::before {
     content: "";
     position: absolute;
