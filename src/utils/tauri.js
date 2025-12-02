@@ -12,12 +12,28 @@ export async function getConnections() {
   return await invoke("get_connections");
 }
 
-export async function deleteConnection(id) {
-  return await invoke("delete_connection", { id });
+/**
+ * Get minimal connection info (no sensitive data like passwords)
+ * Use this for displaying connections in sidebar/UI
+ * @returns {Promise<Array>} Array of ConnectionInfo objects with id, name, db_type, host, port
+ */
+export async function getConnectionsInfo() {
+  return await invoke("get_connections_info");
 }
 
-export async function updateConnection(config) {
-  return await invoke("update_connection", { config });
+/**
+ * Get full connection details for editing
+ * @param {string} connectionId - Connection ID
+ * @returns {Promise<object>} Full ConnectionConfig with sensitive data
+ */
+export async function getConnectionForEdit(connectionId) {
+  return await invoke("get_connection_for_edit", {
+    connectionId: connectionId,
+  });
+}
+
+export async function deleteConnection(id) {
+  return await invoke("delete_connection", { id });
 }
 
 export async function connectToDatabase(config) {
@@ -88,6 +104,52 @@ export async function executeQueryWithFilters(
   return await invoke("execute_query_with_filters", payload);
 }
 
+/**
+ * Load table data using JSON request structure
+ * @param {string} connectionId - Connection ID
+ * @param {string} dbType - Database type (MySQL, PostgreSQL, MSSQL, MongoDB, Redis, Ignite)
+ * @param {string} table - Table name
+ * @param {object} options - Optional parameters
+ * @param {string} options.database - Database name
+ * @param {string} options.schema - Schema name
+ * @param {number} options.limit - Number of rows to fetch
+ * @param {number} options.offset - Offset for pagination
+ * @param {Array} options.filters - Array of filter objects
+ * @param {Array} options.orderBy - Array of order by objects
+ * @returns {Promise<object>} Response with columns (name, data_type), rows, final_query, has_more_data, execution_time
+ */
+export async function loadTableData(
+  connectionId,
+  dbType,
+  table,
+  {
+    database = null,
+    schema = null,
+    limit = 100,
+    offset = 0,
+    filters = [],
+    orderBy = [],
+  } = {}
+) {
+  const request = {
+    connection_id: connectionId,
+    query: {
+      db_type: dbType,
+      database,
+      schema,
+      table,
+      limit,
+      offset,
+      filters,
+      order_by: orderBy,
+    },
+  };
+
+  console.log("📤 loadTableData called with:", request);
+
+  return await invoke("load_table_data", { request });
+}
+
 export async function getFilterValues(
   config,
   query,
@@ -101,6 +163,35 @@ export async function getFilterValues(
     column,
     search_query: searchQuery,
     limit,
+  });
+}
+
+/**
+ * Universal function to get database objects
+ * @param {string} connectionId - Connection ID
+ * @param {string} requestType - Type of request: 'database_list', 'database_info', 'schema_list', 'schema_info'
+ * @param {string} database - Optional database name
+ * @param {string} schema - Optional schema name
+ * @returns {Promise<object>} Response JSON with requested data
+ */
+export async function getDatabaseObject(
+  connectionId,
+  requestType,
+  database = null,
+  schema = null
+) {
+  console.log("📤 getDatabaseObject called with:", {
+    connectionId,
+    requestType,
+    database,
+    schema,
+  });
+
+  return await invoke("get_database_object", {
+    connectionId: connectionId,
+    requestType: requestType,
+    database,
+    schema,
   });
 }
 
@@ -138,22 +229,6 @@ export async function getTableSchema(config, database, table) {
 
 export async function getTableRelationships(config, database, table) {
   return await invoke("get_table_relationships", { config, database, table });
-}
-
-export async function getTableData(
-  config,
-  database,
-  table,
-  limit = 100,
-  offset = 0
-) {
-  return await invoke("get_table_data", {
-    config,
-    database,
-    table,
-    limit,
-    offset,
-  });
 }
 
 export async function getStorageInfo() {

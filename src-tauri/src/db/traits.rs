@@ -44,13 +44,6 @@ pub trait DatabaseConnection: Send + Sync {
             pages: None,
         })
     }
-    async fn get_table_data(
-        &mut self,
-        database: &str,
-        table: &str,
-        limit: u32,
-        offset: u32,
-    ) -> Result<QueryResult>;
 
     // MySQL-specific methods with default implementations returning empty
     async fn get_views(&mut self, _database: &str, _schema: Option<&str>) -> Result<Vec<View>> {

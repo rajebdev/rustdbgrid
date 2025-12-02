@@ -1,22 +1,13 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import * as monaco from "monaco-editor";
-  import {
-    activeConnection,
-    connections,
-    selectedDatabase,
-  } from "../../stores/connections";
+  import { activeConnection, selectedDatabase } from "../../stores/connections";
   import { tabDataStore } from "../../stores/tabData";
   import { activeTheme } from "../../stores/theme";
-  import { queryListStore } from "../../stores/queryList";
   import { queryHistoryStore } from "../../stores/queryHistory";
   import { getDefaultQuery } from "../../utils/defaultQueries";
   import { getMonacoTheme } from "../../services/themeService";
   import { formatSql } from "../../utils/sqlFormatter";
-  import {
-    getSelectedOrFullText,
-    executeSelectedText,
-  } from "../../utils/editorUtils";
   import {
     executeQuery,
     getDatabases,
@@ -652,29 +643,6 @@
       editor.dispose();
     }
   });
-
-  async function handleConnectionChange(event) {
-    const connId = event.target.value;
-    selectedConn = $connections.find((c) => c.id === connId);
-    activeConnection.set(selectedConn);
-    selectedDb = null;
-    selectedDatabase.set(null);
-    databases = [];
-    tables = [];
-    schema = {};
-    loadedDatabases = {};
-    tableAliasMap.clear();
-    if (selectedConn) {
-      await loadDatabases();
-    }
-  }
-
-  async function handleDatabaseChange(event) {
-    selectedDb = event.target.value;
-    selectedDatabase.set(selectedDb);
-    tableAliasMap.clear(); // Reset alias map when database changes
-    await loadTablesAndSchema();
-  }
 
   function addLimitClause(query, dbType) {
     let trimmedQuery = query.trim();

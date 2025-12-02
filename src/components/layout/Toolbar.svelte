@@ -6,7 +6,7 @@
     activeConnection,
     selectedDatabase,
   } from "../../stores/connections";
-  import { getDatabases } from "../../utils/tauri";
+  import { getDatabases, getConnectionForEdit } from "../../utils/tauri";
 
   const dispatch = createEventDispatcher();
   const { activeTab } = tabStore;
@@ -40,7 +40,13 @@
     }
     loadingDatabases = true;
     try {
-      databases = await getDatabases(conn);
+      // Check if connection has ssl field (full config) or need to fetch it
+      let fullConnection = conn;
+      if (!conn.hasOwnProperty("ssl")) {
+        fullConnection = await getConnectionForEdit(conn.id);
+      }
+
+      databases = await getDatabases(fullConnection);
 
       // Validate selected database still exists
       if (

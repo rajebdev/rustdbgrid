@@ -119,14 +119,6 @@ pub async fn save_connection(
 }
 
 #[tauri::command]
-pub async fn get_connections(
-    state: State<'_, ConnectionStore>,
-) -> Result<Vec<ConnectionConfig>, String> {
-    let connections = state.connections.lock().unwrap();
-    Ok(connections.clone())
-}
-
-#[tauri::command]
 pub async fn delete_connection(
     id: String,
     state: State<'_, ConnectionStore>,

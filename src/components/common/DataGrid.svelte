@@ -2,12 +2,11 @@
   import { onMount, afterUpdate, tick } from "svelte";
   import { tabDataStore } from "../../stores/tabData";
   import { settings } from "../../stores/settings";
-  import { buildPaginatedQuery } from "../../utils/defaultQueries";
   import {
     getFilterValues,
     executeQueryWithFilters,
     executeQuery,
-    getTableData,
+    loadTableData,
   } from "../../utils/tauri";
   import ArrayCell from "./ArrayCell.svelte";
   import SqlPreviewModal from "../modals/SqlPreviewModal.svelte";
@@ -20,6 +19,7 @@
   export let connection = null;
   export let tableName = ""; // Table/cache name for Ignite/NoSQL
   export let databaseName = ""; // Database/cache name for Ignite/NoSQL
+  export let schemaName = ""; // Schema name for PostgreSQL/MSSQL
 
   let displayData = null; // Internal state for display (can be filtered or original)
   let isFiltered = false; // Track if current data is filtered
@@ -47,9 +47,26 @@
   let isRestoringScroll = false; // Flag to prevent restore during user scroll
   let viewMode = "grid"; // View mode: "grid" or "json"
 
-  // Display names for headers (original names without suffix for duplicates)
+  // Display names for headers (for new format - extract from columns array)
   $: displayNames =
-    displayData?.column_display_names || displayData?.columns || [];
+    displayData?.columns?.map((col) =>
+      typeof col === "string" ? col : col.name
+    ) || [];
+
+  // Column types map (for new format)
+  $: columnTypes =
+    displayData?.columns?.reduce((acc, col) => {
+      if (typeof col === "object" && col.name && col.data_type) {
+        acc[col.name] = col.data_type;
+      }
+      return acc;
+    }, {}) || {};
+
+  // For compatibility: extract column names array
+  $: columnNames =
+    displayData?.columns?.map((col) =>
+      typeof col === "string" ? col : col.name
+    ) || [];
 
   // Inline editing state
   let editingCell = null; // { rowIndex, column }
@@ -127,7 +144,113 @@
     lastLoadedQueryId = null; // Reset query ID tracking
   }
 
+  /**
+   * Load table data using new JSON API (for table tabs only)
+   * This function uses the new loadTableData API with proper JSON structure
+   */
+  async function loadTableDataWithFilters() {
+    if (!connection || !tableName) {
+      console.log(
+        "⚠️ Cannot load table data - missing connection or table name"
+      );
+      return;
+    }
+
+    // Check if we have filters or sorting applied
+    const hasFilters = Object.keys(columnFilters).length > 0;
+    const hasSorting = sortColumn !== null;
+
+    // Clear current data and show loading state
+    const previousData = displayData;
+    displayData = null;
+    isLoadingData = true;
+    isFiltered = hasFilters || hasSorting;
+    currentOffset = 0;
+    hasMoreData = true;
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    try {
+      console.log("🔄 Loading table data with new API:", {
+        connection: connection.id,
+        table: tableName,
+        database: databaseName,
+        schema: schemaName,
+        filters: columnFilters,
+        sortColumn,
+        sortDirection,
+      });
+
+      // Convert columnFilters to new filter format
+      const filters = [];
+      for (const [column, value] of Object.entries(columnFilters)) {
+        if (Array.isArray(value) && value.length > 0) {
+          // Array filter - use "in" operator
+          filters.push({
+            column,
+            operator: "in",
+            value: value,
+          });
+        } else if (typeof value === "string" && value.trim() !== "") {
+          // Text filter - use "like" operator
+          filters.push({
+            column,
+            operator: "like",
+            value: `%${value}%`,
+          });
+        }
+      }
+
+      // Convert sorting to new format
+      const orderBy = sortColumn
+        ? [
+            {
+              column: sortColumn,
+              direction: sortDirection.toLowerCase(),
+            },
+          ]
+        : [];
+
+      const result = await loadTableData(
+        connection.id,
+        connection.db_type,
+        tableName,
+        {
+          database: databaseName || null,
+          schema: schemaName || null,
+          limit: 200,
+          offset: 0,
+          filters,
+          orderBy,
+        }
+      );
+
+      console.log("✅ Table data loaded:", result);
+
+      // Use new format directly - no conversion needed!
+      displayData = result;
+      totalRows = result.rows.length;
+      currentOffset = result.rows.length;
+      hasMoreData = result.has_more_data;
+      finalQuery = result.final_query;
+      lastLoadedQueryId =
+        tableName + JSON.stringify(filters) + sortColumn + sortDirection;
+    } catch (error) {
+      console.error("❌ Failed to load table data:", error);
+      displayData = previousData;
+      isFiltered = false;
+    } finally {
+      isLoadingData = false;
+    }
+  }
+
   async function reloadDataWithFilters() {
+    // If we have table name (table tab), use new API
+    if (tableName && connection) {
+      return loadTableDataWithFilters();
+    }
+
+    // Otherwise, use old API for SQL query results
     // Validate executedQuery is not empty
     if (!executedQuery || executedQuery.trim() === "") {
       console.log("⚠️ Cannot reload - executedQuery is empty");
@@ -199,8 +322,20 @@
         });
 
         if (cacheName) {
-          // Use getTableData which uses SCAN internally
-          result = await getTableData(connection, cacheName, "", 200, 0);
+          // Use loadTableData which uses SCAN internally for Ignite
+          result = await loadTableData({
+            connection_id: connection.id,
+            query: {
+              db_type: "Ignite",
+              database: cacheName,
+              schema: null,
+              table: "",
+              limit: 200,
+              offset: 0,
+              filters: null,
+              order_by: null,
+            },
+          });
 
           // Apply client-side filtering for Ignite if filters are set
           if (Object.keys(filters).length > 0 && result?.rows) {
@@ -342,13 +477,19 @@
           return;
         }
 
-        result = await getTableData(
-          connection,
-          cacheName, // database = cache name
-          "", // table = empty for cache scan
-          200, // limit
-          currentOffset // offset
-        );
+        result = await loadTableData({
+          connection_id: connection.id,
+          query: {
+            db_type: "Ignite",
+            database: cacheName,
+            schema: null,
+            table: "",
+            limit: 200,
+            offset: currentOffset,
+            filters: null,
+            order_by: null,
+          },
+        });
 
         loadMoreQuery = `SCAN ${cacheName} LIMIT 200 OFFSET ${currentOffset}`;
       } else {
@@ -1280,7 +1421,7 @@
             >
               <thead>
                 <tr>
-                  {#each displayData.columns as column, idx}
+                  {#each columnNames as column, idx}
                     {@const isNumeric = isNumericColumn(column)}
                     {@const displayName = displayNames[idx] || column}
                     <th>
@@ -1350,11 +1491,13 @@
                       ? 'row-even'
                       : 'row-odd'}"
                   >
-                    {#each displayData.columns as column}
+                    {#each columnNames as column, colIndex}
                       {@const isEdited =
                         editedRows.has(index) &&
                         editedRows.get(index).has(column)}
-                      {@const cellValue = row[column]}
+                      {@const cellValue = Array.isArray(row)
+                        ? row[colIndex]
+                        : row[column]}
                       {@const isArrayValue = Array.isArray(cellValue)}
                       <td
                         class="{cellValue === null || cellValue === undefined

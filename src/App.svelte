@@ -13,7 +13,6 @@
   import { tabDataStore } from "./stores/tabData";
   import { tabStore } from "./stores/tabs";
   import { queryListStore } from "./stores/queryList";
-  import { getTableData } from "./utils/tauri";
   import { useKeyboardShortcuts } from "./composables/useKeyboardShortcuts";
   import {
     useWindowResize,
@@ -89,7 +88,6 @@
     setShowToolbar: (val) => (showToolbar = val),
     setShowAboutModal: (val) => (showAboutModal = val),
     runningQueries,
-    getTableData,
     updateTabs: () => (tabs = tabs), // Force re-render
   });
 
@@ -439,7 +437,7 @@
       maxWidth={600}
       on:startResize={handleStartResize}
       on:openTableTab={(e) => {
-        handleOpenTableTab(e, tabStore, tabDataStore, getTableData);
+        handleOpenTableTab(e, tabStore, tabDataStore);
       }}
       on:openProcedureTab={(e) => {
         handleOpenProcedureTab(e, tabStore, tabDataStore);

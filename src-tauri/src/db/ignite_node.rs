@@ -90,8 +90,6 @@ struct IpcResponse {
     tables: Option<Vec<TableInfo>>,
     result: Option<BridgeQueryResult>,
     schema: Option<BridgeSchema>,
-    #[allow(dead_code)]
-    connections: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -799,60 +797,6 @@ impl DatabaseConnection for IgniteConnection {
                 .collect(),
             indexes: vec![],
             foreign_keys: vec![],
-        })
-    }
-
-    async fn get_table_data(
-        &mut self,
-        database: &str,
-        table: &str,
-        limit: u32,
-        offset: u32,
-    ) -> Result<QueryResult> {
-        // Ensure bridge is running (may have auto-shutdown)
-        self.ensure_bridge_running().await?;
-
-        let start = Instant::now();
-        let connection_id = self
-            .connection_id
-            .as_ref()
-            .ok_or_else(|| anyhow!("Not connected to Ignite"))?;
-
-        let cache_name = if database.is_empty() { table } else { database };
-
-        let request = IpcRequest {
-            action: "scan".to_string(),
-            connection_id: Some(connection_id.clone()),
-            host: None,
-            port: None,
-            username: None,
-            password: None,
-            query: None,
-            cache_name: Some(cache_name.to_string()),
-            table_name: None,
-            limit: Some(limit),
-            offset: Some(offset),
-        };
-
-        let result = self.send_request(&request).await?;
-
-        if !result.success {
-            return Err(anyhow!(result.message.unwrap_or("Scan failed".to_string())));
-        }
-
-        let br = result.result.ok_or_else(|| anyhow!("No scan data"))?;
-
-        Ok(QueryResult {
-            columns: br.columns,
-            column_display_names: None,
-            column_types: None,
-            rows: br.rows,
-            rows_affected: br.rows_affected,
-            execution_time: start.elapsed().as_millis(),
-            final_query: Some(format!(
-                "SCAN {} LIMIT {} OFFSET {}",
-                cache_name, limit, offset
-            )),
         })
     }
 

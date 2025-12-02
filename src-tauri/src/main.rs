@@ -6,7 +6,7 @@ mod db;
 mod models;
 mod utils;
 
-use commands::{connection, export, logging, query, schema, settings};
+use commands::{connection, connection_info, export, logging, query, schema, settings, table};
 
 fn main() {
     // Initialize tracing logger
@@ -31,13 +31,14 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             connection::test_connection,
             connection::save_connection,
-            connection::get_connections,
             connection::delete_connection,
             connection::get_storage_info,
             connection::connect_to_database,
             connection::disconnect_from_database,
             connection::is_database_connected,
             connection::get_connected_databases,
+            connection_info::get_connections_info,
+            connection_info::get_connection_for_edit,
             query::execute_query,
             query::execute_query_with_filters,
             query::get_filter_values,
@@ -51,6 +52,8 @@ fn main() {
             query::list_query_files,
             query::list_query_files_with_content,
             query::delete_query_file,
+            table::load_table_data,
+            schema::get_database_object,
             schema::get_databases,
             schema::get_tables,
             schema::get_views,
@@ -61,7 +64,6 @@ fn main() {
             schema::get_table_schema,
             schema::get_table_relationships,
             schema::get_table_statistics,
-            schema::get_table_data,
             schema::get_pg_constraints,
             schema::get_pg_foreign_keys,
             schema::get_pg_indexes,

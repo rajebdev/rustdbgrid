@@ -9,19 +9,11 @@
   import { tabStore } from "../../../stores/tabs";
   import { tabDataStore } from "../../../stores/tabData";
   import {
-    getConnections,
-    getDatabases,
-    getTables,
-    getViews,
-    getIndexes,
-    getProcedures,
-    getTriggers,
-    getEvents,
+    getConnectionsInfo,
+    getDatabaseObject,
     deleteConnection,
     saveConnection,
-    connectToDatabase,
     disconnectFromDatabase,
-    isDatabaseConnected,
     getConnectedDatabases,
   } from "../../../utils/tauri";
 
@@ -34,7 +26,6 @@
   import SchemaContextMenu from "../../context-menus/SchemaContextMenu.svelte";
 
   let databases = [];
-  let tables = [];
   let showModal = false;
   let editingConnection = null;
   let showRenameModal = false;
@@ -60,9 +51,11 @@
   let loadingTriggers = {};
   let loadingEvents = {};
   let loadingSchemas = {}; // Track loading state for schema object counts
+  let loadingTables = {}; // Track loading state for tables
   // Store counts for MySQL objects (loaded when database expands)
   let dbObjectCounts = {}; // { 'connId-dbName': { views: n, indexes: n, procedures: n, triggers: n, events: n } }
   // Cache for MySQL objects data (loaded when database expands)
+  let cachedTables = {};
   let cachedViews = {};
   let cachedIndexes = {};
   let cachedProcedures = {};
@@ -71,12 +64,13 @@
   // Store counts for PostgreSQL/MSSQL schema objects (loaded when schema expands)
   let schemaObjectCounts = {}; // { 'connId-dbName-schemaName': { views: n, indexes: n, procedures: n, triggers: n, events: n } }
   // Cache for PostgreSQL/MSSQL schema objects data
+  let cachedSchemaTables = {};
   let cachedSchemaViews = {};
   let cachedSchemaIndexes = {};
   let cachedSchemaProcedures = {};
   let cachedSchemaTriggers = {};
-  let cachedSchemaEvents = {};
   let connectedConnections = {}; // Track connection status
+  let cachedSchemasParent = {}; // Track if schemas parent is connected
   let contextMenu = null; // { x, y, connection }
   let tableContextMenu = null; // { x, y, table, connection, database }
   let databaseContextMenu = null; // { x, y, database, connection }
@@ -123,7 +117,7 @@
 
   async function loadConnections() {
     try {
-      const conns = await getConnections();
+      const conns = await getConnectionsInfo();
       connections.set(conns);
     } catch (error) {
       console.error("Failed to load connections:", error);
@@ -138,9 +132,10 @@
       loadingConnections[conn.id] = true;
       loadingConnections = { ...loadingConnections };
       try {
-        // Connect to database via backend
-        await connectToDatabase(conn);
-        databases = await getDatabases(conn);
+        // Use new unified API
+        const result = await getDatabaseObject(conn.id, "database_list");
+        databases = result.databases || [];
+
         expandedConnections[conn.id] = { databases };
         connectedConnections[conn.id] = true; // Mark as connected
         connectedConnections = { ...connectedConnections };
@@ -168,63 +163,13 @@
       }
 
       selectedDatabase.set(db);
-      loadingDatabases[key] = true;
-      loadingDatabases = { ...loadingDatabases };
-      try {
-        // Load tables first
-        const dbTables = await getTables($activeConnection, db.name);
 
-        // Load and cache MySQL objects data BEFORE setting expandedDatabases
-        if ($activeConnection && $activeConnection.db_type === "MySQL") {
-          try {
-            // Load sequentially to avoid connection pool race condition
-            const viewsData = await getViews($activeConnection, db.name);
-            const indexesData = await getIndexes($activeConnection, db.name);
-            const proceduresData = await getProcedures(
-              $activeConnection,
-              db.name
-            );
-            const triggersData = await getTriggers($activeConnection, db.name);
-            const eventsData = await getEvents($activeConnection, db.name);
-
-            // Cache the data first
-            cachedViews[key] = viewsData || [];
-            cachedIndexes[key] = indexesData || [];
-            cachedProcedures[key] = proceduresData || [];
-            cachedTriggers[key] = triggersData || [];
-            cachedEvents[key] = eventsData || [];
-
-            // Store counts
-            dbObjectCounts[key] = {
-              views: viewsData?.length || 0,
-              indexes: indexesData?.length || 0,
-              procedures: proceduresData?.length || 0,
-              triggers: triggersData?.length || 0,
-              events: eventsData?.length || 0,
-            };
-          } catch (error) {
-            console.error("Failed to load MySQL object counts:", error);
-            // Set empty caches on error
-            cachedViews[key] = [];
-            cachedIndexes[key] = [];
-            cachedProcedures[key] = [];
-            cachedTriggers[key] = [];
-            cachedEvents[key] = [];
-          }
-        }
-
-        // NOW set expandedDatabases after all data is loaded
-        expandedDatabases[key] = {
-          tables: dbTables,
-          connection: conn,
-          database: db,
-        };
-        expandedDatabases = { ...expandedDatabases };
-      } catch (error) {
-        console.error("Failed to load tables:", error);
-      } finally {
-        loadingDatabases[key] = false;
-        loadingDatabases = { ...loadingDatabases };
+      // For PostgreSQL, use dedicated handler
+      if (conn && conn.db_type === "PostgreSQL") {
+        await togglePostgreSQLDatabase(connId, db);
+      } else {
+        // For other databases (MySQL, MSSQL)
+        await toggleOtherDatabase(connId, db);
       }
     } else {
       delete expandedDatabases[key];
@@ -232,153 +177,169 @@
     expandedDatabases = { ...expandedDatabases };
   }
 
-  function toggleTables(connId, dbName) {
+  async function togglePostgreSQLDatabase(connId, db) {
+    const key = `${connId}-${db.name}`;
+    const conn = $connections.find((c) => c.id === connId);
+
+    loadingDatabases[key] = true;
+    loadingDatabases = { ...loadingDatabases };
+    try {
+      // Get list of schemas for this database
+      const result = await getDatabaseObject(connId, "schema_list", db.name);
+      const schemas = result.schemas || [];
+
+      // Set expandedDatabases
+      expandedDatabases[key] = {
+        schemas: schemas,
+        tables: [], // Will be populated when schemas are expanded
+        connection: conn,
+        database: db,
+      };
+      expandedDatabases = { ...expandedDatabases };
+
+      // Cache schemas only, don't auto-expand
+      cachedSchemasParent[key] = schemas;
+    } catch (error) {
+      console.error("Failed to load PostgreSQL database:", error);
+    } finally {
+      loadingDatabases[key] = false;
+      loadingDatabases = { ...loadingDatabases };
+    }
+  }
+
+  async function toggleOtherDatabase(connId, db) {
+    const key = `${connId}-${db.name}`;
+    const conn = $connections.find((c) => c.id === connId);
+
+    loadingDatabases[key] = true;
+    loadingDatabases = { ...loadingDatabases };
+    try {
+      // For MySQL/MSSQL, use database_info
+      const result = await getDatabaseObject(connId, "database_info", db.name);
+
+      // Extract all lists from result
+      const tables = result.tables || [];
+      const views = result.views || [];
+      const indexes = result.indexes || [];
+      const procedures = result.procedures || [];
+      const triggers = result.triggers || [];
+      const events = result.events || [];
+
+      // Store counts for display
+      dbObjectCounts[key] = {
+        tables: tables.length,
+        views: views.length,
+        indexes: indexes.length,
+        procedures: procedures.length,
+        triggers: triggers.length,
+        events: events.length,
+      };
+      dbObjectCounts = { ...dbObjectCounts };
+
+      // Cache the loaded data
+      cachedTables[key] = tables;
+      cachedViews[key] = views;
+      cachedIndexes[key] = indexes;
+      cachedProcedures[key] = procedures;
+      cachedTriggers[key] = triggers;
+      cachedEvents[key] = events;
+
+      // For MSSQL, use tables for schema grouping
+      let finalTables = [];
+      if (conn && conn.db_type === "MSSQL") {
+        finalTables = tables;
+      }
+
+      // Set expandedDatabases with tables
+      expandedDatabases[key] = {
+        tables: finalTables,
+        connection: conn,
+        database: db,
+      };
+      expandedDatabases = { ...expandedDatabases };
+    } catch (error) {
+      console.error("Failed to load database info:", error);
+    } finally {
+      loadingDatabases[key] = false;
+      loadingDatabases = { ...loadingDatabases };
+    }
+  }
+
+  async function toggleTables(connId, dbName) {
     const key = `${connId}-${dbName}`;
     if (expandedTables[key]) {
       delete expandedTables[key];
+      expandedTables = { ...expandedTables };
     } else {
-      expandedTables[key] = true;
+      // Use cached data from database_info
+      const tables = cachedTables[key] || [];
+      expandedTables[key] = { tables };
+      expandedTables = { ...expandedTables };
     }
-    expandedTables = { ...expandedTables };
   }
 
-  async function toggleViews(connId, dbName, connection) {
+  async function toggleViews(connId, dbName) {
     const key = `${connId}-${dbName}`;
     if (expandedViews[key]) {
       delete expandedViews[key];
       expandedViews = { ...expandedViews };
     } else {
-      // Use cached data if available
-      if (cachedViews[key]) {
-        expandedViews[key] = { views: cachedViews[key] };
-        expandedViews = { ...expandedViews };
-      } else {
-        loadingViews[key] = true;
-        loadingViews = { ...loadingViews };
-        try {
-          const views = await getViews(connection, dbName);
-          cachedViews[key] = views || [];
-          expandedViews[key] = { views: cachedViews[key] };
-        } catch (error) {
-          console.error("Failed to load views:", error);
-          expandedViews[key] = { views: [] };
-        }
-        loadingViews[key] = false;
-        loadingViews = { ...loadingViews };
-        expandedViews = { ...expandedViews };
-      }
+      // Use cached data from database_info
+      const views = cachedViews[key] || [];
+      expandedViews[key] = { views };
+      expandedViews = { ...expandedViews };
     }
   }
 
-  async function toggleIndexes(connId, dbName, connection) {
+  async function toggleIndexes(connId, dbName) {
     const key = `${connId}-${dbName}`;
     if (expandedIndexes[key]) {
       delete expandedIndexes[key];
       expandedIndexes = { ...expandedIndexes };
     } else {
-      // Use cached data if available
-      if (cachedIndexes[key]) {
-        expandedIndexes[key] = { indexes: cachedIndexes[key] };
-        expandedIndexes = { ...expandedIndexes };
-      } else {
-        loadingIndexes[key] = true;
-        loadingIndexes = { ...loadingIndexes };
-        try {
-          const indexes = await getIndexes(connection, dbName);
-          cachedIndexes[key] = indexes || [];
-          expandedIndexes[key] = { indexes: cachedIndexes[key] };
-        } catch (error) {
-          console.error("Failed to load indexes:", error);
-          expandedIndexes[key] = { indexes: [] };
-        }
-        loadingIndexes[key] = false;
-        loadingIndexes = { ...loadingIndexes };
-        expandedIndexes = { ...expandedIndexes };
-      }
+      // Use cached data from database_info
+      const indexes = cachedIndexes[key] || [];
+      expandedIndexes[key] = { indexes };
+      expandedIndexes = { ...expandedIndexes };
     }
   }
 
-  async function toggleProcedures(connId, dbName, connection) {
+  async function toggleProcedures(connId, dbName) {
     const key = `${connId}-${dbName}`;
     if (expandedProcedures[key]) {
       delete expandedProcedures[key];
       expandedProcedures = { ...expandedProcedures };
     } else {
-      // Use cached data if available
-      if (cachedProcedures[key]) {
-        expandedProcedures[key] = { procedures: cachedProcedures[key] };
-        expandedProcedures = { ...expandedProcedures };
-      } else {
-        loadingProcedures[key] = true;
-        loadingProcedures = { ...loadingProcedures };
-        try {
-          const procedures = await getProcedures(connection, dbName);
-          cachedProcedures[key] = procedures || [];
-          expandedProcedures[key] = { procedures: cachedProcedures[key] };
-        } catch (error) {
-          console.error("Failed to load procedures:", error);
-          expandedProcedures[key] = { procedures: [] };
-        }
-        loadingProcedures[key] = false;
-        loadingProcedures = { ...loadingProcedures };
-        expandedProcedures = { ...expandedProcedures };
-      }
+      // Use cached data from database_info
+      const procedures = cachedProcedures[key] || [];
+      expandedProcedures[key] = { procedures };
+      expandedProcedures = { ...expandedProcedures };
     }
   }
 
-  async function toggleTriggers(connId, dbName, connection) {
+  async function toggleTriggers(connId, dbName) {
     const key = `${connId}-${dbName}`;
     if (expandedTriggers[key]) {
       delete expandedTriggers[key];
       expandedTriggers = { ...expandedTriggers };
     } else {
-      // Use cached data if available
-      if (cachedTriggers[key]) {
-        expandedTriggers[key] = { triggers: cachedTriggers[key] };
-        expandedTriggers = { ...expandedTriggers };
-      } else {
-        loadingTriggers[key] = true;
-        loadingTriggers = { ...loadingTriggers };
-        try {
-          const triggers = await getTriggers(connection, dbName);
-          cachedTriggers[key] = triggers || [];
-          expandedTriggers[key] = { triggers: cachedTriggers[key] };
-        } catch (error) {
-          console.error("Failed to load triggers:", error);
-          expandedTriggers[key] = { triggers: [] };
-        }
-        loadingTriggers[key] = false;
-        loadingTriggers = { ...loadingTriggers };
-        expandedTriggers = { ...expandedTriggers };
-      }
+      // Use cached data from database_info
+      const triggers = cachedTriggers[key] || [];
+      expandedTriggers[key] = { triggers };
+      expandedTriggers = { ...expandedTriggers };
     }
   }
 
-  async function toggleEvents(connId, dbName, connection) {
+  async function toggleEvents(connId, dbName) {
     const key = `${connId}-${dbName}`;
     if (expandedEvents[key]) {
       delete expandedEvents[key];
       expandedEvents = { ...expandedEvents };
     } else {
-      // Use cached data if available
-      if (cachedEvents[key]) {
-        expandedEvents[key] = { events: cachedEvents[key] };
-        expandedEvents = { ...expandedEvents };
-      } else {
-        loadingEvents[key] = true;
-        loadingEvents = { ...loadingEvents };
-        try {
-          const events = await getEvents(connection, dbName);
-          cachedEvents[key] = events || [];
-          expandedEvents[key] = { events: cachedEvents[key] };
-        } catch (error) {
-          console.error("Failed to load events:", error);
-          expandedEvents[key] = { events: [] };
-        }
-        loadingEvents[key] = false;
-        loadingEvents = { ...loadingEvents };
-        expandedEvents = { ...expandedEvents };
-      }
+      // Use cached data from database_info
+      const events = cachedEvents[key] || [];
+      expandedEvents[key] = { events };
+      expandedEvents = { ...expandedEvents };
     }
   }
 
@@ -398,7 +359,7 @@
         selectedDatabase.set(dbData.database);
       }
 
-      // Load counts for PostgreSQL/MSSQL schema objects if not already loaded
+      // Load PostgreSQL/MSSQL schema objects if not already loaded
       if (conn && (conn.db_type === "PostgreSQL" || conn.db_type === "MSSQL")) {
         // Check if data is already cached
         const hasData = cachedSchemaViews[key] !== undefined;
@@ -409,32 +370,51 @@
           loadingSchemas = { ...loadingSchemas };
 
           try {
-            // Load all object types for this schema in parallel
-            const [viewsData, indexesData, proceduresData, triggersData] =
-              await Promise.all([
-                getViews(conn, dbName, schemaName),
-                getIndexes(conn, dbName, schemaName),
-                getProcedures(conn, dbName, schemaName),
-                getTriggers(conn, dbName, schemaName),
-              ]);
+            // Load schema_info to get full lists
+            const result = await getDatabaseObject(
+              connId,
+              "schema_info",
+              dbName,
+              schemaName
+            );
 
-            // Cache the schema-specific data
-            cachedSchemaViews[key] = viewsData || [];
-            cachedSchemaIndexes[key] = indexesData || [];
-            cachedSchemaProcedures[key] = proceduresData || [];
-            cachedSchemaTriggers[key] = triggersData || [];
+            // Extract all lists from result
+            const tables = result.tables || [];
+            const views = result.views || [];
+            const indexes = result.indexes || [];
+            const procedures = result.procedures || [];
+            const triggers = result.triggers || [];
+
+            // Store counts for display
+            schemaObjectCounts[key] = {
+              tables: tables.length,
+              views: views.length,
+              indexes: indexes.length,
+              procedures: procedures.length,
+              triggers: triggers.length,
+            };
+            schemaObjectCounts = { ...schemaObjectCounts };
+
+            // Cache the loaded data
+            cachedSchemaTables[key] = tables;
+            cachedSchemaViews[key] = views;
+            cachedSchemaIndexes[key] = indexes;
+            cachedSchemaProcedures[key] = procedures;
+            cachedSchemaTriggers[key] = triggers;
 
             // Trigger reactivity
+            cachedSchemaTables = { ...cachedSchemaTables };
             cachedSchemaViews = { ...cachedSchemaViews };
             cachedSchemaIndexes = { ...cachedSchemaIndexes };
             cachedSchemaProcedures = { ...cachedSchemaProcedures };
             cachedSchemaTriggers = { ...cachedSchemaTriggers };
           } catch (error) {
             console.error(
-              `Failed to load counts for schema ${schemaName}:`,
+              `Failed to load schema info for ${schemaName}:`,
               error
             );
             // Set empty caches on error
+            cachedSchemaTables[key] = [];
             cachedSchemaViews[key] = [];
             cachedSchemaIndexes[key] = [];
             cachedSchemaProcedures[key] = [];
@@ -458,153 +438,77 @@
     if (expandedSchemasParent[key]) {
       delete expandedSchemasParent[key];
     } else {
-      expandedSchemasParent[key] = true;
+      // Use cached data
+      const schemas = cachedSchemasParent[key] || [];
+      expandedSchemasParent[key] = { schemas };
     }
     expandedSchemasParent = { ...expandedSchemasParent };
   }
 
   // Schema-level toggle functions for PostgreSQL/MSSQL
-  async function toggleSchemaViews(connId, dbName, schemaName, connection) {
+  async function toggleSchemaTables(connId, dbName, schemaName) {
+    const key = `${connId}-${dbName}-${schemaName}`;
+    if (expandedTables[key]) {
+      delete expandedTables[key];
+      expandedTables = { ...expandedTables };
+    } else {
+      // Use cached data from schema_info
+      const tables = cachedSchemaTables[key] || [];
+      expandedTables[key] = { tables };
+      expandedTables = { ...expandedTables };
+    }
+  }
+
+  // Schema-level toggle functions for PostgreSQL/MSSQL
+  async function toggleSchemaViews(connId, dbName, schemaName) {
     const key = `${connId}-${dbName}-${schemaName}`;
     if (expandedViews[key]) {
       delete expandedViews[key];
       expandedViews = { ...expandedViews };
     } else {
-      if (cachedSchemaViews[key]) {
-        expandedViews[key] = { views: cachedSchemaViews[key] };
-        expandedViews = { ...expandedViews };
-      } else {
-        loadingViews[key] = true;
-        loadingViews = { ...loadingViews };
-        try {
-          const views = await getViews(connection, dbName, schemaName);
-          cachedSchemaViews[key] = views || [];
-          expandedViews[key] = { views: cachedSchemaViews[key] };
-        } catch (error) {
-          console.error("Failed to load schema views:", error);
-          expandedViews[key] = { views: [] };
-        }
-        loadingViews[key] = false;
-        loadingViews = { ...loadingViews };
-        expandedViews = { ...expandedViews };
-      }
+      // Use cached data from schema_info
+      const views = cachedSchemaViews[key] || [];
+      expandedViews[key] = { views };
+      expandedViews = { ...expandedViews };
     }
   }
 
-  async function toggleSchemaIndexes(connId, dbName, schemaName, connection) {
+  async function toggleSchemaIndexes(connId, dbName, schemaName) {
     const key = `${connId}-${dbName}-${schemaName}`;
     if (expandedIndexes[key]) {
       delete expandedIndexes[key];
       expandedIndexes = { ...expandedIndexes };
     } else {
-      if (cachedSchemaIndexes[key]) {
-        expandedIndexes[key] = { indexes: cachedSchemaIndexes[key] };
-        expandedIndexes = { ...expandedIndexes };
-      } else {
-        loadingIndexes[key] = true;
-        loadingIndexes = { ...loadingIndexes };
-        try {
-          const indexes = await getIndexes(connection, dbName, schemaName);
-          cachedSchemaIndexes[key] = indexes || [];
-          expandedIndexes[key] = { indexes: cachedSchemaIndexes[key] };
-        } catch (error) {
-          console.error("Failed to load schema indexes:", error);
-          expandedIndexes[key] = { indexes: [] };
-        }
-        loadingIndexes[key] = false;
-        loadingIndexes = { ...loadingIndexes };
-        expandedIndexes = { ...expandedIndexes };
-      }
+      // Use cached data from schema_info
+      const indexes = cachedSchemaIndexes[key] || [];
+      expandedIndexes[key] = { indexes };
+      expandedIndexes = { ...expandedIndexes };
     }
   }
 
-  async function toggleSchemaProcedures(
-    connId,
-    dbName,
-    schemaName,
-    connection
-  ) {
+  async function toggleSchemaProcedures(connId, dbName, schemaName) {
     const key = `${connId}-${dbName}-${schemaName}`;
     if (expandedProcedures[key]) {
       delete expandedProcedures[key];
       expandedProcedures = { ...expandedProcedures };
     } else {
-      if (cachedSchemaProcedures[key]) {
-        expandedProcedures[key] = { procedures: cachedSchemaProcedures[key] };
-        expandedProcedures = { ...expandedProcedures };
-      } else {
-        loadingProcedures[key] = true;
-        loadingProcedures = { ...loadingProcedures };
-        try {
-          const procedures = await getProcedures(
-            connection,
-            dbName,
-            schemaName
-          );
-          cachedSchemaProcedures[key] = procedures || [];
-          expandedProcedures[key] = { procedures: cachedSchemaProcedures[key] };
-        } catch (error) {
-          console.error("Failed to load schema procedures:", error);
-          expandedProcedures[key] = { procedures: [] };
-        }
-        loadingProcedures[key] = false;
-        loadingProcedures = { ...loadingProcedures };
-        expandedProcedures = { ...expandedProcedures };
-      }
+      // Use cached data from schema_info
+      const procedures = cachedSchemaProcedures[key] || [];
+      expandedProcedures[key] = { procedures };
+      expandedProcedures = { ...expandedProcedures };
     }
   }
 
-  async function toggleSchemaTriggers(connId, dbName, schemaName, connection) {
+  async function toggleSchemaTriggers(connId, dbName, schemaName) {
     const key = `${connId}-${dbName}-${schemaName}`;
     if (expandedTriggers[key]) {
       delete expandedTriggers[key];
       expandedTriggers = { ...expandedTriggers };
     } else {
-      if (cachedSchemaTriggers[key]) {
-        expandedTriggers[key] = { triggers: cachedSchemaTriggers[key] };
-        expandedTriggers = { ...expandedTriggers };
-      } else {
-        loadingTriggers[key] = true;
-        loadingTriggers = { ...loadingTriggers };
-        try {
-          const triggers = await getTriggers(connection, dbName, schemaName);
-          cachedSchemaTriggers[key] = triggers || [];
-          expandedTriggers[key] = { triggers: cachedSchemaTriggers[key] };
-        } catch (error) {
-          console.error("Failed to load schema triggers:", error);
-          expandedTriggers[key] = { triggers: [] };
-        }
-        loadingTriggers[key] = false;
-        loadingTriggers = { ...loadingTriggers };
-        expandedTriggers = { ...expandedTriggers };
-      }
-    }
-  }
-
-  async function toggleSchemaEvents(connId, dbName, schemaName, connection) {
-    const key = `${connId}-${dbName}-${schemaName}`;
-    if (expandedEvents[key]) {
-      delete expandedEvents[key];
-      expandedEvents = { ...expandedEvents };
-    } else {
-      if (cachedSchemaEvents[key]) {
-        expandedEvents[key] = { events: cachedSchemaEvents[key] };
-        expandedEvents = { ...expandedEvents };
-      } else {
-        loadingEvents[key] = true;
-        loadingEvents = { ...loadingEvents };
-        try {
-          const events = await getEvents(connection, dbName, schemaName);
-          cachedSchemaEvents[key] = events || [];
-          expandedEvents[key] = { events: cachedSchemaEvents[key] };
-        } catch (error) {
-          console.error("Failed to load schema events:", error);
-          expandedEvents[key] = { events: [] };
-        }
-        loadingEvents[key] = false;
-        loadingEvents = { ...loadingEvents };
-        expandedEvents = { ...expandedEvents };
-      }
+      // Use cached data from schema_info
+      const triggers = cachedSchemaTriggers[key] || [];
+      expandedTriggers[key] = { triggers };
+      expandedTriggers = { ...expandedTriggers };
     }
   }
 
@@ -682,21 +586,6 @@
       database: database,
       connection: connection,
     });
-  }
-
-  function formatBytes(bytes) {
-    if (!bytes || bytes === 0) return "";
-
-    const k = 1024;
-    const sizes = ["B", "K", "M", "G", "T"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    const value = bytes / Math.pow(k, i);
-
-    // Format: semua angka dibulatkan tanpa desimal
-    const formatted = Math.round(value);
-
-    return `${formatted}${sizes[i]}`;
   }
 
   function openNewConnectionModal() {
@@ -793,8 +682,8 @@
     loadingConnections[conn.id] = true;
     loadingConnections = { ...loadingConnections };
     try {
-      await connectToDatabase(conn);
-      databases = await getDatabases(conn);
+      const result = await getDatabaseObject(conn.id, "database_list");
+      const databases = result.databases || [];
       expandedConnections[conn.id] = { databases };
       connectedConnections[conn.id] = true;
       connectedConnections = { ...connectedConnections };
@@ -1334,7 +1223,7 @@
                             const table = {
                               name: cache.name,
                               schema: null,
-                              size_bytes: null,
+                              size: null,
                             };
                             selectTable(table, conn.id, cache.name);
                           }}
@@ -1342,7 +1231,7 @@
                             const table = {
                               name: cache.name,
                               schema: null,
-                              size_bytes: null,
+                              size: null,
                             };
                             handleTableDoubleClick(table, conn, {
                               name: cache.name,
@@ -1352,7 +1241,7 @@
                             const table = {
                               name: cache.name,
                               schema: null,
-                              size_bytes: null,
+                              size: null,
                             };
                             handleTableContextMenu(e, table, conn, {
                               name: cache.name,
@@ -1445,14 +1334,16 @@
                             >
                               <i class="fas fa-folder-tree"></i>
                               <span
-                                >Schemas ({Object.keys(schemaGroups)
-                                  .length})</span
+                                >Schemas ({expandedDatabases[
+                                  `${conn.id}-${db.name}`
+                                ]?.schemas?.length ?? 0})</span
                               >
                             </button>
                           </div>
-                          {#if expandedSchemasParent[`${conn.id}-${db.name}`]}
+                          {#if expandedSchemasParent[`${conn.id}-${db.name}`]?.schemas}
                             <div class="tree-children">
-                              {#each Object.entries(schemaGroups) as [schemaName, schemaTables]}
+                              {#each expandedSchemasParent[`${conn.id}-${db.name}`].schemas as schema}
+                                {@const schemaName = schema.name}
                                 <div class="tree-item">
                                   <div class="tree-node tables-section-node">
                                     <button
@@ -1491,8 +1382,7 @@
                                         handleSchemaContextMenu(
                                           e,
                                           schemaName,
-                                          db,
-                                          conn
+                                          db
                                         )}
                                     >
                                       <i class="fas fa-folder"></i>
@@ -1509,9 +1399,10 @@
                                             class="tree-toggle"
                                             aria-label="Toggle tables"
                                             on:click={() =>
-                                              toggleTables(
+                                              toggleSchemaTables(
                                                 conn.id,
-                                                `${db.name}-${schemaName}`
+                                                db.name,
+                                                schemaName
                                               )}
                                           >
                                             <i
@@ -1525,14 +1416,17 @@
                                           <button
                                             class="tree-section-header"
                                             on:click={() =>
-                                              toggleTables(
+                                              toggleSchemaTables(
                                                 conn.id,
-                                                `${db.name}-${schemaName}`
+                                                db.name,
+                                                schemaName
                                               )}
                                           >
                                             <i class="fas fa-table"></i>
                                             <span
-                                              >Tables ({schemaTables.length})</span
+                                              >Tables ({schemaObjectCounts[
+                                                `${conn.id}-${db.name}-${schemaName}`
+                                              ]?.tables ?? 0})</span
                                             >
                                           </button>
                                         </div>
@@ -1543,7 +1437,7 @@
                                               style="padding-left: 8px;"
                                             >
                                               <tbody>
-                                                {#each schemaTables as table (`${conn.id}-${db.name}-${schemaName}-${table.name}`)}
+                                                {#each expandedTables[`${conn.id}-${db.name}-${schemaName}`]?.tables || [] as table (`${conn.id}-${db.name}-${schemaName}-${table.name}`)}
                                                   <tr
                                                     class="table-item-row"
                                                     class:table-active={($selectedTable?.name ===
@@ -1618,14 +1512,12 @@
                                                       class="text-end align-middle"
                                                       style="white-space: nowrap; width: 50px; min-width: 50px; max-width: 50px; padding: 2px 8px 2px 4px !important;"
                                                     >
-                                                      {#if table.size_bytes !== undefined && table.size_bytes !== null && table.size_bytes > 0}
+                                                      {#if table.size !== undefined && table.size !== null}
                                                         <span
                                                           class="badge bg-light text-secondary"
                                                           style="font-size: 10px;"
                                                           title="Table size"
-                                                          >{formatBytes(
-                                                            table.size_bytes
-                                                          )}</span
+                                                          >{table.size}</span
                                                         >
                                                       {/if}
                                                     </td>
@@ -1650,8 +1542,7 @@
                                               toggleSchemaViews(
                                                 conn.id,
                                                 db.name,
-                                                schemaName,
-                                                conn
+                                                schemaName
                                               )}
                                           >
                                             {#if loadingViews[`${conn.id}-${db.name}-${schemaName}`]}
@@ -1673,15 +1564,14 @@
                                               toggleSchemaViews(
                                                 conn.id,
                                                 db.name,
-                                                schemaName,
-                                                conn
+                                                schemaName
                                               )}
                                           >
                                             <i class="fas fa-eye"></i>
                                             <span
-                                              >Views ({cachedSchemaViews[
+                                              >Views ({schemaObjectCounts[
                                                 `${conn.id}-${db.name}-${schemaName}`
-                                              ]?.length ?? 0})</span
+                                              ]?.views ?? 0})</span
                                             >
                                           </button>
                                         </div>
@@ -1692,7 +1582,7 @@
                                               style="padding-left: 8px;"
                                             >
                                               <tbody>
-                                                {#each expandedViews[`${conn.id}-${db.name}-${schemaName}`].views || [] as view (`${schemaName}-${view.name}`)}
+                                                {#each expandedViews[`${conn.id}-${db.name}-${schemaName}`]?.views || [] as view (`${schemaName}-${view.name}`)}
                                                   <tr
                                                     class="table-item-row"
                                                     style="cursor: pointer; line-height: 1.5;"
@@ -1728,7 +1618,7 @@
                                                     </td>
                                                   </tr>
                                                 {/each}
-                                                {#if (expandedViews[`${conn.id}-${db.name}-${schemaName}`].views || []).length === 0}
+                                                {#if (expandedViews[`${conn.id}-${db.name}-${schemaName}`]?.views || []).length === 0}
                                                   <tr>
                                                     <td
                                                       class="p-0"
@@ -1760,8 +1650,7 @@
                                               toggleSchemaIndexes(
                                                 conn.id,
                                                 db.name,
-                                                schemaName,
-                                                conn
+                                                schemaName
                                               )}
                                           >
                                             {#if loadingIndexes[`${conn.id}-${db.name}-${schemaName}`]}
@@ -1783,15 +1672,14 @@
                                               toggleSchemaIndexes(
                                                 conn.id,
                                                 db.name,
-                                                schemaName,
-                                                conn
+                                                schemaName
                                               )}
                                           >
                                             <i class="fas fa-key"></i>
                                             <span
-                                              >Indexes ({cachedSchemaIndexes[
+                                              >Indexes ({schemaObjectCounts[
                                                 `${conn.id}-${db.name}-${schemaName}`
-                                              ]?.length ?? 0})</span
+                                              ]?.indexes ?? 0})</span
                                             >
                                           </button>
                                         </div>
@@ -1802,7 +1690,7 @@
                                               style="padding-left: 8px;"
                                             >
                                               <tbody>
-                                                {#each expandedIndexes[`${conn.id}-${db.name}-${schemaName}`].indexes || [] as idx (`${schemaName}-${idx.table_name}-${idx.name}`)}
+                                                {#each expandedIndexes[`${conn.id}-${db.name}-${schemaName}`]?.indexes || [] as idx (`${schemaName}-${idx.table_name}-${idx.name}`)}
                                                   <tr
                                                     class="table-item-row"
                                                     style="cursor: pointer; line-height: 1.5;"
@@ -1847,7 +1735,7 @@
                                                     </td>
                                                   </tr>
                                                 {/each}
-                                                {#if (expandedIndexes[`${conn.id}-${db.name}-${schemaName}`].indexes || []).length === 0}
+                                                {#if (expandedIndexes[`${conn.id}-${db.name}-${schemaName}`]?.indexes || []).length === 0}
                                                   <tr>
                                                     <td
                                                       class="p-0"
@@ -1880,8 +1768,7 @@
                                               toggleSchemaProcedures(
                                                 conn.id,
                                                 db.name,
-                                                schemaName,
-                                                conn
+                                                schemaName
                                               )}
                                           >
                                             {#if loadingProcedures[`${conn.id}-${db.name}-${schemaName}`]}
@@ -1903,8 +1790,7 @@
                                               toggleSchemaProcedures(
                                                 conn.id,
                                                 db.name,
-                                                schemaName,
-                                                conn
+                                                schemaName
                                               )}
                                           >
                                             <i class="fas fa-cog"></i>
@@ -1922,7 +1808,7 @@
                                               style="padding-left: 8px;"
                                             >
                                               <tbody>
-                                                {#each expandedProcedures[`${conn.id}-${db.name}-${schemaName}`].procedures || [] as proc (proc.oid || `${schemaName}-${proc.name}`)}
+                                                {#each expandedProcedures[`${conn.id}-${db.name}-${schemaName}`]?.procedures || [] as proc (proc.oid || `${schemaName}-${proc.name}`)}
                                                   <tr
                                                     class="table-item-row"
                                                     style="cursor: pointer; line-height: 1.5;"
@@ -1979,7 +1865,7 @@
                                                     </td>
                                                   </tr>
                                                 {/each}
-                                                {#if (expandedProcedures[`${conn.id}-${db.name}-${schemaName}`].procedures || []).length === 0}
+                                                {#if (expandedProcedures[`${conn.id}-${db.name}-${schemaName}`]?.procedures || []).length === 0}
                                                   <tr>
                                                     <td
                                                       class="p-0"
@@ -2012,8 +1898,7 @@
                                               toggleSchemaTriggers(
                                                 conn.id,
                                                 db.name,
-                                                schemaName,
-                                                conn
+                                                schemaName
                                               )}
                                           >
                                             {#if loadingTriggers[`${conn.id}-${db.name}-${schemaName}`]}
@@ -2035,15 +1920,14 @@
                                               toggleSchemaTriggers(
                                                 conn.id,
                                                 db.name,
-                                                schemaName,
-                                                conn
+                                                schemaName
                                               )}
                                           >
                                             <i class="fas fa-bolt"></i>
                                             <span
-                                              >Triggers ({cachedSchemaTriggers[
+                                              >Triggers ({schemaObjectCounts[
                                                 `${conn.id}-${db.name}-${schemaName}`
-                                              ]?.length ?? 0})</span
+                                              ]?.triggers ?? 0})</span
                                             >
                                           </button>
                                         </div>
@@ -2054,7 +1938,7 @@
                                               style="padding-left: 8px;"
                                             >
                                               <tbody>
-                                                {#each expandedTriggers[`${conn.id}-${db.name}-${schemaName}`].triggers || [] as trigger (`${schemaName}-${trigger.table_name}-${trigger.name}`)}
+                                                {#each expandedTriggers[`${conn.id}-${db.name}-${schemaName}`]?.triggers || [] as trigger (`${schemaName}-${trigger.table_name}-${trigger.name}`)}
                                                   <tr
                                                     class="table-item-row"
                                                     style="cursor: pointer; line-height: 1.5;"
@@ -2080,7 +1964,7 @@
                                                     </td>
                                                   </tr>
                                                 {/each}
-                                                {#if (expandedTriggers[`${conn.id}-${db.name}-${schemaName}`].triggers || []).length === 0}
+                                                {#if (expandedTriggers[`${conn.id}-${db.name}-${schemaName}`]?.triggers || []).length === 0}
                                                   <tr>
                                                     <td
                                                       class="p-0"
@@ -2187,7 +2071,10 @@
                                         )}
                                     >
                                       <i class="fas fa-table"></i>
-                                      <span>Tables ({schemaTables.length})</span
+                                      <span
+                                        >Tables ({schemaObjectCounts[
+                                          `${conn.id}-${db.name}-${schemaName}`
+                                        ]?.tables ?? 0})</span
                                       >
                                     </button>
                                   </div>
@@ -2273,14 +2160,12 @@
                                                 class="text-end align-middle"
                                                 style="white-space: nowrap; width: 50px; min-width: 50px; max-width: 50px; padding: 2px 8px 2px 4px !important;"
                                               >
-                                                {#if table.size_bytes !== undefined && table.size_bytes !== null && table.size_bytes > 0}
+                                                {#if table.size !== undefined && table.size !== null}
                                                   <span
                                                     class="badge bg-light text-secondary"
                                                     style="font-size: 10px;"
                                                     title="Table size"
-                                                    >{formatBytes(
-                                                      table.size_bytes
-                                                    )}</span
+                                                    >{table.size}</span
                                                   >
                                                 {/if}
                                               </td>
@@ -2303,8 +2188,7 @@
                                         toggleSchemaViews(
                                           conn.id,
                                           db.name,
-                                          schemaName,
-                                          conn
+                                          schemaName
                                         )}
                                     >
                                       {#if loadingViews[`${conn.id}-${db.name}-${schemaName}`]}
@@ -2325,15 +2209,14 @@
                                         toggleSchemaViews(
                                           conn.id,
                                           db.name,
-                                          schemaName,
-                                          conn
+                                          schemaName
                                         )}
                                     >
                                       <i class="fas fa-eye"></i>
                                       <span
-                                        >Views ({cachedSchemaViews[
+                                        >Views ({schemaObjectCounts[
                                           `${conn.id}-${db.name}-${schemaName}`
-                                        ]?.length ?? 0})</span
+                                        ]?.views ?? 0})</span
                                       >
                                     </button>
                                   </div>
@@ -2344,7 +2227,7 @@
                                         style="padding-left: 8px;"
                                       >
                                         <tbody>
-                                          {#each expandedViews[`${conn.id}-${db.name}-${schemaName}`].views || [] as view (`${schemaName}-${view.name}`)}
+                                          {#each expandedViews[`${conn.id}-${db.name}-${schemaName}`]?.views || [] as view (`${schemaName}-${view.name}`)}
                                             <tr
                                               class="table-item-row"
                                               style="cursor: pointer; line-height: 1.5;"
@@ -2380,7 +2263,7 @@
                                               </td>
                                             </tr>
                                           {/each}
-                                          {#if (expandedViews[`${conn.id}-${db.name}-${schemaName}`].views || []).length === 0}
+                                          {#if (expandedViews[`${conn.id}-${db.name}-${schemaName}`]?.views || []).length === 0}
                                             <tr>
                                               <td
                                                 class="p-0"
@@ -2410,8 +2293,7 @@
                                         toggleSchemaIndexes(
                                           conn.id,
                                           db.name,
-                                          schemaName,
-                                          conn
+                                          schemaName
                                         )}
                                     >
                                       {#if loadingIndexes[`${conn.id}-${db.name}-${schemaName}`]}
@@ -2432,15 +2314,14 @@
                                         toggleSchemaIndexes(
                                           conn.id,
                                           db.name,
-                                          schemaName,
-                                          conn
+                                          schemaName
                                         )}
                                     >
                                       <i class="fas fa-key"></i>
                                       <span
-                                        >Indexes ({cachedSchemaIndexes[
+                                        >Indexes ({schemaObjectCounts[
                                           `${conn.id}-${db.name}-${schemaName}`
-                                        ]?.length ?? 0})</span
+                                        ]?.indexes ?? 0})</span
                                       >
                                     </button>
                                   </div>
@@ -2451,7 +2332,7 @@
                                         style="padding-left: 8px;"
                                       >
                                         <tbody>
-                                          {#each expandedIndexes[`${conn.id}-${db.name}-${schemaName}`].indexes || [] as idx (`${schemaName}-${idx.table_name}-${idx.name}`)}
+                                          {#each expandedIndexes[`${conn.id}-${db.name}-${schemaName}`]?.indexes || [] as idx (`${schemaName}-${idx.table_name}-${idx.name}`)}
                                             <tr
                                               class="table-item-row"
                                               style="cursor: pointer; line-height: 1.5;"
@@ -2495,7 +2376,7 @@
                                               </td>
                                             </tr>
                                           {/each}
-                                          {#if (expandedIndexes[`${conn.id}-${db.name}-${schemaName}`].indexes || []).length === 0}
+                                          {#if (expandedIndexes[`${conn.id}-${db.name}-${schemaName}`]?.indexes || []).length === 0}
                                             <tr>
                                               <td
                                                 class="p-0"
@@ -2526,8 +2407,7 @@
                                         toggleSchemaProcedures(
                                           conn.id,
                                           db.name,
-                                          schemaName,
-                                          conn
+                                          schemaName
                                         )}
                                     >
                                       {#if loadingProcedures[`${conn.id}-${db.name}-${schemaName}`]}
@@ -2548,15 +2428,14 @@
                                         toggleSchemaProcedures(
                                           conn.id,
                                           db.name,
-                                          schemaName,
-                                          conn
+                                          schemaName
                                         )}
                                     >
                                       <i class="fas fa-cog"></i>
                                       <span
-                                        >Procedures ({cachedSchemaProcedures[
+                                        >Procedures ({schemaObjectCounts[
                                           `${conn.id}-${db.name}-${schemaName}`
-                                        ]?.length ?? 0})</span
+                                        ]?.procedures ?? 0})</span
                                       >
                                     </button>
                                   </div>
@@ -2567,7 +2446,7 @@
                                         style="padding-left: 8px;"
                                       >
                                         <tbody>
-                                          {#each expandedProcedures[`${conn.id}-${db.name}-${schemaName}`].procedures || [] as proc (proc.oid || `${schemaName}-${proc.name}`)}
+                                          {#each expandedProcedures[`${conn.id}-${db.name}-${schemaName}`]?.procedures || [] as proc (proc.oid || `${schemaName}-${proc.name}`)}
                                             <tr
                                               class="table-item-row"
                                               style="cursor: pointer; line-height: 1.5;"
@@ -2622,7 +2501,7 @@
                                               </td>
                                             </tr>
                                           {/each}
-                                          {#if (expandedProcedures[`${conn.id}-${db.name}-${schemaName}`].procedures || []).length === 0}
+                                          {#if (expandedProcedures[`${conn.id}-${db.name}-${schemaName}`]?.procedures || []).length === 0}
                                             <tr>
                                               <td
                                                 class="p-0"
@@ -2653,8 +2532,7 @@
                                         toggleSchemaTriggers(
                                           conn.id,
                                           db.name,
-                                          schemaName,
-                                          conn
+                                          schemaName
                                         )}
                                     >
                                       {#if loadingTriggers[`${conn.id}-${db.name}-${schemaName}`]}
@@ -2675,15 +2553,14 @@
                                         toggleSchemaTriggers(
                                           conn.id,
                                           db.name,
-                                          schemaName,
-                                          conn
+                                          schemaName
                                         )}
                                     >
                                       <i class="fas fa-bolt"></i>
                                       <span
-                                        >Triggers ({cachedSchemaTriggers[
+                                        >Triggers ({schemaObjectCounts[
                                           `${conn.id}-${db.name}-${schemaName}`
-                                        ]?.length ?? 0})</span
+                                        ]?.triggers ?? 0})</span
                                       >
                                     </button>
                                   </div>
@@ -2694,7 +2571,7 @@
                                         style="padding-left: 8px;"
                                       >
                                         <tbody>
-                                          {#each expandedTriggers[`${conn.id}-${db.name}-${schemaName}`].triggers || [] as trigger (`${schemaName}-${trigger.table_name}-${trigger.name}`)}
+                                          {#each expandedTriggers[`${conn.id}-${db.name}-${schemaName}`]?.triggers || [] as trigger (`${schemaName}-${trigger.table_name}-${trigger.name}`)}
                                             <tr
                                               class="table-item-row"
                                               style="cursor: pointer; line-height: 1.5;"
@@ -2720,7 +2597,7 @@
                                               </td>
                                             </tr>
                                           {/each}
-                                          {#if (expandedTriggers[`${conn.id}-${db.name}-${schemaName}`].triggers || []).length === 0}
+                                          {#if (expandedTriggers[`${conn.id}-${db.name}-${schemaName}`]?.triggers || []).length === 0}
                                             <tr>
                                               <td
                                                 class="p-0"
@@ -2780,9 +2657,9 @@
                                   ? "Collections"
                                   : conn.db_type === "Ignite"
                                     ? "Caches"
-                                    : "Tables"} ({expandedDatabases[
+                                    : "Tables"} ({dbObjectCounts[
                                   `${conn.id}-${db.name}`
-                                ].tables?.length || 0})</span
+                                ].tables ?? 0})</span
                               >
                             </button>
                           </div>
@@ -2793,7 +2670,7 @@
                                 style="padding-left: 8px;"
                               >
                                 <tbody>
-                                  {#each expandedDatabases[`${conn.id}-${db.name}`].tables || [] as table (`${conn.id}-${db.name}-${table.schema || "default"}-${table.name}`)}
+                                  {#each expandedTables[`${conn.id}-${db.name}`]?.tables || [] as table (`${conn.id}-${db.name}-${table.schema || "default"}-${table.name}`)}
                                     <tr
                                       class="table-item-row"
                                       class:table-active={($selectedTable?.name ===
@@ -2876,7 +2753,7 @@
                                         class="text-end align-middle"
                                         style="white-space: nowrap; width: 50px; min-width: 50px; max-width: 50px; padding: 2px 8px 2px 4px !important;"
                                       >
-                                        {#if table.size_bytes !== undefined && table.size_bytes !== null && table.size_bytes > 0}
+                                        {#if table.size !== undefined && table.size !== null}
                                           <span
                                             class="badge bg-light text-secondary"
                                             style="font-size: 10px;"
@@ -2885,9 +2762,7 @@
                                               : conn.db_type === 'Ignite'
                                                 ? 'Cache'
                                                 : 'Table'} size"
-                                            >{formatBytes(
-                                              table.size_bytes
-                                            )}</span
+                                            >{table.size}</span
                                           >
                                         {/if}
                                       </td>
@@ -2929,8 +2804,9 @@
                               >
                                 <i class="fas fa-eye"></i>
                                 <span
-                                  >Views ({cachedViews[`${conn.id}-${db.name}`]
-                                    ?.length ?? 0})</span
+                                  >Views ({dbObjectCounts[
+                                    `${conn.id}-${db.name}`
+                                  ]?.views ?? 0})</span
                                 >
                               </button>
                             </div>
@@ -2941,7 +2817,7 @@
                                   style="padding-left: 8px;"
                                 >
                                   <tbody>
-                                    {#each expandedViews[`${conn.id}-${db.name}`].views || [] as view (view.name)}
+                                    {#each expandedViews[`${conn.id}-${db.name}`]?.views || [] as view (view.name)}
                                       <tr
                                         class="table-item-row"
                                         style="cursor: pointer; line-height: 1.5;"
@@ -2977,7 +2853,7 @@
                                         </td>
                                       </tr>
                                     {/each}
-                                    {#if (expandedViews[`${conn.id}-${db.name}`].views || []).length === 0}
+                                    {#if (expandedViews[`${conn.id}-${db.name}`]?.views || []).length === 0}
                                       <tr>
                                         <td
                                           class="p-0"
@@ -3033,9 +2909,9 @@
                               >
                                 <i class="fas fa-key"></i>
                                 <span
-                                  >Indexes ({cachedIndexes[
+                                  >Indexes ({dbObjectCounts[
                                     `${conn.id}-${db.name}`
-                                  ]?.length ?? 0})</span
+                                  ]?.indexes ?? 0})</span
                                 >
                               </button>
                             </div>
@@ -3046,7 +2922,7 @@
                                   style="padding-left: 8px;"
                                 >
                                   <tbody>
-                                    {#each expandedIndexes[`${conn.id}-${db.name}`].indexes || [] as idx (idx.name + "-" + idx.table_name)}
+                                    {#each expandedIndexes[`${conn.id}-${db.name}`]?.indexes || [] as idx, i (`${conn.id}-${db.name}-${idx.table_name}-${idx.name}-${i}`)}
                                       <tr
                                         class="table-item-row"
                                         style="cursor: pointer; line-height: 1.5;"
@@ -3090,7 +2966,7 @@
                                         </td>
                                       </tr>
                                     {/each}
-                                    {#if (expandedIndexes[`${conn.id}-${db.name}`].indexes || []).length === 0}
+                                    {#if (expandedIndexes[`${conn.id}-${db.name}`]?.indexes || []).length === 0}
                                       <tr>
                                         <td
                                           class="p-0"
@@ -3118,7 +2994,7 @@
                                 class="tree-toggle"
                                 aria-label="Toggle procedures"
                                 on:click={() =>
-                                  toggleProcedures(conn.id, db.name, conn)}
+                                  toggleProcedures(conn.id, db.name)}
                               >
                                 {#if loadingProcedures[`${conn.id}-${db.name}`]}
                                   <i class="fas fa-spinner fa-spin"></i>
@@ -3139,17 +3015,17 @@
                                     "Procedures count for",
                                     `${conn.id}-${db.name}`,
                                     ":",
-                                    cachedProcedures[`${conn.id}-${db.name}`]
-                                      ?.length
+                                    dbObjectCounts[`${conn.id}-${db.name}`]
+                                      ?.procedures
                                   );
-                                  toggleProcedures(conn.id, db.name, conn);
+                                  toggleProcedures(conn.id, db.name);
                                 }}
                               >
                                 <i class="fas fa-cog"></i>
                                 <span
-                                  >Procedures ({cachedProcedures[
+                                  >Procedures ({dbObjectCounts[
                                     `${conn.id}-${db.name}`
-                                  ]?.length ?? 0})</span
+                                  ]?.procedures ?? 0})</span
                                 >
                               </button>
                             </div>
@@ -3160,7 +3036,7 @@
                                   style="padding-left: 8px;"
                                 >
                                   <tbody>
-                                    {#each expandedProcedures[`${conn.id}-${db.name}`].procedures || [] as proc (proc.oid || proc.name)}
+                                    {#each expandedProcedures[`${conn.id}-${db.name}`]?.procedures || [] as proc (proc.oid || proc.name)}
                                       <tr
                                         class="table-item-row"
                                         style="cursor: pointer; line-height: 1.5;"
@@ -3214,7 +3090,7 @@
                                         </td>
                                       </tr>
                                     {/each}
-                                    {#if (expandedProcedures[`${conn.id}-${db.name}`].procedures || []).length === 0}
+                                    {#if (expandedProcedures[`${conn.id}-${db.name}`]?.procedures || []).length === 0}
                                       <tr>
                                         <td
                                           class="p-0"
@@ -3242,7 +3118,7 @@
                                 class="tree-toggle"
                                 aria-label="Toggle triggers"
                                 on:click={() =>
-                                  toggleTriggers(conn.id, db.name, conn)}
+                                  toggleTriggers(conn.id, db.name)}
                               >
                                 {#if loadingTriggers[`${conn.id}-${db.name}`]}
                                   <i class="fas fa-spinner fa-spin"></i>
@@ -3259,13 +3135,13 @@
                               <button
                                 class="tree-section-header"
                                 on:click={() =>
-                                  toggleTriggers(conn.id, db.name, conn)}
+                                  toggleTriggers(conn.id, db.name)}
                               >
                                 <i class="fas fa-bolt"></i>
                                 <span
-                                  >Triggers ({cachedTriggers[
+                                  >Triggers ({dbObjectCounts[
                                     `${conn.id}-${db.name}`
-                                  ]?.length ?? 0})</span
+                                  ]?.triggers ?? 0})</span
                                 >
                               </button>
                             </div>
@@ -3276,7 +3152,7 @@
                                   style="padding-left: 8px;"
                                 >
                                   <tbody>
-                                    {#each expandedTriggers[`${conn.id}-${db.name}`].triggers || [] as trigger (trigger.name)}
+                                    {#each expandedTriggers[`${conn.id}-${db.name}`]?.triggers || [] as trigger (trigger.name)}
                                       <tr
                                         class="table-item-row"
                                         style="cursor: pointer; line-height: 1.5;"
@@ -3302,7 +3178,7 @@
                                         </td>
                                       </tr>
                                     {/each}
-                                    {#if (expandedTriggers[`${conn.id}-${db.name}`].triggers || []).length === 0}
+                                    {#if (expandedTriggers[`${conn.id}-${db.name}`]?.triggers || []).length === 0}
                                       <tr>
                                         <td
                                           class="p-0"
@@ -3328,8 +3204,7 @@
                               <button
                                 class="tree-toggle"
                                 aria-label="Toggle events"
-                                on:click={() =>
-                                  toggleEvents(conn.id, db.name, conn)}
+                                on:click={() => toggleEvents(conn.id, db.name)}
                               >
                                 {#if loadingEvents[`${conn.id}-${db.name}`]}
                                   <i class="fas fa-spinner fa-spin"></i>
@@ -3345,14 +3220,13 @@
                               </button>
                               <button
                                 class="tree-section-header"
-                                on:click={() =>
-                                  toggleEvents(conn.id, db.name, conn)}
+                                on:click={() => toggleEvents(conn.id, db.name)}
                               >
                                 <i class="fas fa-calendar-alt"></i>
                                 <span
-                                  >Events ({cachedEvents[
+                                  >Events ({dbObjectCounts[
                                     `${conn.id}-${db.name}`
-                                  ]?.length ?? 0})</span
+                                  ]?.events ?? 0})</span
                                 >
                               </button>
                             </div>
@@ -3363,7 +3237,7 @@
                                   style="padding-left: 8px;"
                                 >
                                   <tbody>
-                                    {#each expandedEvents[`${conn.id}-${db.name}`].events || [] as event (event.name)}
+                                    {#each expandedEvents[`${conn.id}-${db.name}`]?.events || [] as event (event.name)}
                                       <tr
                                         class="table-item-row"
                                         style="cursor: pointer; line-height: 1.5;"
@@ -3407,7 +3281,7 @@
                                         </td>
                                       </tr>
                                     {/each}
-                                    {#if (expandedEvents[`${conn.id}-${db.name}`].events || []).length === 0}
+                                    {#if (expandedEvents[`${conn.id}-${db.name}`]?.events || []).length === 0}
                                       <tr>
                                         <td
                                           class="p-0"

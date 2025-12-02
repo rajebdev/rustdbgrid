@@ -821,28 +821,6 @@ impl DatabaseConnection for PostgresConnection {
         Ok(relationships)
     }
 
-    async fn get_table_data(
-        &mut self,
-        _database: &str,
-        table: &str,
-        limit: u32,
-        offset: u32,
-    ) -> Result<QueryResult> {
-        // Handle schema.table format
-        let table_identifier = if table.contains('.') {
-            let parts: Vec<&str> = table.split('.').collect();
-            format!("\"{}\".\"{}\"", parts[0], parts[1])
-        } else {
-            format!("\"public\".\"{}\"", table)
-        };
-
-        let query = format!(
-            "SELECT * FROM {} LIMIT {} OFFSET {}",
-            table_identifier, limit, offset
-        );
-        self.execute_query(&query).await
-    }
-
     async fn get_views(&mut self, _database: &str, schema: Option<&str>) -> Result<Vec<View>> {
         let pool = self
             .pool

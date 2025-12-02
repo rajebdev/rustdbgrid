@@ -1,18 +1,16 @@
 import { fileService, showMessage, showError } from "../services/fileService";
 import { get } from "svelte/store";
-import { buildPaginatedQuery } from "../utils/defaultQueries";
-import { executeQuery, getNextQueryNumber } from "../utils/tauri";
+import {
+  executeQuery,
+  getNextQueryNumber,
+  loadTableData,
+} from "../utils/tauri";
 import { recentFilesStore } from "../stores/recentFiles";
 
 /**
  * Handle opening table tab
  */
-export async function handleOpenTableTab(
-  event,
-  tabStore,
-  tabDataStore,
-  getTableData
-) {
+export async function handleOpenTableTab(event, tabStore, tabDataStore) {
   const { table, database, connection } = event.detail;
 
   tabStore.addTableTab(table, database, connection);
@@ -21,58 +19,27 @@ export async function handleOpenTableTab(
   if (!newTab) return;
 
   try {
-    let tableIdentifier = table.name;
-    if (connection.db_type === "PostgreSQL" && table.schema) {
-      tableIdentifier = `${table.schema}.${table.name}`;
-    } else if (connection.db_type === "MySQL") {
-      tableIdentifier = `${database.name}.${table.name}`;
-    }
-
-    const tableData = await getTableData(
-      connection,
-      database.name,
-      tableIdentifier,
-      200,
-      0
-    );
-
-    // Build appropriate query based on database type
-    let baseQuery;
-    if (connection.db_type === "MongoDB") {
-      // MongoDB uses JSON query format
-      baseQuery = JSON.stringify({
-        db: database.name,
-        collection: table.name,
-        operation: "find",
-        query: {},
-        options: { limit: 200 },
-      });
-    } else if (connection.db_type === "Redis") {
-      // Redis uses command format
-      baseQuery = `KEYS ${table.name}:*`;
-    } else if (connection.db_type === "Ignite") {
-      // Apache Ignite uses SCAN for cache data
-      baseQuery = `SCAN ${database.name}`;
-    } else if (connection.db_type === "PostgreSQL" && table.schema) {
-      baseQuery = `SELECT * FROM "${table.schema}"."${table.name}"`;
-    } else if (connection.db_type === "MySQL") {
-      baseQuery = `SELECT * FROM ${database.name}.${table.name}`;
-    } else if (connection.db_type === "MSSQL") {
-      // SQL Server uses [database].[schema].[table] format
-      baseQuery = `SELECT * FROM [${database.name}].[dbo].[${table.name}]`;
-    } else {
-      baseQuery = `SELECT * FROM ${table.name}`;
-    }
-
-    const tableQuery = buildPaginatedQuery(
+    // Use new loadTableData API
+    const tableData = await loadTableData(
+      connection.id,
       connection.db_type,
-      baseQuery,
-      200,
-      0
+      table.name,
+      {
+        database: database.name,
+        schema: table.schema || null,
+        limit: 200,
+        offset: 0,
+        filters: [],
+        orderBy: [],
+      }
     );
 
     tabDataStore.setQueryResult(newTab.id, tableData);
-    tabDataStore.setExecutedQuery(newTab.id, tableQuery);
+
+    // Store the final query for reference
+    if (tableData.final_query) {
+      tabDataStore.setExecutedQuery(newTab.id, tableData.final_query);
+    }
   } catch (error) {
     console.error("Failed to load table data:", error);
     await showError(`Failed to load table data: ${error.message || error}`);
@@ -103,7 +70,6 @@ export function createMenuHandlers(context) {
     showToolbar,
     showAboutModal,
     runningQueries,
-    getTableData,
     updateTabs,
   } = context;
 
@@ -585,24 +551,20 @@ export function createMenuHandlers(context) {
       if (currentTab.type === "table") {
         try {
           const tableInfo = currentTab.tableInfo;
-          let tableIdentifier = tableInfo.name;
 
-          if (
-            tableInfo.connection.db_type === "PostgreSQL" &&
-            tableInfo.schema
-          ) {
-            tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
-          } else if (tableInfo.connection.db_type === "MySQL") {
-            tableIdentifier = `${tableInfo.database}.${tableInfo.name}`;
-          }
-
-          const tableData = await getTableData(
-            tableInfo.connection,
-            tableInfo.database,
-            tableIdentifier,
-            200,
-            0
-          );
+          const tableData = await loadTableData({
+            connection_id: tableInfo.connection.id,
+            query: {
+              db_type: tableInfo.connection.db_type,
+              database: tableInfo.database,
+              schema: tableInfo.schema || null,
+              table: tableInfo.name,
+              limit: 200,
+              offset: 0,
+              filters: null,
+              order_by: null,
+            },
+          });
 
           tabDataStore.setQueryResult(currentTab.id, tableData);
           await showMessage("Table data refreshed");

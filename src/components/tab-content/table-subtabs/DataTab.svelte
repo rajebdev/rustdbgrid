@@ -16,6 +16,7 @@
       {connection}
       tableName={tableInfo?.name || ""}
       databaseName={tableInfo?.database || ""}
+      schemaName={tableInfo?.schema || ""}
     />
   {:else}
     <div class="loading-container">

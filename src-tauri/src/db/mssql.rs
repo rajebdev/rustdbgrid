@@ -676,28 +676,6 @@ impl DatabaseConnection for MSSQLConnection {
         Ok(relationships)
     }
 
-    async fn get_table_data(
-        &mut self,
-        database: &str,
-        table: &str,
-        limit: u32,
-        offset: u32,
-    ) -> Result<QueryResult> {
-        // For first page, use TOP for better performance
-        if offset == 0 {
-            let query = format!("SELECT TOP {} * FROM [{database}].[dbo].[{table}]", limit);
-            return self.execute_query(&query).await;
-        }
-
-        // For subsequent pages, we need ORDER BY with OFFSET-FETCH
-        // Use a subquery with ROW_NUMBER() to avoid ORDER BY issues
-        let query = format!(
-            "SELECT * FROM (SELECT ROW_NUMBER() OVER (ORDER BY (SELECT 0)) AS __RowNum, * FROM [{database}].[dbo].[{table}]) AS __Paginated WHERE __RowNum > {} AND __RowNum <= {}",
-            offset, offset + limit
-        );
-        self.execute_query(&query).await
-    }
-
     async fn get_views(&mut self, database: &str, schema: Option<&str>) -> Result<Vec<View>> {
         let schema_filter = if let Some(s) = schema {
             format!("AND s.name = '{}'", s)

@@ -644,27 +644,6 @@ impl DatabaseConnection for MySQLConnection {
         Ok(relationships)
     }
 
-    async fn get_table_data(
-        &mut self,
-        database: &str,
-        table: &str,
-        limit: u32,
-        offset: u32,
-    ) -> Result<QueryResult> {
-        // Check if table already includes database prefix (e.g., apps_config.jns_config)
-        let query = if table.contains('.') {
-            // Table already has database prefix, use it directly
-            format!("SELECT * FROM {} LIMIT {} OFFSET {}", table, limit, offset)
-        } else {
-            // Table is simple name, add database prefix
-            format!(
-                "SELECT * FROM `{}`.`{}` LIMIT {} OFFSET {}",
-                database, table, limit, offset
-            )
-        };
-        self.execute_query(&query).await
-    }
-
     async fn get_views(&mut self, database: &str, _schema: Option<&str>) -> Result<Vec<View>> {
         // MySQL tidak menggunakan schema parameter, hanya database
         self.get_views_impl(database).await
