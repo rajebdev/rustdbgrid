@@ -1,5 +1,5 @@
 use crate::commands::connection::ConnectionStore;
-use crate::db::query_builder::get_query_builder;
+use crate::db::traits::get_query_builder;
 use crate::models::table_request::*;
 use futures::FutureExt;
 use std::time::Instant;

@@ -1,11 +1,10 @@
-pub mod ignite_node;
-pub mod mongodb;
-pub mod mssql;
 pub mod mysql;
 pub mod postgres;
-pub mod query_builder;
+pub mod mssql;
+pub mod mongodb;
 pub mod redis;
+pub mod ignite;
 pub mod traits;
 
-// Re-export shutdown function for easy access
-pub use ignite_node::shutdown_bridge;
+// Re-export traits and factory functions for easy access
+pub use ignite::shutdown_bridge;

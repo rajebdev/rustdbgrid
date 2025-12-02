@@ -1,205 +1,110 @@
-// Ignite Bridge Connection
-// Uses Bun-compiled sidecar with Named Pipe for secure IPC
-//
-// Security: Uses random pipe name per-session so other processes cannot connect
-
 use crate::db::traits::DatabaseConnection;
 use crate::models::{connection::*, query_result::*, schema::*};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::process::Child;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::time::Instant;
 
 #[cfg(windows)]
 use tokio::net::windows::named_pipe::ClientOptions;
 #[cfg(unix)]
 use tokio::net::UnixStream;
 
-// Generate random pipe name once per process - provides security without overhead
-// Use a fixed base name for development to avoid orphan processes on reload
-static PIPE_NAME: Lazy<String> = Lazy::new(|| {
-    // In development, use a predictable name so HMR/reload can reconnect
-    // In production, add PID for security (multiple instances)
-    #[cfg(debug_assertions)]
-    {
-        // Development: fixed name allows reconnection after reload
-        "rustdbgrid-ignite-dev".to_string()
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        // Production: unique per process for security
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let pid = std::process::id();
-        format!("rustdbgrid-ignite-{}-{}", pid, timestamp % 1_000_000)
-    }
-});
+// ============ IPC STRUCTURES ============
 
-// Sidecar process handle
-static SIDECAR_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-static SIDECAR_PROCESS: Lazy<Mutex<Option<std::process::Child>>> = Lazy::new(|| Mutex::new(None));
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IpcRequest {
+    pub action: String,
+    pub connection_id: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub query: Option<String>,
+    pub cache_name: Option<String>,
+    pub table_name: Option<String>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
 
-#[cfg(windows)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IpcResponse {
+    pub success: bool,
+    pub message: Option<String>,
+    pub result: Option<BasicResult>,
+    pub caches: Option<Vec<CacheInfo>>,
+    pub tables: Option<Vec<TableInfo>>,
+    pub schema: Option<SchemaInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BasicResult {
+    pub columns: Vec<String>,
+    pub rows: Vec<HashMap<String, serde_json::Value>>,
+    pub rows_affected: Option<i64>,
+    pub final_query: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheInfo {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableInfo {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchemaInfo {
+    pub table_name: String,
+    pub columns: Vec<ColumnInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColumnInfo {
+    pub name: String,
+    pub data_type: String,
+    pub is_nullable: Option<bool>,
+    pub default_value: Option<serde_json::Value>,
+    pub is_primary_key: Option<bool>,
+}
+
+// ============ STATIC STATE ============
+
+lazy_static::lazy_static! {
+    static ref PIPE_NAME: String = {
+        let mode = if cfg!(debug_assertions) { "dev" } else { "prod" };
+        format!("ignite-bridge-{}-{}", mode, std::process::id())
+    };
+
+    static ref SIDECAR_PROCESS: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
+    static ref SIDECAR_STARTED: AtomicBool = AtomicBool::new(false);
+}
+
 fn get_pipe_path() -> String {
-    format!(r"\\.\pipe\{}", *PIPE_NAME)
+    #[cfg(windows)]
+    {
+        format!("\\\\.\\pipe\\{}", *PIPE_NAME)
+    }
+    #[cfg(unix)]
+    {
+        format!("/tmp/{}.sock", *PIPE_NAME)
+    }
 }
 
-#[cfg(unix)]
-fn get_pipe_path() -> String {
-    format!("/tmp/{}.sock", *PIPE_NAME)
-}
-
-#[derive(Debug, Serialize)]
-struct IpcRequest {
-    action: String,
-    #[serde(rename = "connectionId", skip_serializing_if = "Option::is_none")]
-    connection_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    host: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    port: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    username: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    password: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    query: Option<String>,
-    #[serde(rename = "cacheName", skip_serializing_if = "Option::is_none")]
-    cache_name: Option<String>,
-    #[serde(rename = "tableName", skip_serializing_if = "Option::is_none")]
-    table_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    limit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    offset: Option<u32>,
-}
-
-#[derive(Debug, Deserialize)]
-struct IpcResponse {
-    success: bool,
-    message: Option<String>,
-    // Flattened fields from various responses
-    caches: Option<Vec<CacheInfo>>,
-    tables: Option<Vec<TableInfo>>,
-    result: Option<BridgeQueryResult>,
-    schema: Option<BridgeSchema>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CacheInfo {
-    name: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct TableInfo {
-    name: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct BridgeQueryResult {
-    columns: Vec<String>,
-    rows: Vec<HashMap<String, serde_json::Value>>,
-    #[serde(rename = "rowsAffected")]
-    rows_affected: Option<u64>,
-    #[serde(rename = "finalQuery")]
-    final_query: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct BridgeSchema {
-    #[serde(rename = "tableName")]
-    table_name: String,
-    columns: Vec<BridgeColumn>,
-}
-
-#[derive(Debug, Deserialize)]
-struct BridgeColumn {
-    name: String,
-    #[serde(rename = "dataType")]
-    data_type: String,
-    #[serde(rename = "isNullable")]
-    is_nullable: Option<bool>,
-    #[serde(rename = "defaultValue")]
-    default_value: Option<serde_json::Value>,
-    #[serde(rename = "isPrimaryKey")]
-    is_primary_key: Option<bool>,
-}
-
-/// Shutdown the Ignite bridge sidecar process
-/// Call this when the application is closing
 pub fn shutdown_bridge() {
-    use std::sync::atomic::Ordering;
-
-    tracing::info!("🛑 [IGNITE BRIDGE] Shutting down bridge...");
-
-    // Try to send shutdown command via IPC first (graceful shutdown)
-    if SIDECAR_STARTED.load(Ordering::Relaxed) {
-        // Try graceful shutdown via IPC
-        let pipe_path = get_pipe_path();
-
-        #[cfg(windows)]
-        {
-            use std::io::Write;
-            if let Ok(mut pipe) = std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&pipe_path)
-            {
-                let request = r#"{"action":"shutdown"}"#;
-                let len = request.len() as u32;
-                let _ = pipe.write_all(&len.to_be_bytes());
-                let _ = pipe.write_all(request.as_bytes());
-                let _ = pipe.flush();
-                tracing::info!("🛑 [IGNITE BRIDGE] Sent shutdown command via IPC");
-            }
-        }
-
-        #[cfg(unix)]
-        {
-            use std::io::Write;
-            if let Ok(mut stream) = std::os::unix::net::UnixStream::connect(&pipe_path) {
-                let request = r#"{"action":"shutdown"}"#;
-                let len = request.len() as u32;
-                let _ = stream.write_all(&len.to_be_bytes());
-                let _ = stream.write_all(request.as_bytes());
-                let _ = stream.flush();
-                tracing::info!("🛑 [IGNITE BRIDGE] Sent shutdown command via IPC");
-            }
-        }
-    }
-
-    // Kill the process if still running
     if let Ok(mut guard) = SIDECAR_PROCESS.lock() {
-        if let Some(ref mut child) = *guard {
-            // Give it a moment for graceful shutdown
-            std::thread::sleep(std::time::Duration::from_millis(100));
-
-            // Check if still running and kill if necessary
-            match child.try_wait() {
-                Ok(Some(_)) => {
-                    tracing::info!("🛑 [IGNITE BRIDGE] Process exited gracefully");
-                }
-                Ok(_) => {
-                    // Still running, force kill
-                    if let Err(e) = child.kill() {
-                        tracing::warn!("🛑 [IGNITE BRIDGE] Failed to kill process: {}", e);
-                    } else {
-                        tracing::info!("🛑 [IGNITE BRIDGE] Process killed");
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("🛑 [IGNITE BRIDGE] Error checking process status: {}", e);
-                }
-            }
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
         }
-        *guard = None;
     }
 
     SIDECAR_STARTED.store(false, Ordering::Relaxed);
@@ -219,7 +124,6 @@ impl IgniteConnection {
         }
     }
 
-    /// Start the sidecar if not already running
     fn ensure_sidecar_running() -> Result<()> {
         use std::sync::atomic::Ordering;
 
@@ -229,7 +133,6 @@ impl IgniteConnection {
 
         tracing::info!("🚀 [IGNITE BRIDGE] Starting bridge sidecar...");
 
-        // Get path to sidecar binary
         let exe_path = std::env::current_exe()?;
         let exe_dir = exe_path
             .parent()
@@ -248,28 +151,22 @@ impl IgniteConnection {
         #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
         let sidecar_name = "ignite";
 
-        // Try multiple locations for sidecar (resources folder for bundled app, or same dir)
         let possible_sidecar_paths = [
-            exe_dir.join(sidecar_name),                   // Same directory as exe
-            exe_dir.join("resources").join(sidecar_name), // resources subfolder (Tauri bundle)
+            exe_dir.join(sidecar_name),
+            exe_dir.join("resources").join(sidecar_name),
         ];
 
         let sidecar_path = possible_sidecar_paths.iter().find(|p| p.exists()).cloned();
 
-        // Try sidecar first (production), fallback to node (dev mode)
         let (cmd, args): (std::path::PathBuf, Vec<String>) = if let Some(path) = sidecar_path {
             (path, vec![])
         } else {
-            // Dev mode: try multiple possible locations for the bridge script
             let possible_paths = [
-                // From exe directory (dev mode - exe is in target/debug)
                 exe_dir.join("../../../src-bridge/ignite.cjs"),
                 exe_dir.join("../../src-bridge/ignite.cjs"),
                 exe_dir.join("../src-bridge/ignite.cjs"),
                 exe_dir.join("src-bridge/ignite.cjs"),
-                // From current working directory
                 std::path::PathBuf::from("src-bridge/ignite.cjs"),
-                // Absolute fallback for development
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("../src-bridge/ignite.cjs"),
             ];
@@ -291,7 +188,6 @@ impl IgniteConnection {
             )
         };
 
-        // Start process with random pipe name
         let mut command = std::process::Command::new(&cmd);
         for arg in &args {
             command.arg(arg);
@@ -300,7 +196,6 @@ impl IgniteConnection {
         command.stdout(std::process::Stdio::inherit());
         command.stderr(std::process::Stdio::inherit());
 
-        // On Windows, hide the console window
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -312,7 +207,6 @@ impl IgniteConnection {
             .spawn()
             .map_err(|e| anyhow!("Failed to start Ignite bridge: {}", e))?;
 
-        // Store process handle for cleanup
         if let Ok(mut guard) = SIDECAR_PROCESS.lock() {
             *guard = Some(child);
         }
@@ -325,7 +219,6 @@ impl IgniteConnection {
         Ok(())
     }
 
-    /// Send request to bridge via Named Pipe and get response
     async fn send_request(&self, request: &IpcRequest) -> Result<IpcResponse> {
         let pipe_path = get_pipe_path();
 
@@ -341,32 +234,26 @@ impl IgniteConnection {
             .await
             .map_err(|e| anyhow!("Failed to connect to bridge socket: {}", e))?;
 
-        // Serialize request
         let json = serde_json::to_vec(request)?;
 
-        // Write length prefix (4 bytes, big-endian)
         let len = json.len() as u32;
         stream.write_all(&len.to_be_bytes()).await?;
         stream.write_all(&json).await?;
         stream.flush().await?;
 
-        // Read response length
         let mut len_buf = [0u8; 4];
         stream.read_exact(&mut len_buf).await?;
         let response_len = u32::from_be_bytes(len_buf) as usize;
 
-        // Read response body
         let mut response_buf = vec![0u8; response_len];
         stream.read_exact(&mut response_buf).await?;
 
-        // Parse response
         let response: IpcResponse = serde_json::from_slice(&response_buf)
             .map_err(|e| anyhow!("Invalid response from bridge: {}", e))?;
 
         Ok(response)
     }
 
-    /// Check if bridge is running
     async fn is_bridge_running(&self) -> bool {
         let request = IpcRequest {
             action: "health".to_string(),
@@ -388,20 +275,16 @@ impl IgniteConnection {
         }
     }
 
-    /// Start the bridge sidecar if not running
     async fn ensure_bridge_running(&self) -> Result<()> {
         if self.is_bridge_running().await {
             return Ok(());
         }
 
-        // Bridge not running - reset the flag so ensure_sidecar_running will start it
         tracing::info!("🔄 [IGNITE BRIDGE] Bridge not responding, restarting...");
         SIDECAR_STARTED.store(false, std::sync::atomic::Ordering::Relaxed);
 
-        // Start sidecar
         Self::ensure_sidecar_running()?;
 
-        // Wait for bridge to start
         for _ in 0..50 {
             tokio::time::sleep(Duration::from_millis(100)).await;
             if self.is_bridge_running().await {
@@ -425,7 +308,6 @@ impl Default for IgniteConnection {
 impl Drop for IgniteConnection {
     fn drop(&mut self) {
         // Note: We don't kill the bridge process as it might be shared
-        // The bridge will clean up connections on disconnect
     }
 }
 
@@ -438,7 +320,6 @@ impl DatabaseConnection for IgniteConnection {
             config.port
         );
 
-        // Ensure bridge is running
         self.ensure_bridge_running().await?;
 
         let connection_id = config.id.clone();
@@ -534,7 +415,6 @@ impl DatabaseConnection for IgniteConnection {
             .as_ref()
             .ok_or_else(|| anyhow!("Not configured"))?;
 
-        // Ensure bridge is running
         self.ensure_bridge_running().await?;
 
         let request = IpcRequest {
@@ -556,7 +436,6 @@ impl DatabaseConnection for IgniteConnection {
     }
 
     async fn execute_query(&mut self, query: &str) -> Result<QueryResult> {
-        // Ensure bridge is running (may have auto-shutdown)
         self.ensure_bridge_running().await?;
 
         let start = Instant::now();
@@ -567,13 +446,10 @@ impl DatabaseConnection for IgniteConnection {
 
         let query_upper = query.trim().to_uppercase();
 
-        // For SCAN queries, use scan action instead of query
         if query_upper.starts_with("SCAN ") {
-            // Parse: SCAN cache_name [LIMIT x] [OFFSET y]
             let parts: Vec<&str> = query.split_whitespace().collect();
             let cache_name = parts.get(1).map(|s| s.to_string());
 
-            // Parse LIMIT and OFFSET
             let mut limit = 200u32;
             let mut offset = 0u32;
 
@@ -624,13 +500,12 @@ impl DatabaseConnection for IgniteConnection {
                 column_display_names: None,
                 column_types: None,
                 rows: br.rows,
-                rows_affected: br.rows_affected,
+                rows_affected: br.rows_affected.map(|v| v as u64),
                 execution_time: start.elapsed().as_millis(),
                 final_query: Some(query.to_string()),
             });
         }
 
-        // For SQL queries, use query action
         let request = IpcRequest {
             action: "query".to_string(),
             connection_id: Some(connection_id.clone()),
@@ -660,14 +535,13 @@ impl DatabaseConnection for IgniteConnection {
             column_display_names: None,
             column_types: None,
             rows: br.rows,
-            rows_affected: br.rows_affected,
+            rows_affected: br.rows_affected.map(|v| v as u64),
             execution_time: start.elapsed().as_millis(),
             final_query: br.final_query.or_else(|| Some(query.to_string())),
         })
     }
 
     async fn get_databases(&mut self) -> Result<Vec<Database>> {
-        // Ensure bridge is running (may have auto-shutdown)
         self.ensure_bridge_running().await?;
 
         let connection_id = self
@@ -706,7 +580,6 @@ impl DatabaseConnection for IgniteConnection {
     }
 
     async fn get_tables(&mut self, database: &str) -> Result<Vec<Table>> {
-        // Ensure bridge is running (may have auto-shutdown)
         self.ensure_bridge_running().await?;
 
         let connection_id = self
@@ -749,7 +622,6 @@ impl DatabaseConnection for IgniteConnection {
     }
 
     async fn get_table_schema(&mut self, database: &str, table: &str) -> Result<TableSchema> {
-        // Ensure bridge is running (may have auto-shutdown)
         self.ensure_bridge_running().await?;
 
         let connection_id = self

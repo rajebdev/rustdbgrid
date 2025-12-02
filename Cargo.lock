@@ -4343,6 +4343,7 @@ dependencies = [
  "futures",
  "hostname",
  "ignite-rs",
+ "lazy_static",
  "mongodb",
  "once_cell",
  "rand 0.8.5",

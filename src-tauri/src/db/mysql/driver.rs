@@ -1,4 +1,5 @@
 use crate::db::traits::DatabaseConnection;
+use crate::db::mysql::metadata_ops::MySqlMetadataOps;
 use crate::models::{connection::*, query_result::*, schema::*};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -15,190 +16,26 @@ impl MySQLConnection {
     pub fn new() -> Self {
         Self { pool: None }
     }
-
-    // Helper method to get views for MySQL
-    pub async fn get_views_impl(&mut self, database: &str) -> Result<Vec<View>> {
-        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
-        let query = format!(
-            "SELECT TABLE_NAME as name 
-            FROM information_schema.VIEWS 
-            WHERE TABLE_SCHEMA = '{}' 
-            ORDER BY TABLE_NAME",
-            database
-        );
-        let rows = sqlx::query(&query).fetch_all(pool).await?;
-
-        let views = rows
-            .iter()
-            .map(|row| {
-                let name: String = row.try_get("name").unwrap_or_default();
-                View { name, schema: None }
-            })
-            .collect();
-
-        Ok(views)
-    }
-
-    // Helper method to get indexes for MySQL
-    pub async fn get_indexes_impl(&mut self, database: &str) -> Result<Vec<DbIndex>> {
-        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
-        let query = format!(
-            "SELECT DISTINCT
-                INDEX_NAME as name,
-                TABLE_NAME as table_name,
-                NON_UNIQUE,
-                INDEX_TYPE as index_type,
-                COLLATION as collation,
-                NULLABLE,
-                INDEX_COMMENT as extra
-            FROM information_schema.STATISTICS 
-            WHERE TABLE_SCHEMA = '{}' 
-            ORDER BY TABLE_NAME, INDEX_NAME",
-            database
-        );
-        let rows = sqlx::query(&query).fetch_all(pool).await?;
-
-        let indexes = rows
-            .iter()
-            .map(|row| {
-                let name: String = row.try_get("name").unwrap_or_default();
-                let table_name: String = row.try_get("table_name").unwrap_or_default();
-                let non_unique: i32 = row.try_get("NON_UNIQUE").unwrap_or(1);
-                let index_type: Option<String> = row.try_get("index_type").ok();
-                let collation: Option<String> = row.try_get("collation").ok();
-                let nullable: Option<String> = row.try_get("NULLABLE").ok();
-                let extra: Option<String> = row.try_get("extra").ok();
-
-                DbIndex {
-                    name,
-                    table_name,
-                    columns: vec![],
-                    is_unique: non_unique == 0,
-                    index_type,
-                    ascending: collation.as_ref().map(|c| c == "A"),
-                    nullable: nullable.as_ref().map(|n| n == "YES"),
-                    extra,
-                }
-            })
-            .collect();
-
-        Ok(indexes)
-    }
-
-    // Helper method to get procedures for MySQL
-    pub async fn get_procedures_impl(&mut self, database: &str) -> Result<Vec<Procedure>> {
-        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
-        let query = format!(
-            "SELECT 
-                ROUTINE_NAME as name,
-                ROUTINE_TYPE as procedure_type
-            FROM information_schema.ROUTINES 
-            WHERE ROUTINE_SCHEMA = '{}' 
-            ORDER BY ROUTINE_NAME",
-            database
-        );
-        let rows = sqlx::query(&query).fetch_all(pool).await?;
-
-        let procedures = rows
-            .iter()
-            .map(|row| {
-                let name: String = row.try_get("name").unwrap_or_default();
-                let procedure_type: Option<String> = row.try_get("procedure_type").ok();
-                Procedure {
-                    name,
-                    schema: None,
-                    procedure_type,
-                    oid: None,
-                }
-            })
-            .collect();
-
-        Ok(procedures)
-    }
-
-    // Helper method to get triggers for MySQL
-    pub async fn get_triggers_impl(&mut self, database: &str) -> Result<Vec<Trigger>> {
-        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
-        let query = format!(
-            "SELECT 
-                TRIGGER_NAME as name,
-                EVENT_OBJECT_TABLE as table_name,
-                EVENT_MANIPULATION as event,
-                ACTION_TIMING as timing,
-                ACTION_ORIENTATION as trigger_type,
-                ACTION_STATEMENT as description
-            FROM information_schema.TRIGGERS 
-            WHERE TRIGGER_SCHEMA = '{}' 
-            ORDER BY TRIGGER_NAME",
-            database
-        );
-        let rows = sqlx::query(&query).fetch_all(pool).await?;
-
-        let triggers = rows
-            .iter()
-            .map(|row| {
-                let name: String = row.try_get("name").unwrap_or_default();
-                let table_name: String = row.try_get("table_name").unwrap_or_default();
-                let event: String = row.try_get("event").unwrap_or_default();
-                let timing: String = row.try_get("timing").unwrap_or_default();
-                let trigger_type: Option<String> = row.try_get("trigger_type").ok();
-                let description: Option<String> = row.try_get("description").ok();
-
-                Trigger {
-                    name,
-                    table_name,
-                    event,
-                    timing,
-                    trigger_type,
-                    description,
-                }
-            })
-            .collect();
-
-        Ok(triggers)
-    }
-
-    // Helper method to get events for MySQL
-    pub async fn get_events_impl(&mut self, database: &str) -> Result<Vec<Event>> {
-        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
-        let query = format!(
-            "SELECT 
-                EVENT_NAME as name,
-                STATUS as status,
-                INTERVAL_VALUE as interval_value,
-                INTERVAL_FIELD as interval_field
-            FROM information_schema.EVENTS 
-            WHERE EVENT_SCHEMA = '{}' 
-            ORDER BY EVENT_NAME",
-            database
-        );
-        let rows = sqlx::query(&query).fetch_all(pool).await?;
-
-        let events = rows
-            .iter()
-            .map(|row| {
-                let name: String = row.try_get("name").unwrap_or_default();
-                let status: Option<String> = row.try_get("status").ok();
-                let interval_value: Option<String> =
-                    row.try_get::<String, _>("interval_value").ok();
-                let interval_field: Option<String> = row.try_get("interval_field").ok();
-                Event {
-                    name,
-                    status,
-                    interval_value,
-                    interval_field,
-                }
-            })
-            .collect();
-
-        Ok(events)
-    }
 }
 
 impl Default for MySQLConnection {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// Define column type categories for efficient lookup
+#[derive(Clone, Copy)]
+enum ColType {
+    DateTime,
+    Date,
+    Time,
+    Integer,
+    Float,
+    Boolean,
+    String,
+    Blob,
+    Unknown,
 }
 
 #[async_trait]
@@ -261,7 +98,7 @@ impl DatabaseConnection for MySQLConnection {
             .iter()
             .map(|c| {
                 let base_name = SqlxColumn::name(c).to_string();
-                display_names.push(base_name.clone()); // Store original name for display
+                display_names.push(base_name.clone());
                 let count = column_name_counts.entry(base_name.clone()).or_insert(0);
                 *count += 1;
                 if *count == 1 {
@@ -275,20 +112,6 @@ impl DatabaseConnection for MySQLConnection {
         // Extract column types and categorize them once upfront
         let mut column_types = HashMap::new();
 
-        // Define column type categories for efficient lookup
-        #[derive(Clone, Copy)]
-        enum ColType {
-            DateTime,
-            Date,
-            Time,
-            Integer,
-            Float,
-            Boolean,
-            String,
-            Blob,
-            Unknown,
-        }
-
         // Pre-compute column types once
         let mut column_name_counts_reset: HashMap<String, usize> = HashMap::new();
         let col_type_map: Vec<ColType> = rows[0]
@@ -298,7 +121,6 @@ impl DatabaseConnection for MySQLConnection {
                 let base_name = SqlxColumn::name(col).to_string();
                 let type_name = col.type_info().name().to_uppercase();
 
-                // Use the same deduplication logic for column_types
                 let count = column_name_counts_reset
                     .entry(base_name.clone())
                     .or_insert(0);
@@ -332,7 +154,6 @@ impl DatabaseConnection for MySQLConnection {
         for row in rows {
             let mut row_map = HashMap::with_capacity(columns.len());
             for (i, col) in columns.iter().enumerate() {
-                // Use pre-computed type - no string matching per row
                 let value = match col_type_map[i] {
                     ColType::DateTime => row
                         .try_get::<NaiveDateTime, _>(i)
@@ -645,13 +466,13 @@ impl DatabaseConnection for MySQLConnection {
     }
 
     async fn get_views(&mut self, database: &str, _schema: Option<&str>) -> Result<Vec<View>> {
-        // MySQL tidak menggunakan schema parameter, hanya database
-        self.get_views_impl(database).await
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+        MySqlMetadataOps::get_views(pool, database).await
     }
 
     async fn get_indexes(&mut self, database: &str, _schema: Option<&str>) -> Result<Vec<DbIndex>> {
-        // MySQL tidak menggunakan schema parameter, hanya database
-        self.get_indexes_impl(database).await
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+        MySqlMetadataOps::get_indexes(pool, database).await
     }
 
     async fn get_procedures(
@@ -659,8 +480,8 @@ impl DatabaseConnection for MySQLConnection {
         database: &str,
         _schema: Option<&str>,
     ) -> Result<Vec<Procedure>> {
-        // MySQL tidak menggunakan schema parameter, hanya database
-        self.get_procedures_impl(database).await
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+        MySqlMetadataOps::get_procedures(pool, database).await
     }
 
     async fn get_triggers(
@@ -668,13 +489,13 @@ impl DatabaseConnection for MySQLConnection {
         database: &str,
         _schema: Option<&str>,
     ) -> Result<Vec<Trigger>> {
-        // MySQL tidak menggunakan schema parameter, hanya database
-        self.get_triggers_impl(database).await
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+        MySqlMetadataOps::get_triggers(pool, database).await
     }
 
     async fn get_events(&mut self, database: &str, _schema: Option<&str>) -> Result<Vec<Event>> {
-        // MySQL tidak menggunakan schema parameter, hanya database
-        self.get_events_impl(database).await
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+        MySqlMetadataOps::get_events(pool, database).await
     }
 
     async fn get_table_statistics(
@@ -707,7 +528,7 @@ impl DatabaseConnection for MySQLConnection {
 
         let row = sqlx::query(&query).fetch_one(pool).await?;
 
-        // Helper function to get numeric value - try u64 first, then i64
+        // Helper function to get numeric value
         let get_numeric = |col: &str| -> Option<i64> {
             row.try_get::<Option<u64>, _>(col)
                 .ok()

@@ -35,11 +35,8 @@ impl DatabaseConnection for MongoDBConnection {
     async fn connect(&mut self, config: &ConnectionConfig) -> Result<()> {
         let connection_string =
             if let (Some(username), Some(password)) = (&config.username, &config.password) {
-                // URL-encode credentials to handle special characters
                 let encoded_username = urlencoding::encode(username);
                 let encoded_password = urlencoding::encode(password);
-
-                // Specify authSource and authMechanism for proper authentication
                 let auth_source = config.database.as_deref().unwrap_or("admin");
                 format!(
                     "mongodb://{}:{}@{}:{}/?authSource={}&authMechanism=SCRAM-SHA-256",
@@ -77,8 +74,6 @@ impl DatabaseConnection for MongoDBConnection {
             .ok_or_else(|| anyhow!("Not connected"))?;
         let start = Instant::now();
 
-        // Parse MongoDB query (expecting JSON format)
-        // Format: { "db": "database_name", "collection": "collection_name", "operation": "find", "query": {...}, "options": {...} }
         let query_doc: serde_json::Value =
             serde_json::from_str(query).map_err(|e| anyhow!("Invalid JSON query: {}", e))?;
 
@@ -222,7 +217,6 @@ impl DatabaseConnection for MongoDBConnection {
 
         let mut tables = Vec::new();
         for name in collection_names {
-            // Get collection stats for size
             let stats_result = db.run_command(doc! { "collStats": &name }).await;
             let size_bytes = if let Ok(stats) = stats_result {
                 stats.get_i64("size").ok().map(|v| v as u64)
@@ -248,7 +242,6 @@ impl DatabaseConnection for MongoDBConnection {
         let db = client.database(database);
         let collection = db.collection::<Document>(table);
 
-        // Sample a few documents to infer schema
         let mut cursor = collection.find(doc! {}).limit(100).await?;
         let mut field_types: HashMap<String, Vec<String>> = HashMap::new();
 
