@@ -79,6 +79,16 @@ pub trait DatabaseConnection: Send + Sync {
         Ok(vec![])
     }
 
+    async fn get_procedure_source(
+        &mut self,
+        _database: &str,
+        _procedure_name: &str,
+        _procedure_type: Option<String>,
+        _schema: Option<String>,
+    ) -> Result<String> {
+        Ok("-- Source code not available".to_string())
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 

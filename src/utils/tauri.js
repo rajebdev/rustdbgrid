@@ -172,19 +172,22 @@ export async function getFilterValues(
  * @param {string} requestType - Type of request: 'database_list', 'database_info', 'schema_list', 'schema_info'
  * @param {string} database - Optional database name
  * @param {string} schema - Optional schema name
+ * @param {string} objectName - Optional object name for specific objects (procedure, function, etc)
  * @returns {Promise<object>} Response JSON with requested data
  */
 export async function getDatabaseObject(
   connectionId,
   requestType,
   database = null,
-  schema = null
+  schema = null,
+  objectName = null
 ) {
   console.log("📤 getDatabaseObject called with:", {
     connectionId,
     requestType,
     database,
     schema,
+    objectName,
   });
 
   return await invoke("get_database_object", {
@@ -192,6 +195,7 @@ export async function getDatabaseObject(
     requestType: requestType,
     database,
     schema,
+    objectName: objectName,
   });
 }
 

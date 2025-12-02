@@ -3,6 +3,7 @@
   import * as monaco from "monaco-editor";
   import { activeTheme } from "../../stores/theme";
   import { getMonacoTheme } from "../../services/themeService";
+  import { getDatabaseObject } from "../../utils/tauri";
 
   export let procedure;
   export let database;
@@ -14,6 +15,8 @@
   let error = null;
   let procedureSource = "";
   let currentTheme = null;
+  let lastLoadedProcedure = null;
+  let lastLoadedDatabase = null;
 
   // React to theme changes
   $: if ($activeTheme && $activeTheme !== currentTheme) {
@@ -24,8 +27,16 @@
     }
   }
 
-  // Reload when procedure changes
-  $: if (procedure && database) {
+  // Reload when procedure or database actually changes (not just re-renders)
+  $: if (
+    procedure &&
+    database &&
+    (lastLoadedProcedure?.name !== procedure.name ||
+      lastLoadedProcedure?.schema !== procedure.schema ||
+      lastLoadedDatabase?.name !== database.name)
+  ) {
+    lastLoadedProcedure = { name: procedure.name, schema: procedure.schema };
+    lastLoadedDatabase = { name: database.name };
     loadProcedureSource();
   }
 
@@ -44,82 +55,31 @@
     loading = true;
     error = null;
     try {
-      // Import tauri function
-      const { invoke } = await import("@tauri-apps/api/core");
+      // Get connection ID - handle both object and string formats
+      const connectionId =
+        typeof connection === "string" ? connection : connection?.id;
 
-      // Query to get procedure source - different for each database type
-      let query;
-      let sourceColumn;
-
-      if (connection.db_type === "MySQL") {
-        // MySQL uses SHOW CREATE syntax
-        if (procedure.procedure_type === "FUNCTION") {
-          query = `SHOW CREATE FUNCTION \`${database.name}\`.\`${procedure.name}\``;
-          sourceColumn = "Create Function";
-        } else {
-          query = `SHOW CREATE PROCEDURE \`${database.name}\`.\`${procedure.name}\``;
-          sourceColumn = "Create Procedure";
-        }
-      } else if (connection.db_type === "PostgreSQL") {
-        // PostgreSQL uses pg_get_functiondef for complete function definition
-        const schemaName = procedure.schema || "public";
-
-        // For PostgreSQL, functions can have overloads (same name, different params)
-        // pg_get_functiondef will give us the complete definition with CREATE statement
-        // If pg_get_functiondef returns null, we'll construct from prosrc
-        query = `
-          SELECT 
-            CASE 
-              WHEN pg_get_functiondef(p.oid) IS NOT NULL THEN 
-                pg_get_functiondef(p.oid)
-              ELSE 
-                'CREATE OR REPLACE FUNCTION ' || n.nspname || '.' || p.proname || 
-                pg_get_function_arguments(p.oid) || 
-                E'\\nRETURNS ' || pg_get_function_result(p.oid) || 
-                E'\\nLANGUAGE ' || l.lanname ||
-                E'\\nAS $function$\\n' || p.prosrc || E'\\n$function$;'
-            END as source
-          FROM pg_proc p
-          JOIN pg_namespace n ON p.pronamespace = n.oid
-          JOIN pg_language l ON p.prolang = l.oid
-          WHERE n.nspname = '${schemaName}' 
-            AND p.proname = '${procedure.name}'
-          LIMIT 1
-        `;
-        sourceColumn = "source";
-      } else if (connection.db_type === "MSSQL") {
-        // MSSQL uses OBJECT_DEFINITION with schema-qualified name
-        // Format: schema.object_name (don't include database name in OBJECT_ID)
-        const schemaName = procedure.schema || "dbo";
-        const qualifiedName = `${schemaName}.${procedure.name}`;
-        query = `USE [${database.name}]; SELECT OBJECT_DEFINITION(OBJECT_ID('${qualifiedName}')) as source`;
-        sourceColumn = "source";
-      } else {
-        throw new Error(`Unsupported database type: ${connection.db_type}`);
+      if (!connectionId) {
+        throw new Error("Connection ID is not available");
       }
 
-      const result = await invoke("execute_query", {
-        config: connection,
-        query: query,
-      });
+      // Determine request type based on procedure type
+      const requestType =
+        procedure.procedure_type === "FUNCTION" ? "function" : "procedure";
 
-      if (result.rows && result.rows.length > 0) {
-        // Try different case variations of the column name
-        const row = result.rows[0];
-        const sourceValue =
-          row[sourceColumn] ||
-          row[sourceColumn.toLowerCase()] ||
-          row[sourceColumn.toUpperCase()];
+      // Use unified getDatabaseObject helper function
+      const result = await getDatabaseObject(
+        connectionId,
+        requestType,
+        database.name,
+        procedure.schema,
+        procedure.name
+      );
 
-        if (sourceValue) {
-          procedureSource = sourceValue;
-        } else {
-          procedureSource =
-            "-- No source available\n-- Available columns: " +
-            Object.keys(row).join(", ");
-        }
+      if (result && result.source) {
+        procedureSource = result.source;
       } else {
-        procedureSource = "-- No source available (no rows returned)";
+        procedureSource = "-- No source available";
       }
     } catch (err) {
       console.error("Failed to load procedure source:", err);

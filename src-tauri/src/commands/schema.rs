@@ -13,14 +13,16 @@ pub async fn get_database_object(
     request_type: String,
     database: Option<String>,
     schema: Option<String>,
+    object_name: Option<String>,
     state: State<'_, ConnectionStore>,
 ) -> Result<serde_json::Value, String> {
     tracing::debug!(
-        "📊 [SCHEMA] get_database_object - conn_id: {}, type: {}, db: {:?}, schema: {:?}",
+        "📊 [SCHEMA] get_database_object - conn_id: {}, type: {}, db: {:?}, schema: {:?}, object: {:?}",
         connection_id,
         request_type,
         database,
-        schema
+        schema,
+        object_name
     );
 
     // Check if connection exists in pool
@@ -216,6 +218,45 @@ pub async fn get_database_object(
                 "indexes": indexes,
                 "procedures": procedures,
                 "triggers": triggers
+            }))
+        }
+
+        "procedure" | "function" => {
+            // Get procedure/function source code
+            let db_name = database.ok_or("Database name is required")?;
+            let proc_name = object_name.ok_or("object_name is required for procedure/function")?;
+            let proc_schema = schema.clone();
+
+            // Get the procedure source code directly using trait method
+            let source = state
+                .pool
+                .with_connection(&connection_id, |conn| {
+                    let db = db_name.clone();
+                    let proc_name_clone = proc_name.clone();
+                    let proc_schema_clone = proc_schema.clone();
+                    let req_type = request_type.to_string();
+                    async move {
+                        let proc_type = if req_type == "function" {
+                            Some("FUNCTION".to_string())
+                        } else {
+                            Some("PROCEDURE".to_string())
+                        };
+                        conn.get_procedure_source(&db, &proc_name_clone, proc_type, proc_schema_clone)
+                            .await
+                    }
+                    .boxed()
+                })
+                .await?;
+
+            tracing::info!(
+                "✅ [SCHEMA] Retrieved {} source for '{}'",
+                request_type,
+                proc_name
+            );
+            Ok(json!({
+                "name": proc_name,
+                "source": source,
+                "type": request_type
             }))
         }
 

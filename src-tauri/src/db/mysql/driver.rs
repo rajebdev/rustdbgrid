@@ -484,6 +484,44 @@ impl DatabaseConnection for MySQLConnection {
         MySqlMetadataOps::get_procedures(pool, database).await
     }
 
+    async fn get_procedure_source(
+        &mut self,
+        database: &str,
+        procedure_name: &str,
+        procedure_type: Option<String>,
+        _schema: Option<String>,
+    ) -> Result<String> {
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+
+        // For MySQL, use INFORMATION_SCHEMA to get routine definition
+        let routine_type = match procedure_type.as_deref() {
+            Some("PROCEDURE") => "PROCEDURE",
+            _ => "FUNCTION",
+        };
+
+        let query = format!(
+            "SELECT ROUTINE_DEFINITION FROM INFORMATION_SCHEMA.ROUTINES 
+             WHERE ROUTINE_SCHEMA = '{}' AND ROUTINE_NAME = '{}' AND ROUTINE_TYPE = '{}'",
+            database, procedure_name, routine_type
+        );
+
+        match sqlx::query_scalar::<_, String>(&query)
+            .fetch_optional(pool)
+            .await
+        {
+            Ok(Some(source)) => Ok(source),
+            Ok(None) => Ok("-- Source code not available".to_string()),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to retrieve procedure source for '{}': {}",
+                    procedure_name,
+                    e
+                );
+                Ok(format!("-- Error retrieving source: {}\n-- {}", e, procedure_name))
+            }
+        }
+    }
+
     async fn get_triggers(
         &mut self,
         database: &str,

@@ -466,6 +466,82 @@ impl DatabaseConnection for PostgresConnection {
         PostgresMetadataOps::get_procedures(pool, schema).await
     }
 
+    async fn get_procedure_source(
+        &mut self,
+        _database: &str,
+        procedure_name: &str,
+        _procedure_type: Option<String>,
+        schema: Option<String>,
+    ) -> Result<String> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not connected to database"))?;
+
+        let schema_name = schema.as_deref().unwrap_or("public");
+
+        // Try multiple approaches to find and get the function definition
+        
+        // Approach 1: Try with pg_get_functiondef using schema-qualified name
+        let query1 = format!(
+            "SELECT pg_get_functiondef('{}.{}'::regprocedure::oid) as source",
+            schema_name, procedure_name
+        );
+
+        if let Ok(Some(source)) = sqlx::query_scalar::<_, String>(&query1).fetch_optional(pool).await {
+            if !source.is_empty() {
+                return Ok(source);
+            }
+        }
+
+        // Approach 2: Query pg_proc directly to find the function and get its definition
+        let query2 = format!(
+            "SELECT pg_get_functiondef(p.oid) as source 
+             FROM pg_proc p 
+             JOIN pg_namespace n ON p.pronamespace = n.oid 
+             WHERE p.proname = '{}' AND n.nspname = '{}' 
+             LIMIT 1",
+            procedure_name, schema_name
+        );
+
+        if let Ok(Some(source)) = sqlx::query_scalar::<_, String>(&query2).fetch_optional(pool).await {
+            if !source.is_empty() {
+                return Ok(source);
+            }
+        }
+
+        // Approach 3: If it's a trigger function or not found, try to get the source from pg_proc
+        let query3 = format!(
+            "SELECT prosrc FROM pg_proc p 
+             JOIN pg_namespace n ON p.pronamespace = n.oid 
+             WHERE p.proname = '{}' AND n.nspname = '{}' 
+             LIMIT 1",
+            procedure_name, schema_name
+        );
+
+        match sqlx::query_scalar::<_, String>(&query3).fetch_optional(pool).await {
+            Ok(Some(source)) => {
+                if !source.is_empty() {
+                    return Ok(source);
+                }
+                Ok("-- Source code not available".to_string())
+            }
+            Ok(None) => Ok("-- Source code not available or function not found".to_string()),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to retrieve procedure source for '{}.{}': {}",
+                    schema_name,
+                    procedure_name,
+                    e
+                );
+                Ok(format!(
+                    "-- Error retrieving source: {}\n-- {}.{}",
+                    e, schema_name, procedure_name
+                ))
+            }
+        }
+    }
+
     async fn get_triggers(
         &mut self,
         _database: &str,
