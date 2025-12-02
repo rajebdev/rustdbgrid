@@ -8,6 +8,7 @@
     executeQuery,
     loadTableData,
   } from "../../utils/tauri";
+  import { buildPaginatedQuery } from "../../utils/defaultQueries";
   import ArrayCell from "./ArrayCell.svelte";
   import SqlPreviewModal from "../modals/SqlPreviewModal.svelte";
   import FilterModal from "../modals/FilterModal.svelte";
@@ -423,7 +424,7 @@
   }
 
   async function loadMoreData() {
-    if (isLoadingMore || !hasMoreData || !executedQuery || !connection) {
+    if (isLoadingMore || !hasMoreData || !connection || !tableName) {
       return;
     }
 
@@ -432,134 +433,43 @@
     try {
       console.log("📥 Loading more data, offset:", currentOffset);
 
-      // Convert columnFilters to the format expected by backend
-      const filters = {};
-      for (const [col, value] of Object.entries(columnFilters)) {
+      // Convert columnFilters to new filter format
+      const filters = [];
+      for (const [column, value] of Object.entries(columnFilters)) {
         if (Array.isArray(value) && value.length > 0) {
-          filters[col] = value;
+          filters.push({ column, operator: "in", value });
         } else if (typeof value === "string" && value.trim() !== "") {
-          filters[col] = value;
+          filters.push({ column, operator: "like", value: `%${value}%` });
         }
       }
 
-      // Build query with LIMIT and OFFSET based on database type
-      const dbType = connection?.db_type || "MySQL";
+      const orderBy = sortColumn
+        ? [{ column: sortColumn, direction: sortDirection.toLowerCase() }]
+        : [];
 
-      // For Apache Ignite, ALWAYS use SCAN - never use SQL query
-      const isIgnite = dbType === "Ignite";
-
-      let result;
-      let loadMoreQuery = executedQuery;
-
-      if (isIgnite) {
-        // For Ignite, ALWAYS use SCAN with getTableData
-        // Priority: databaseName prop > tableName prop > parse from executedQuery
-        let cacheName = databaseName || tableName || "";
-
-        // Fallback: try to parse from SCAN query if props are empty
-        if (!cacheName) {
-          const scanMatch = executedQuery.match(/^SCAN\s+(\S+)/i);
-          cacheName = scanMatch ? scanMatch[1] : "";
-        }
-
-        console.log("📥 Ignite SCAN load more:", {
-          cacheName,
-          databaseName,
-          tableName,
+      const result = await loadTableData(
+        connection.id,
+        connection.db_type,
+        tableName,
+        {
+          database: databaseName || null,
+          schema: schemaName || null,
+          limit: 200,
           offset: currentOffset,
-          executedQuery: executedQuery.substring(0, 50),
-        });
-
-        if (!cacheName) {
-          console.error("❌ Cannot determine cache name for Ignite load more");
-          hasMoreData = false;
-          isLoadingMore = false;
-          return;
+          filters,
+          orderBy,
         }
+      );
 
-        result = await loadTableData({
-          connection_id: connection.id,
-          query: {
-            db_type: "Ignite",
-            database: cacheName,
-            schema: null,
-            table: "",
-            limit: 200,
-            offset: currentOffset,
-            filters: null,
-            order_by: null,
-          },
-        });
-
-        loadMoreQuery = `SCAN ${cacheName} LIMIT 200 OFFSET ${currentOffset}`;
-      } else {
-        // Standard SQL-based pagination for other databases
-        // Check if we have filters - if so, let backend handle pagination with offset
-        const hasFilters = Object.keys(filters).length > 0;
-
-        if (hasFilters) {
-          // With filters: send original query + offset, backend handles pagination
-          result = await executeQueryWithFilters(
-            connection,
-            executedQuery, // Original query without pagination
-            filters,
-            sortColumn,
-            sortColumn ? sortDirection.toUpperCase() : null,
-            200,
-            currentOffset // Send offset to backend
-          );
-          loadMoreQuery = result.final_query || executedQuery;
-        } else {
-          // Without filters: build paginated query in frontend
-          loadMoreQuery = buildPaginatedQuery(
-            dbType,
-            executedQuery,
-            200,
-            currentOffset
-          );
-
-          result = await executeQueryWithFilters(
-            connection,
-            loadMoreQuery,
-            null,
-            sortColumn,
-            sortColumn ? sortDirection.toUpperCase() : null,
-            null, // No limit needed, already in query
-            null // No offset needed, already in query
-          );
-        }
-      }
-
-      if (result && result.rows && result.rows.length > 0) {
-        // Append new rows to existing data
+      if (result?.rows?.length > 0) {
         const newRows = [...(displayData?.rows || []), ...result.rows];
-        displayData = {
-          ...displayData,
-          rows: newRows,
-          execution_time: result.execution_time,
-        };
-
-        currentOffset = newRows.length; // Set offset to total row count
-        hasMoreData = result.rows.length === 200; // If less than 200, no more data
-
-        // Update final query - prefer backend's final_query to preserve original format for NoSQL
-        if (result.final_query) {
-          finalQuery = result.final_query;
-        } else {
-          finalQuery = loadMoreQuery;
-        }
-
-        console.log(
-          "✅ Loaded",
-          result.rows.length,
-          "more rows. Total:",
-          newRows.length,
-          "| Next offset:",
-          currentOffset
-        );
+        displayData = { ...displayData, rows: newRows };
+        currentOffset = newRows.length;
+        hasMoreData = result.has_more_data;
+        finalQuery = result.final_query;
+        console.log("✅ Loaded", result.rows.length, "more rows");
       } else {
         hasMoreData = false;
-        console.log("✅ No more data to load");
       }
     } catch (error) {
       console.error("❌ Failed to load more data:", error);
@@ -1408,6 +1318,11 @@
                 {index + 1}
               </div>
             {/each}
+            <div
+              class="row-number-cell"
+              class:row-even={true}
+              style="height: 60px;"
+            ></div>
           </div>
         </div>
 
