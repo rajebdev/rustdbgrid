@@ -24,6 +24,7 @@
   import TableContextMenu from "../../context-menus/TableContextMenu.svelte";
   import DatabaseContextMenu from "../../context-menus/DatabaseContextMenu.svelte";
   import SchemaContextMenu from "../../context-menus/SchemaContextMenu.svelte";
+  import ViewContextMenu from "../../context-menus/ViewContextMenu.svelte";
 
   let databases = [];
   let showModal = false;
@@ -75,12 +76,14 @@
   let tableContextMenu = null; // { x, y, table, connection, database }
   let databaseContextMenu = null; // { x, y, database, connection }
   let schemaContextMenu = null; // { x, y, schema, database, connection }
+  let viewContextMenu = null; // { x, y, view, connection, database }
 
   // Track active (right-clicked) items
   let activeContextConnection = null;
   let activeContextDatabase = null;
   let activeContextSchema = null;
   let activeContextTable = null;
+  let activeContextView = null;
 
   onMount(async () => {
     console.log("[FRONTEND] Sidebar onMount starting...");
@@ -94,11 +97,13 @@
     document.addEventListener("click", closeTableContextMenu);
     document.addEventListener("click", closeDatabaseContextMenu);
     document.addEventListener("click", closeSchemaContextMenu);
+    document.addEventListener("click", closeViewContextMenu);
     return () => {
       document.removeEventListener("click", closeContextMenu);
       document.removeEventListener("click", closeTableContextMenu);
       document.removeEventListener("click", closeDatabaseContextMenu);
       document.removeEventListener("click", closeSchemaContextMenu);
+      document.removeEventListener("click", closeViewContextMenu);
     };
   });
 
@@ -1094,6 +1099,105 @@
     }
     closeTableContextMenu();
   }
+
+  function handleViewContextMenu(event, view, conn, db) {
+    event.preventDefault();
+    event.stopPropagation();
+    // Close all other context menus
+    contextMenu = null;
+    tableContextMenu = null;
+    databaseContextMenu = null;
+    schemaContextMenu = null;
+    // Set active item
+    activeContextConnection = null;
+    activeContextDatabase = null;
+    activeContextSchema = null;
+    activeContextTable = null;
+    activeContextView = `${conn.id}-${db.name}-${view.schema || "public"}-${view.name}`;
+    // Show context menu
+    viewContextMenu = {
+      x: event.clientX,
+      y: event.clientY,
+      view: view,
+      connection: conn,
+      database: db,
+    };
+  }
+
+  function closeViewContextMenu() {
+    viewContextMenu = null;
+    activeContextView = null;
+  }
+
+  function handleViewAction(event) {
+    const { type, detail } = event;
+    const { view, connection, database } = detail;
+
+    switch (type) {
+      case "viewStructure":
+        // Open view structure
+        console.log("View Structure:", view.name);
+        // TODO: Implement view structure
+        break;
+      case "viewDefinition":
+        // Open view definition (SQL source)
+        console.log("View Definition:", view.name);
+        // TODO: Implement view definition
+        break;
+      case "viewData":
+        // Open view data - same as double click
+        handleViewDoubleClick(view, connection, database);
+        break;
+      case "exportData":
+        // Export view data
+        console.log("Export Data:", view.name);
+        // TODO: Implement export data
+        break;
+      case "importData":
+        // Import data to view
+        console.log("Import Data:", view.name);
+        // TODO: Implement import data
+        break;
+      case "readInConsole":
+        // Generate SELECT query in SQL console
+        console.log("Read in Console:", view.name);
+        // TODO: Implement read in SQL console
+        break;
+      case "copy":
+        // Copy view name
+        navigator.clipboard.writeText(view.name);
+        break;
+      case "copyAdvancedInfo":
+        // Copy detailed view info
+        const info = `View: ${view.name}\nDatabase: ${database.name}\nConnection: ${connection.name}`;
+        navigator.clipboard.writeText(info);
+        break;
+      case "delete":
+        // Delete view
+        if (confirm(`Are you sure you want to delete view "${view.name}"?`)) {
+          console.log("Delete View:", view.name);
+          // TODO: Implement delete view
+        }
+        break;
+      case "rename":
+        // Rename view
+        renameModalTitle = "Rename View";
+        renameModalValue = view.name;
+        renameModalCallback = async (newName) => {
+          if (newName && newName !== view.name) {
+            console.log("Rename View:", view.name, "to", newName);
+            // TODO: Implement rename view
+          }
+        };
+        showRenameModal = true;
+        break;
+      case "refresh":
+        // Refresh view list
+        toggleDatabase(connection.id, database);
+        break;
+    }
+    closeViewContextMenu();
+  }
 </script>
 
 <div class="sidebar-container d-flex flex-column h-100">
@@ -1585,6 +1689,8 @@
                                                 {#each expandedViews[`${conn.id}-${db.name}-${schemaName}`]?.views || [] as view (`${schemaName}-${view.name}`)}
                                                   <tr
                                                     class="table-item-row"
+                                                    class:table-active={activeContextView ===
+                                                      `${conn.id}-${db.name}-${schemaName}-${view.name}`}
                                                     style="cursor: pointer; line-height: 1.5;"
                                                   >
                                                     <td
@@ -1594,9 +1700,40 @@
                                                       <button
                                                         class="btn btn-sm p-1 text-start border-0 mysql-object-btn"
                                                         style="font-size: 11px; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                                        on:click={() => {
+                                                          const viewWithSchema =
+                                                            {
+                                                              ...view,
+                                                              schema:
+                                                                schemaName,
+                                                            };
+                                                          console.log(
+                                                            "View clicked:",
+                                                            viewWithSchema
+                                                          );
+                                                        }}
                                                         on:dblclick={() =>
                                                           handleViewDoubleClick(
-                                                            view,
+                                                            {
+                                                              ...view,
+                                                              schema:
+                                                                schemaName,
+                                                            },
+                                                            expandedDatabases[
+                                                              `${conn.id}-${db.name}`
+                                                            ].connection,
+                                                            expandedDatabases[
+                                                              `${conn.id}-${db.name}`
+                                                            ].database
+                                                          )}
+                                                        on:contextmenu={(e) =>
+                                                          handleViewContextMenu(
+                                                            e,
+                                                            {
+                                                              ...view,
+                                                              schema:
+                                                                schemaName,
+                                                            },
                                                             expandedDatabases[
                                                               `${conn.id}-${db.name}`
                                                             ].connection,
@@ -2230,6 +2367,8 @@
                                           {#each expandedViews[`${conn.id}-${db.name}-${schemaName}`]?.views || [] as view (`${schemaName}-${view.name}`)}
                                             <tr
                                               class="table-item-row"
+                                              class:table-active={activeContextView ===
+                                                `${conn.id}-${db.name}-${schemaName}-${view.name}`}
                                               style="cursor: pointer; line-height: 1.5;"
                                             >
                                               <td
@@ -2239,9 +2378,36 @@
                                                 <button
                                                   class="btn btn-sm p-1 text-start border-0 mysql-object-btn"
                                                   style="font-size: 11px; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                                  on:click={() => {
+                                                    const viewWithSchema = {
+                                                      ...view,
+                                                      schema: schemaName,
+                                                    };
+                                                    console.log(
+                                                      "View clicked:",
+                                                      viewWithSchema
+                                                    );
+                                                  }}
                                                   on:dblclick={() =>
                                                     handleViewDoubleClick(
-                                                      view,
+                                                      {
+                                                        ...view,
+                                                        schema: schemaName,
+                                                      },
+                                                      expandedDatabases[
+                                                        `${conn.id}-${db.name}`
+                                                      ].connection,
+                                                      expandedDatabases[
+                                                        `${conn.id}-${db.name}`
+                                                      ].database
+                                                    )}
+                                                  on:contextmenu={(e) =>
+                                                    handleViewContextMenu(
+                                                      e,
+                                                      {
+                                                        ...view,
+                                                        schema: schemaName,
+                                                      },
                                                       expandedDatabases[
                                                         `${conn.id}-${db.name}`
                                                       ].connection,
@@ -2820,6 +2986,8 @@
                                     {#each expandedViews[`${conn.id}-${db.name}`]?.views || [] as view (view.name)}
                                       <tr
                                         class="table-item-row"
+                                        class:table-active={activeContextView ===
+                                          `${conn.id}-${db.name}-${view.schema || "public"}-${view.name}`}
                                         style="cursor: pointer; line-height: 1.5;"
                                       >
                                         <td
@@ -2829,8 +2997,25 @@
                                           <button
                                             class="btn btn-sm p-1 text-start border-0 mysql-object-btn"
                                             style="font-size: 11px; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;"
+                                            on:click={() => {
+                                              console.log(
+                                                "View clicked:",
+                                                view
+                                              );
+                                            }}
                                             on:dblclick={() =>
                                               handleViewDoubleClick(
+                                                view,
+                                                expandedDatabases[
+                                                  `${conn.id}-${db.name}`
+                                                ].connection,
+                                                expandedDatabases[
+                                                  `${conn.id}-${db.name}`
+                                                ].database
+                                              )}
+                                            on:contextmenu={(e) =>
+                                              handleViewContextMenu(
+                                                e,
                                                 view,
                                                 expandedDatabases[
                                                   `${conn.id}-${db.name}`
@@ -3431,6 +3616,29 @@
       on:delete={handleSchemaAction}
       on:rename={handleSchemaAction}
       on:refresh={handleSchemaAction}
+    />
+  {/key}
+{/if}
+
+{#if viewContextMenu}
+  {#key `${viewContextMenu.connection?.id}-${viewContextMenu.database?.name}-${viewContextMenu.view?.name}`}
+    <ViewContextMenu
+      x={viewContextMenu.x}
+      y={viewContextMenu.y}
+      view={viewContextMenu.view}
+      connection={viewContextMenu.connection}
+      database={viewContextMenu.database}
+      on:viewStructure={handleViewAction}
+      on:viewDefinition={handleViewAction}
+      on:viewData={handleViewAction}
+      on:exportData={handleViewAction}
+      on:importData={handleViewAction}
+      on:readInConsole={handleViewAction}
+      on:copy={handleViewAction}
+      on:copyAdvancedInfo={handleViewAction}
+      on:delete={handleViewAction}
+      on:rename={handleViewAction}
+      on:refresh={handleViewAction}
     />
   {/key}
 {/if}
