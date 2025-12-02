@@ -1,11 +1,15 @@
 <script>
-  import { createEventDispatcher } from "svelte";
+  import BaseModal from "./base/BaseModal.svelte";
   import { testConnection, saveConnection } from "../../utils/tauri";
   import { isSaving } from "../../stores/connections";
+  import {
+    parseConnectionString as parseConnStr,
+    getDefaultPort,
+    getConnectionStringFormats,
+  } from "../../utils/connectionStringParser";
 
   export let connection = null;
-
-  const dispatch = createEventDispatcher();
+  export let show = true;
 
   let formData = {
     id: crypto.randomUUID(),
@@ -30,118 +34,29 @@
   }
 
   function parseConnectionString() {
-    try {
-      const str = connectionString.trim();
+    const result = parseConnStr(connectionString, formData.db_type);
 
-      if (formData.db_type === "MySQL") {
-        // JDBC: jdbc:mysql://host:port/database or mysql://user:password@host:port/database
-        let match = str.match(
-          /^jdbc:mysql:\/\/([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
-        );
-        if (match) {
-          formData.host = match[1];
-          formData.port = match[2] ? parseInt(match[2]) : 3306;
-          if (match[3]) formData.database = match[3];
-        } else {
-          match = str.match(
-            /^mysql:\/\/(?:([^:]+):([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
-          );
-          if (match) {
-            if (match[1]) formData.username = decodeURIComponent(match[1]);
-            if (match[2]) formData.password = decodeURIComponent(match[2]);
-            formData.host = match[3];
-            formData.port = match[4] ? parseInt(match[4]) : 3306;
-            if (match[5]) formData.database = match[5];
-          }
-        }
-      } else if (formData.db_type === "PostgreSQL") {
-        // JDBC: jdbc:postgresql://host:port/database or postgresql://user:password@host:port/database
-        let match = str.match(
-          /^jdbc:postgresql:\/\/([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
-        );
-        if (match) {
-          formData.host = match[1];
-          formData.port = match[2] ? parseInt(match[2]) : 5432;
-          if (match[3]) formData.database = match[3];
-        } else {
-          match = str.match(
-            /^postgres(?:ql)?:\/\/(?:([^:]+):([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
-          );
-          if (match) {
-            if (match[1]) formData.username = decodeURIComponent(match[1]);
-            if (match[2]) formData.password = decodeURIComponent(match[2]);
-            formData.host = match[3];
-            formData.port = match[4] ? parseInt(match[4]) : 5432;
-            if (match[5]) formData.database = match[5];
-          }
-        }
-      } else if (formData.db_type === "MongoDB") {
-        // mongodb://user:password@host:port/database or mongodb+srv://...
-        const match = str.match(
-          /^mongodb(?:\+srv)?:\/\/(?:([^:]+):([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
-        );
-        if (match) {
-          if (match[1]) formData.username = decodeURIComponent(match[1]);
-          if (match[2]) formData.password = decodeURIComponent(match[2]);
-          formData.host = match[3];
-          formData.port = match[4] ? parseInt(match[4]) : 27017;
-          if (match[5]) formData.database = match[5];
-        }
-      } else if (formData.db_type === "Redis") {
-        // redis://[:password@]host:port[/database]
-        const match = str.match(
-          /^redis:\/\/(?::([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/(\d+))?/
-        );
-        if (match) {
-          if (match[1]) formData.password = decodeURIComponent(match[1]);
-          formData.host = match[2];
-          formData.port = match[3] ? parseInt(match[3]) : 6379;
-          if (match[4]) formData.database = match[4];
-        }
-      } else if (formData.db_type === "MSSQL") {
-        // mssql://user:password@host:port/database or jdbc:sqlserver://host:port;databaseName=database
-        let match = str.match(
-          /^jdbc:sqlserver:\/\/([^:;]+)(?::(\d+))?(?:;databaseName=([^;]+))?/
-        );
-        if (match) {
-          formData.host = match[1];
-          formData.port = match[2] ? parseInt(match[2]) : 1433;
-          if (match[3]) formData.database = match[3];
-        } else {
-          match = str.match(
-            /^mssql:\/\/(?:([^:]+):([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
-          );
-          if (match) {
-            if (match[1]) formData.username = decodeURIComponent(match[1]);
-            if (match[2]) formData.password = decodeURIComponent(match[2]);
-            formData.host = match[3];
-            formData.port = match[4] ? parseInt(match[4]) : 1433;
-            if (match[5]) formData.database = match[5];
-          }
-        }
-      }
-
+    if (result.success) {
+      Object.assign(formData, result.data);
       connectionString = "";
       showConnectionString = false;
       testResult = {
         success: true,
         message: "Connection string parsed successfully!",
       };
-    } catch (error) {
+    } else {
       testResult = {
         success: false,
-        message: "Failed to parse connection string: " + error,
+        message: result.error,
       };
     }
   }
 
+  // Update port when database type changes
   $: {
-    if (formData.db_type === "MySQL") formData.port = 3306;
-    else if (formData.db_type === "PostgreSQL") formData.port = 5432;
-    else if (formData.db_type === "MongoDB") formData.port = 27017;
-    else if (formData.db_type === "Redis") formData.port = 6379;
-    else if (formData.db_type === "Ignite") formData.port = 10800;
-    else if (formData.db_type === "MSSQL") formData.port = 1433;
+    if (formData.db_type) {
+      formData.port = getDefaultPort(formData.db_type);
+    }
   }
 
   async function handleTest() {
@@ -167,8 +82,7 @@
     isSaving.set(true);
     try {
       await saveConnection(formData);
-      // Auto-saved to encrypted JSON file
-      dispatch("save");
+      show = false;
     } catch (error) {
       alert("Failed to save connection: " + error);
     } finally {
@@ -176,229 +90,200 @@
       isSaving.set(false);
     }
   }
-
-  function handleClose() {
-    dispatch("close");
-  }
 </script>
 
-<div class="modal show d-block" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">
-          <i class="fas fa-plug"></i>
-          {connection ? "Edit Connection" : "New Connection"}
-        </h5>
+<BaseModal {show} size="lg" backdrop="static" on:close>
+  <div slot="header">
+    <h5 class="modal-title">
+      <i class="fas fa-plug"></i>
+      {connection ? "Edit Connection" : "New Connection"}
+    </h5>
+  </div>
+
+  <div slot="body">
+    <form on:submit|preventDefault={handleSave}>
+      <div class="mb-3">
+        <label class="form-label" for="connectionName">Connection Name</label>
+        <input
+          type="text"
+          class="form-control"
+          id="connectionName"
+          bind:value={formData.name}
+          required
+        />
       </div>
 
-      <div class="modal-body">
-        <form on:submit|preventDefault={handleSave}>
-          <div class="mb-3">
-            <label class="form-label" for="connectionName"
-              >Connection Name</label
-            >
-            <input
-              type="text"
-              class="form-control"
-              id="connectionName"
-              bind:value={formData.name}
-              required
-            />
-          </div>
+      <div class="mb-3">
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-primary w-100"
+          on:click={() => (showConnectionString = !showConnectionString)}
+        >
+          <i class="fas fa-link"></i>
+          {showConnectionString ? "Hide" : "Paste"} Connection String
+        </button>
 
-          <div class="mb-3">
+        {#if showConnectionString}
+          <div class="mt-2">
+            <textarea
+              class="form-control"
+              rows="3"
+              placeholder="Paste your connection string here (e.g., mongodb://user:pass@host:port/db)"
+              bind:value={connectionString}
+            ></textarea>
             <button
               type="button"
-              class="btn btn-sm btn-outline-primary w-100"
-              on:click={() => (showConnectionString = !showConnectionString)}
+              class="btn btn-sm btn-primary mt-2"
+              on:click={parseConnectionString}
+              disabled={!connectionString.trim()}
             >
-              <i class="fas fa-link"></i>
-              {showConnectionString ? "Hide" : "Paste"} Connection String
+              <i class="fas fa-check"></i>
+              Parse Connection String
             </button>
-
-            {#if showConnectionString}
-              <div class="mt-2">
-                <textarea
-                  class="form-control"
-                  rows="3"
-                  placeholder="Paste your connection string here (e.g., mongodb://user:pass@host:port/db)"
-                  bind:value={connectionString}
-                ></textarea>
-                <button
-                  type="button"
-                  class="btn btn-sm btn-primary mt-2"
-                  on:click={parseConnectionString}
-                  disabled={!connectionString.trim()}
-                >
-                  <i class="fas fa-check"></i>
-                  Parse Connection String
-                </button>
-                <small class="form-text text-muted d-block mt-1">
-                  Supported formats:
-                  {#if formData.db_type === "MySQL"}
-                    mysql://user:password@host:port/database or
-                    jdbc:mysql://host:port/database
-                  {:else if formData.db_type === "PostgreSQL"}
-                    postgresql://user:password@host:port/database or
-                    jdbc:postgresql://host:port/database
-                  {:else if formData.db_type === "MongoDB"}
-                    mongodb://user:password@host:port/database
-                  {:else if formData.db_type === "Redis"}
-                    redis://:password@host:port/database
-                  {:else if formData.db_type === "MSSQL"}
-                    mssql://user:password@host:port/database or
-                    jdbc:sqlserver://host:port;databaseName=database
-                  {:else}
-                    Connection string format varies by database type
-                  {/if}
-                </small>
-              </div>
-            {/if}
+            <small class="form-text text-muted d-block mt-1">
+              Supported formats: {getConnectionStringFormats(formData.db_type)}
+            </small>
           </div>
-
-          <div class="mb-3">
-            <label class="form-label" for="dbType">Database Type</label>
-            <select
-              class="form-select db-type-select"
-              id="dbType"
-              bind:value={formData.db_type}
-            >
-              <option value="MySQL">🐬 MySQL</option>
-              <option value="PostgreSQL">🐘 PostgreSQL</option>
-              <option value="MongoDB">🍃 MongoDB</option>
-              <option value="Redis">📕 Redis</option>
-              <option value="Ignite">🔥 Apache Ignite</option>
-              <option value="MSSQL">🗄️ Microsoft SQL Server</option>
-            </select>
-          </div>
-
-          <div class="row">
-            <div class="col-md-8 mb-3">
-              <label class="form-label" for="host">Host</label>
-              <input
-                type="text"
-                class="form-control"
-                id="host"
-                bind:value={formData.host}
-                required
-              />
-            </div>
-            <div class="col-md-4 mb-3">
-              <label class="form-label" for="port">Port</label>
-              <input
-                type="number"
-                class="form-control"
-                id="port"
-                bind:value={formData.port}
-                required
-              />
-            </div>
-          </div>
-
-          <div class="row">
-            <div class="col-md-6 mb-3">
-              <label class="form-label" for="username"
-                >Username {formData.db_type === "Redis" ||
-                formData.db_type === "Ignite"
-                  ? "(optional)"
-                  : ""}</label
-              >
-              <input
-                type="text"
-                class="form-control"
-                id="username"
-                bind:value={formData.username}
-              />
-            </div>
-            <div class="col-md-6 mb-3">
-              <label class="form-label" for="password"
-                >Password {formData.db_type === "Redis" ||
-                formData.db_type === "Ignite"
-                  ? "(optional)"
-                  : ""}</label
-              >
-              <input
-                type="password"
-                class="form-control"
-                id="password"
-                bind:value={formData.password}
-              />
-            </div>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label" for="database">Database (optional)</label>
-            <input
-              type="text"
-              class="form-control"
-              id="database"
-              bind:value={formData.database}
-            />
-          </div>
-
-          <div class="mb-3 form-check">
-            <input
-              type="checkbox"
-              class="form-check-input"
-              id="sslCheck"
-              bind:checked={formData.ssl}
-            />
-            <label class="form-check-label" for="sslCheck">Use SSL</label>
-          </div>
-
-          {#if testResult}
-            <div
-              class="alert {testResult.success
-                ? 'alert-success'
-                : 'alert-danger'}"
-            >
-              <i
-                class="fas {testResult.success
-                  ? 'fa-check-circle'
-                  : 'fa-times-circle'}"
-              ></i>
-              {testResult.message}
-            </div>
-          {/if}
-        </form>
+        {/if}
       </div>
 
-      <div class="modal-footer">
-        <div class="auto-save-notice">
-          <i class="fas fa-shield-alt"></i>
-          <small>Connection auto-saved to encrypted file</small>
+      <div class="mb-3">
+        <label class="form-label" for="dbType">Database Type</label>
+        <select
+          class="form-select db-type-select"
+          id="dbType"
+          bind:value={formData.db_type}
+        >
+          <option value="MySQL">🐬 MySQL</option>
+          <option value="PostgreSQL">🐘 PostgreSQL</option>
+          <option value="MongoDB">🍃 MongoDB</option>
+          <option value="Redis">📕 Redis</option>
+          <option value="Ignite">🔥 Apache Ignite</option>
+          <option value="MSSQL">🗄️ Microsoft SQL Server</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <div class="col-md-8 mb-3">
+          <label class="form-label" for="host">Host</label>
+          <input
+            type="text"
+            class="form-control"
+            id="host"
+            bind:value={formData.host}
+            required
+          />
         </div>
-        <button
-          type="button"
-          class="btn btn-secondary"
-          on:click={handleTest}
-          disabled={testing}
-        >
-          <i class="fas fa-vial"></i>
-          {testing ? "Testing..." : "Test Connection"}
-        </button>
-        <button
-          type="button"
-          class="btn btn-primary"
-          on:click={handleSave}
-          disabled={saving}
-        >
-          <i class="fas fa-save"></i>
-          {saving ? "Saving..." : "Save"}
-        </button>
-        <button
-          type="button"
-          class="btn btn-outline-secondary"
-          on:click={handleClose}
-        >
-          Cancel
-        </button>
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="port">Port</label>
+          <input
+            type="number"
+            class="form-control"
+            id="port"
+            bind:value={formData.port}
+            required
+          />
+        </div>
       </div>
-    </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="username"
+            >Username {formData.db_type === "Redis" ||
+            formData.db_type === "Ignite"
+              ? "(optional)"
+              : ""}</label
+          >
+          <input
+            type="text"
+            class="form-control"
+            id="username"
+            bind:value={formData.username}
+          />
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="password"
+            >Password {formData.db_type === "Redis" ||
+            formData.db_type === "Ignite"
+              ? "(optional)"
+              : ""}</label
+          >
+          <input
+            type="password"
+            class="form-control"
+            id="password"
+            bind:value={formData.password}
+          />
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="database">Database (optional)</label>
+        <input
+          type="text"
+          class="form-control"
+          id="database"
+          bind:value={formData.database}
+        />
+      </div>
+
+      <div class="mb-3 form-check">
+        <input
+          type="checkbox"
+          class="form-check-input"
+          id="sslCheck"
+          bind:checked={formData.ssl}
+        />
+        <label class="form-check-label" for="sslCheck">Use SSL</label>
+      </div>
+
+      {#if testResult}
+        <div
+          class="alert {testResult.success ? 'alert-success' : 'alert-danger'}"
+        >
+          <i
+            class="fas {testResult.success
+              ? 'fa-check-circle'
+              : 'fa-times-circle'}"
+          ></i>
+          {testResult.message}
+        </div>
+      {/if}
+    </form>
   </div>
-</div>
-<div class="modal-backdrop show"></div>
+
+  <div slot="footer">
+    <div class="auto-save-notice">
+      <i class="fas fa-shield-alt"></i>
+      <small>Connection auto-saved to encrypted file</small>
+    </div>
+    <button
+      type="button"
+      class="btn btn-secondary"
+      on:click={handleTest}
+      disabled={testing}
+    >
+      <i class="fas fa-vial"></i>
+      {testing ? "Testing..." : "Test Connection"}
+    </button>
+    <button
+      type="button"
+      class="btn btn-primary"
+      on:click={handleSave}
+      disabled={saving}
+    >
+      <i class="fas fa-save"></i>
+      {saving ? "Saving..." : "Save"}
+    </button>
+    <button
+      type="button"
+      class="btn btn-outline-secondary"
+      on:click={() => (show = false)}
+    >
+      Cancel
+    </button>
+  </div>
+</BaseModal>
 
 <style>
   .auto-save-notice {
@@ -419,29 +304,5 @@
 
   .db-type-select option {
     padding: 8px;
-  }
-
-  .form-label {
-    color: var(--text-primary);
-  }
-
-  .form-check-label {
-    color: var(--text-primary);
-  }
-
-  /* Checkbox Dark Mode Support */
-  .form-check-input {
-    background-color: var(--bg-input);
-    border-color: var(--border-color);
-  }
-
-  .form-check-input:checked {
-    background-color: var(--accent-blue);
-    border-color: var(--accent-blue);
-  }
-
-  .form-check-input:focus {
-    border-color: var(--accent-blue);
-    box-shadow: 0 0 0 0.2rem var(--focus-ring);
   }
 </style>

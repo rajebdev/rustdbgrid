@@ -20,6 +20,11 @@
     getConnectionsInfo,
     getDatabaseObject,
     getConnectedDatabases,
+    connectToDatabase,
+    disconnectFromDatabase,
+    deleteConnection,
+    getConnectionForEdit,
+    saveConnection,
   } from "../../../utils/tauri";
 
   // Context Menus
@@ -348,6 +353,549 @@
       database: db,
       connection: conn,
     };
+  }
+
+  // Connection context menu handlers
+  async function handleConnectionEdit(e) {
+    const conn = e.detail;
+    try {
+      const fullConfig = await getConnectionForEdit(conn.id);
+      editingConnection = fullConfig;
+      showConnectionModal = true;
+    } catch (error) {
+      console.error("Failed to load connection for edit:", error);
+    }
+    contextMenu = null;
+  }
+
+  async function handleConnectionDelete(e) {
+    const conn = e.detail;
+    if (confirm(`Are you sure you want to delete connection "${conn.name}"?`)) {
+      try {
+        await deleteConnection(conn.id);
+        await loadConnections();
+      } catch (error) {
+        console.error("Failed to delete connection:", error);
+        alert(`Failed to delete connection: ${error}`);
+      }
+    }
+    contextMenu = null;
+  }
+
+  async function handleConnectionRefresh(e) {
+    const conn = e.detail;
+    if (connectedConnections[conn.id]) {
+      // Reconnect
+      try {
+        await disconnectFromDatabase(conn.id);
+        await connectToDatabase(conn.id);
+        await syncConnectedStatus();
+
+        // Reload data if connection was expanded
+        if (expandedConnections[conn.id]) {
+          expandedConnections[conn.id] = null;
+          await handleConnectionToggle({ detail: conn });
+        }
+      } catch (error) {
+        console.error("Failed to reconnect:", error);
+        alert(`Failed to reconnect: ${error}`);
+      }
+    }
+    contextMenu = null;
+  }
+
+  async function handleConnectionConnect(e) {
+    const conn = e.detail;
+    try {
+      await connectToDatabase(conn.id);
+      await syncConnectedStatus();
+
+      // Auto-expand after connecting
+      if (!expandedConnections[conn.id]) {
+        await handleConnectionToggle({ detail: conn });
+      }
+    } catch (error) {
+      console.error("Failed to connect:", error);
+      alert(`Failed to connect: ${error}`);
+    }
+    contextMenu = null;
+  }
+
+  async function handleConnectionDisconnect(e) {
+    const conn = e.detail;
+    try {
+      await disconnectFromDatabase(conn.id);
+      await syncConnectedStatus();
+
+      // Collapse after disconnecting
+      if (expandedConnections[conn.id]) {
+        expandedConnections[conn.id] = null;
+        expandedConnections = { ...expandedConnections };
+      }
+    } catch (error) {
+      console.error("Failed to disconnect:", error);
+      alert(`Failed to disconnect: ${error}`);
+    }
+    contextMenu = null;
+  }
+
+  function handleConnectionCopy(e) {
+    const conn = e.detail;
+    const connectionInfo = `Name: ${conn.name}\nType: ${conn.db_type}\nHost: ${conn.host}\nPort: ${conn.port}`;
+    navigator.clipboard.writeText(connectionInfo).then(
+      () => console.log("Connection info copied to clipboard"),
+      (err) => console.error("Failed to copy:", err)
+    );
+    contextMenu = null;
+  }
+
+  function handleConnectionRename(e) {
+    const conn = e.detail;
+    renameModalTitle = "Rename Connection";
+    renameModalValue = conn.name;
+    renameModalCallback = async (newName) => {
+      try {
+        const fullConfig = await getConnectionForEdit(conn.id);
+        fullConfig.name = newName;
+        await saveConnection(fullConfig);
+        await loadConnections();
+      } catch (error) {
+        console.error("Failed to rename connection:", error);
+        alert(`Failed to rename connection: ${error}`);
+      }
+    };
+    showRenameModal = true;
+    contextMenu = null;
+  }
+
+  // Database context menu handlers
+  function handleDatabaseSqlEditor(e) {
+    const { database, connection } = e.detail;
+    // Open SQL Editor tab for this database
+    dispatch("openSqlEditorTab", { database, connection });
+    databaseContextMenu = null;
+  }
+
+  function handleDatabaseView(e) {
+    const { database, connection } = e.detail;
+    // Open database view/properties
+    console.log("View database:", database.name);
+    // TODO: Implement database view modal
+    databaseContextMenu = null;
+  }
+
+  function handleDatabaseCopy(e) {
+    const { database, connection } = e.detail;
+    const databaseInfo = `Database: ${database.name}\nConnection: ${connection.name}\nType: ${connection.db_type}`;
+    navigator.clipboard.writeText(databaseInfo).then(
+      () => console.log("Database info copied to clipboard"),
+      (err) => console.error("Failed to copy:", err)
+    );
+    databaseContextMenu = null;
+  }
+
+  function handleDatabasePaste(e) {
+    const { database, connection } = e.detail;
+    // Paste functionality - to be implemented
+    console.log("Paste to database:", database.name);
+    // TODO: Implement paste functionality
+    databaseContextMenu = null;
+  }
+
+  function handleDatabaseCopyAdvancedInfo(e) {
+    const { database, connection } = e.detail;
+    const advancedInfo = `Database Name: ${database.name}\nConnection: ${connection.name}\nConnection ID: ${connection.id}\nDB Type: ${connection.db_type}\nHost: ${connection.host}\nPort: ${connection.port}`;
+    navigator.clipboard.writeText(advancedInfo).then(
+      () => console.log("Advanced database info copied to clipboard"),
+      (err) => console.error("Failed to copy:", err)
+    );
+    databaseContextMenu = null;
+  }
+
+  function handleDatabaseDelete(e) {
+    const { database, connection } = e.detail;
+    if (
+      confirm(
+        `Are you sure you want to delete database "${database.name}"?\n\nWARNING: This will permanently delete all data in this database!`
+      )
+    ) {
+      console.log("Delete database:", database.name);
+      // TODO: Implement database deletion (requires backend command)
+      alert("Database deletion is not yet implemented.");
+    }
+    databaseContextMenu = null;
+  }
+
+  function handleDatabaseRename(e) {
+    const { database, connection } = e.detail;
+    renameModalTitle = "Rename Database";
+    renameModalValue = database.name;
+    renameModalCallback = async (newName) => {
+      console.log("Rename database from", database.name, "to", newName);
+      // TODO: Implement database rename (requires backend command)
+      alert("Database rename is not yet implemented.");
+    };
+    showRenameModal = true;
+    databaseContextMenu = null;
+  }
+
+  async function handleDatabaseRefresh(e) {
+    const { database, connection } = e.detail;
+    // Refresh database data
+    const dbKey = `${connection.id}-${database.name}`;
+    try {
+      // Clear cache
+      if (cachedData[dbKey]) {
+        cachedData[dbKey] = {};
+      }
+
+      // Reload if expanded
+      if (expandedDatabases[dbKey]) {
+        expandedDatabases[dbKey] = null;
+        await handleDatabaseToggle({ detail: database }, connection);
+      }
+    } catch (error) {
+      console.error("Failed to refresh database:", error);
+    }
+    databaseContextMenu = null;
+  }
+
+  // Schema context menu handlers
+  function handleSchemaSqlEditor(e) {
+    const { schema, database, connection } = e.detail;
+    dispatch("openSqlEditorTab", { schema, database, connection });
+    schemaContextMenu = null;
+  }
+
+  function handleSchemaView(e) {
+    const { schema, database, connection } = e.detail;
+    console.log("View schema:", schema);
+    // TODO: Implement schema view modal
+    schemaContextMenu = null;
+  }
+
+  function handleSchemaViewDiagram(e) {
+    const { schema, database, connection } = e.detail;
+    console.log("View diagram for schema:", schema);
+    // TODO: Implement schema diagram view
+    schemaContextMenu = null;
+  }
+
+  function handleSchemaImportData(e) {
+    const { schema, database, connection } = e.detail;
+    console.log("Import data to schema:", schema);
+    // TODO: Implement import data functionality
+    schemaContextMenu = null;
+  }
+
+  function handleSchemaGenerateSql(e) {
+    const { schema, database, connection } = e.detail;
+    console.log("Generate SQL for schema:", schema);
+    // TODO: Implement SQL generation
+    schemaContextMenu = null;
+  }
+
+  function handleSchemaCopy(e) {
+    const { schema, database, connection } = e.detail;
+    const schemaInfo = `Schema: ${schema}\nDatabase: ${database.name}\nConnection: ${connection.name}`;
+    navigator.clipboard.writeText(schemaInfo).then(
+      () => console.log("Schema info copied to clipboard"),
+      (err) => console.error("Failed to copy:", err)
+    );
+    schemaContextMenu = null;
+  }
+
+  function handleSchemaPaste(e) {
+    const { schema, database, connection } = e.detail;
+    console.log("Paste to schema:", schema);
+    // TODO: Implement paste functionality
+    schemaContextMenu = null;
+  }
+
+  function handleSchemaCopyAdvancedInfo(e) {
+    const { schema, database, connection } = e.detail;
+    const advancedInfo = `Schema: ${schema}\nDatabase: ${database.name}\nConnection: ${connection.name}\nConnection ID: ${connection.id}\nDB Type: ${connection.db_type}`;
+    navigator.clipboard.writeText(advancedInfo).then(
+      () => console.log("Advanced schema info copied to clipboard"),
+      (err) => console.error("Failed to copy:", err)
+    );
+    schemaContextMenu = null;
+  }
+
+  function handleSchemaDelete(e) {
+    const { schema, database, connection } = e.detail;
+    if (confirm(`Are you sure you want to delete schema "${schema}"?`)) {
+      console.log("Delete schema:", schema);
+      // TODO: Implement schema deletion
+      alert("Schema deletion is not yet implemented.");
+    }
+    schemaContextMenu = null;
+  }
+
+  function handleSchemaRename(e) {
+    const { schema, database, connection } = e.detail;
+    renameModalTitle = "Rename Schema";
+    renameModalValue = schema;
+    renameModalCallback = async (newName) => {
+      console.log("Rename schema from", schema, "to", newName);
+      // TODO: Implement schema rename
+      alert("Schema rename is not yet implemented.");
+    };
+    showRenameModal = true;
+    schemaContextMenu = null;
+  }
+
+  async function handleSchemaRefresh(e) {
+    const { schema, database, connection } = e.detail;
+    const schemaKey = `${connection.id}-${database.name}-${schema}`;
+    try {
+      // Clear cache for this schema
+      if (cachedData[schemaKey]) {
+        cachedData[schemaKey] = {};
+      }
+
+      // Reload if expanded
+      if (expandedSchemas[schemaKey]) {
+        expandedSchemas[schemaKey] = null;
+        await handleSchemaToggle(
+          { detail: { schemaName: schema } },
+          connection,
+          database
+        );
+      }
+    } catch (error) {
+      console.error("Failed to refresh schema:", error);
+    }
+    schemaContextMenu = null;
+  }
+
+  // Table context menu handlers
+  function handleTableViewTable(e) {
+    const { table, database, connection } = e.detail;
+    console.log("View table structure:", table.name);
+    // TODO: Implement table structure view
+    tableContextMenu = null;
+  }
+
+  function handleTableViewDiagram(e) {
+    const { table, database, connection } = e.detail;
+    console.log("View diagram for table:", table.name);
+    // TODO: Implement table diagram
+    tableContextMenu = null;
+  }
+
+  function handleTableViewData(e) {
+    const { table, database, connection } = e.detail;
+    handleTableDblClick(table, connection, database, table.schema);
+    tableContextMenu = null;
+  }
+
+  function handleTableExportData(e) {
+    const { table, database, connection } = e.detail;
+    console.log("Export data from table:", table.name);
+    // TODO: Implement data export
+    tableContextMenu = null;
+  }
+
+  function handleTableImportData(e) {
+    const { table, database, connection } = e.detail;
+    console.log("Import data to table:", table.name);
+    // TODO: Implement data import
+    tableContextMenu = null;
+  }
+
+  function handleTableReadInConsole(e) {
+    const { table, database, connection } = e.detail;
+    const schema = table.schema ? `${table.schema}.` : "";
+    const query = `SELECT * FROM ${schema}${table.name} LIMIT 100;`;
+    dispatch("openSqlEditorTab", { database, connection, initialQuery: query });
+    tableContextMenu = null;
+  }
+
+  function handleTableCopy(e) {
+    const { table, database, connection } = e.detail;
+    const tableInfo = `Table: ${table.name}\nDatabase: ${database.name}\nConnection: ${connection.name}`;
+    navigator.clipboard.writeText(tableInfo).then(
+      () => console.log("Table info copied to clipboard"),
+      (err) => console.error("Failed to copy:", err)
+    );
+    tableContextMenu = null;
+  }
+
+  function handleTablePaste(e) {
+    const { table, database, connection } = e.detail;
+    console.log("Paste to table:", table.name);
+    // TODO: Implement paste functionality
+    tableContextMenu = null;
+  }
+
+  function handleTableCopyAdvancedInfo(e) {
+    const { table, database, connection } = e.detail;
+    const advancedInfo = `Table: ${table.name}\nSchema: ${table.schema || "N/A"}\nDatabase: ${database.name}\nConnection: ${connection.name}\nConnection ID: ${connection.id}\nDB Type: ${connection.db_type}`;
+    navigator.clipboard.writeText(advancedInfo).then(
+      () => console.log("Advanced table info copied to clipboard"),
+      (err) => console.error("Failed to copy:", err)
+    );
+    tableContextMenu = null;
+  }
+
+  function handleTableDelete(e) {
+    const { table, database, connection } = e.detail;
+    if (
+      confirm(
+        `Are you sure you want to delete table "${table.name}"?\n\nWARNING: This will permanently delete all data in this table!`
+      )
+    ) {
+      console.log("Delete table:", table.name);
+      // TODO: Implement table deletion
+      alert("Table deletion is not yet implemented.");
+    }
+    tableContextMenu = null;
+  }
+
+  function handleTableRename(e) {
+    const { table, database, connection } = e.detail;
+    renameModalTitle = "Rename Table";
+    renameModalValue = table.name;
+    renameModalCallback = async (newName) => {
+      console.log("Rename table from", table.name, "to", newName);
+      // TODO: Implement table rename
+      alert("Table rename is not yet implemented.");
+    };
+    showRenameModal = true;
+    tableContextMenu = null;
+  }
+
+  async function handleTableRefresh(e) {
+    const { table, database, connection } = e.detail;
+    const dbKey = `${connection.id}-${database.name}`;
+    try {
+      // Reload tables for this database
+      const response = await getDatabaseObject(
+        connection.id,
+        "database_info",
+        database.name
+      );
+      if (response && response.tables) {
+        cachedData[dbKey] = {
+          ...cachedData[dbKey],
+          tables: response.tables,
+        };
+        cachedData = { ...cachedData };
+      }
+    } catch (error) {
+      console.error("Failed to refresh table:", error);
+    }
+    tableContextMenu = null;
+  }
+
+  // View context menu handlers
+  function handleViewStructure(e) {
+    const { view, database, connection } = e.detail;
+    console.log("View structure:", view.name);
+    // TODO: Implement view structure modal
+    viewContextMenu = null;
+  }
+
+  function handleViewDefinition(e) {
+    const { view, database, connection } = e.detail;
+    console.log("View definition:", view.name);
+    // TODO: Implement view definition modal
+    viewContextMenu = null;
+  }
+
+  function handleViewData(e) {
+    const { view, database, connection } = e.detail;
+    handleViewDblClick(view, connection, database, view.schema);
+    viewContextMenu = null;
+  }
+
+  function handleViewExportData(e) {
+    const { view, database, connection } = e.detail;
+    console.log("Export data from view:", view.name);
+    // TODO: Implement data export
+    viewContextMenu = null;
+  }
+
+  function handleViewImportData(e) {
+    const { view, database, connection } = e.detail;
+    console.log("Import data to view:", view.name);
+    // TODO: Implement data import
+    viewContextMenu = null;
+  }
+
+  function handleViewReadInConsole(e) {
+    const { view, database, connection } = e.detail;
+    const schema = view.schema ? `${view.schema}.` : "";
+    const query = `SELECT * FROM ${schema}${view.name} LIMIT 100;`;
+    dispatch("openSqlEditorTab", { database, connection, initialQuery: query });
+    viewContextMenu = null;
+  }
+
+  function handleViewCopy(e) {
+    const { view, database, connection } = e.detail;
+    const viewInfo = `View: ${view.name}\nDatabase: ${database.name}\nConnection: ${connection.name}`;
+    navigator.clipboard.writeText(viewInfo).then(
+      () => console.log("View info copied to clipboard"),
+      (err) => console.error("Failed to copy:", err)
+    );
+    viewContextMenu = null;
+  }
+
+  function handleViewCopyAdvancedInfo(e) {
+    const { view, database, connection } = e.detail;
+    const advancedInfo = `View: ${view.name}\nSchema: ${view.schema || "N/A"}\nDatabase: ${database.name}\nConnection: ${connection.name}\nConnection ID: ${connection.id}\nDB Type: ${connection.db_type}`;
+    navigator.clipboard.writeText(advancedInfo).then(
+      () => console.log("Advanced view info copied to clipboard"),
+      (err) => console.error("Failed to copy:", err)
+    );
+    viewContextMenu = null;
+  }
+
+  function handleViewRename(e) {
+    const { view, database, connection } = e.detail;
+    renameModalTitle = "Rename View";
+    renameModalValue = view.name;
+    renameModalCallback = async (newName) => {
+      console.log("Rename view from", view.name, "to", newName);
+      // TODO: Implement view rename
+      alert("View rename is not yet implemented.");
+    };
+    showRenameModal = true;
+    viewContextMenu = null;
+  }
+
+  function handleViewDelete(e) {
+    const { view, database, connection } = e.detail;
+    if (confirm(`Are you sure you want to delete view "${view.name}"?`)) {
+      console.log("Delete view:", view.name);
+      // TODO: Implement view deletion
+      alert("View deletion is not yet implemented.");
+    }
+    viewContextMenu = null;
+  }
+
+  async function handleViewRefresh(e) {
+    const { view, database, connection } = e.detail;
+    const dbKey = `${connection.id}-${database.name}`;
+    try {
+      // Reload views for this database
+      const response = await getDatabaseObject(
+        connection.id,
+        "database_info",
+        database.name
+      );
+      if (response && response.views) {
+        cachedData[dbKey] = {
+          ...cachedData[dbKey],
+          views: response.views,
+        };
+        cachedData = { ...cachedData };
+      }
+    } catch (error) {
+      console.error("Failed to refresh view:", error);
+    }
+    viewContextMenu = null;
   }
 
   // Connection actions
@@ -1146,10 +1694,13 @@
       y={contextMenu.y}
       connection={contextMenu.connection}
       isConnected={connectedConnections[contextMenu.connection.id]}
-      on:action={(e) => {
-        // Handle connection actions
-        contextMenu = null;
-      }}
+      on:edit={handleConnectionEdit}
+      on:delete={handleConnectionDelete}
+      on:refresh={handleConnectionRefresh}
+      on:connect={handleConnectionConnect}
+      on:disconnect={handleConnectionDisconnect}
+      on:copy={handleConnectionCopy}
+      on:rename={handleConnectionRename}
     />
   {/if}
 
@@ -1159,9 +1710,14 @@
       y={databaseContextMenu.y}
       database={databaseContextMenu.database}
       connection={databaseContextMenu.connection}
-      on:action={(e) => {
-        databaseContextMenu = null;
-      }}
+      on:sqlEditor={handleDatabaseSqlEditor}
+      on:viewDatabase={handleDatabaseView}
+      on:copy={handleDatabaseCopy}
+      on:paste={handleDatabasePaste}
+      on:copyAdvancedInfo={handleDatabaseCopyAdvancedInfo}
+      on:delete={handleDatabaseDelete}
+      on:rename={handleDatabaseRename}
+      on:refresh={handleDatabaseRefresh}
     />
   {/if}
 
@@ -1172,9 +1728,17 @@
       schema={schemaContextMenu.schema}
       database={schemaContextMenu.database}
       connection={schemaContextMenu.connection}
-      on:action={(e) => {
-        schemaContextMenu = null;
-      }}
+      on:sqlEditor={handleSchemaSqlEditor}
+      on:viewSchema={handleSchemaView}
+      on:viewDiagram={handleSchemaViewDiagram}
+      on:importData={handleSchemaImportData}
+      on:generateSql={handleSchemaGenerateSql}
+      on:copy={handleSchemaCopy}
+      on:paste={handleSchemaPaste}
+      on:copyAdvancedInfo={handleSchemaCopyAdvancedInfo}
+      on:delete={handleSchemaDelete}
+      on:rename={handleSchemaRename}
+      on:refresh={handleSchemaRefresh}
     />
   {/if}
 
@@ -1185,9 +1749,18 @@
       table={tableContextMenu.table}
       database={tableContextMenu.database}
       connection={tableContextMenu.connection}
-      on:action={(e) => {
-        tableContextMenu = null;
-      }}
+      on:viewTable={handleTableViewTable}
+      on:viewDiagram={handleTableViewDiagram}
+      on:viewData={handleTableViewData}
+      on:exportData={handleTableExportData}
+      on:importData={handleTableImportData}
+      on:readInConsole={handleTableReadInConsole}
+      on:copy={handleTableCopy}
+      on:paste={handleTablePaste}
+      on:copyAdvancedInfo={handleTableCopyAdvancedInfo}
+      on:delete={handleTableDelete}
+      on:rename={handleTableRename}
+      on:refresh={handleTableRefresh}
     />
   {/if}
 
@@ -1198,9 +1771,17 @@
       view={viewContextMenu.view}
       database={viewContextMenu.database}
       connection={viewContextMenu.connection}
-      on:action={(e) => {
-        viewContextMenu = null;
-      }}
+      on:viewStructure={handleViewStructure}
+      on:viewDefinition={handleViewDefinition}
+      on:viewData={handleViewData}
+      on:exportData={handleViewExportData}
+      on:importData={handleViewImportData}
+      on:readInConsole={handleViewReadInConsole}
+      on:copy={handleViewCopy}
+      on:copyAdvancedInfo={handleViewCopyAdvancedInfo}
+      on:rename={handleViewRename}
+      on:delete={handleViewDelete}
+      on:refresh={handleViewRefresh}
     />
   {/if}
 

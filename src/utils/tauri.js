@@ -36,8 +36,8 @@ export async function deleteConnection(id) {
   return await invoke("delete_connection", { id });
 }
 
-export async function connectToDatabase(config) {
-  return await invoke("connect_to_database", { config });
+export async function connectToDatabase(connectionId) {
+  return await invoke("connect_to_database", { connectionId });
 }
 
 export async function disconnectFromDatabase(connectionId) {

@@ -144,9 +144,21 @@ pub async fn delete_connection(
 
 #[tauri::command]
 pub async fn connect_to_database(
-    config: ConnectionConfig,
+    connection_id: String,
     state: State<'_, ConnectionStore>,
 ) -> Result<(), String> {
+    tracing::info!("🔌 [COMMAND] Connecting to database with ID: '{}'", connection_id);
+    
+    // Get connection config from storage
+    let config = {
+        let connections = state.connections.lock().unwrap();
+        connections
+            .iter()
+            .find(|c| c.id == connection_id)
+            .ok_or_else(|| format!("Connection '{}' not found", connection_id))?
+            .clone()
+    };
+    
     tracing::info!("🔌 [COMMAND] Connecting to database: '{}'", config.name);
     let result = state.pool.connect(config.clone()).await;
 

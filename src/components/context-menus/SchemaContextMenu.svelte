@@ -1,7 +1,6 @@
 <script>
-  import { createEventDispatcher, onMount } from "svelte";
-  import { fly } from "svelte/transition";
-  import { quintOut } from "svelte/easing";
+  import BaseContextMenu from "./base/BaseContextMenu.svelte";
+  import { createEventDispatcher } from "svelte";
 
   export let x = 0;
   export let y = 0;
@@ -11,275 +10,137 @@
 
   const dispatch = createEventDispatcher();
 
-  let menuElement;
-  let adjustedX = x;
-  let adjustedY = y;
+  const menuItems = [
+    {
+      type: "item",
+      id: "sql-editor",
+      label: "SQL Editor",
+      icon: "fas fa-terminal",
+      shortcut: "F3",
+      action: "sqlEditor",
+    },
+    {
+      type: "item",
+      id: "create",
+      label: "Create (TODO)",
+      icon: "fas fa-plus",
+      disabled: true,
+      action: "create",
+    },
+    { type: "divider" },
+    {
+      type: "item",
+      id: "view-schema",
+      label: "View Schema",
+      icon: "fas fa-eye",
+      shortcut: "F4",
+      action: "viewSchema",
+    },
+    {
+      type: "item",
+      id: "filter",
+      label: "Filter (TODO)",
+      icon: "fas fa-filter",
+      disabled: true,
+      action: "filter",
+    },
+    {
+      type: "item",
+      id: "view-diagram",
+      label: "View Diagram",
+      icon: "fas fa-project-diagram",
+      shortcut: "Ctrl+Shift+Enter",
+      action: "viewDiagram",
+    },
+    { type: "divider" },
+    {
+      type: "item",
+      id: "compare-migrate",
+      label: "Compare/Migrate (TODO)",
+      icon: "fas fa-code-compare",
+      disabled: true,
+      action: "compareMigrate",
+    },
+    {
+      type: "item",
+      id: "import-data",
+      label: "Import Data",
+      icon: "fas fa-file-import",
+      action: "importData",
+    },
+    {
+      type: "item",
+      id: "tools",
+      label: "Tools (TODO)",
+      icon: "fas fa-wrench",
+      disabled: true,
+      action: "tools",
+    },
+    {
+      type: "item",
+      id: "generate-sql",
+      label: "Generate SQL",
+      icon: "fas fa-code",
+      action: "generateSql",
+    },
+    { type: "divider" },
+    {
+      type: "item",
+      id: "copy",
+      label: "Copy",
+      icon: "fas fa-copy",
+      shortcut: "Ctrl+C",
+      action: "copy",
+    },
+    {
+      type: "item",
+      id: "paste",
+      label: "Paste",
+      icon: "fas fa-paste",
+      shortcut: "Ctrl+V",
+      action: "paste",
+    },
+    {
+      type: "item",
+      id: "copy-advanced",
+      label: "Copy Advanced Info",
+      icon: "fas fa-info-circle",
+      shortcut: "Ctrl+Shift+C",
+      action: "copyAdvancedInfo",
+    },
+    { type: "divider" },
+    {
+      type: "item",
+      id: "delete",
+      label: "Delete",
+      icon: "fas fa-trash",
+      shortcut: "Delete",
+      danger: true,
+      action: "delete",
+    },
+    {
+      type: "item",
+      id: "rename",
+      label: "Rename",
+      icon: "fas fa-edit",
+      shortcut: "F2",
+      action: "rename",
+    },
+    { type: "divider" },
+    {
+      type: "item",
+      id: "refresh",
+      label: "Refresh",
+      icon: "fas fa-sync",
+      shortcut: "F5",
+      action: "refresh",
+    },
+  ];
 
-  onMount(() => {
-    // Center menu vertically relative to click position
-    if (menuElement) {
-      const rect = menuElement.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      // Center vertically (same distance top and bottom)
-      adjustedY = y - rect.height / 2;
-
-      // Ensure menu stays within viewport vertically
-      // Reserve space at top for toolbar/header (60px) and bottom for status bar (30px)
-      const topOffset = 60;
-      const bottomOffset = 30;
-      if (adjustedY < topOffset) {
-        adjustedY = topOffset;
-      } else if (adjustedY + rect.height > viewportHeight - bottomOffset) {
-        adjustedY = viewportHeight - rect.height - bottomOffset;
-      }
-
-      // Adjust horizontally if needed
-      adjustedX = x;
-      if (rect.right > viewportWidth) {
-        adjustedX = x - rect.width;
-      }
-      if (adjustedX < 10) {
-        adjustedX = 10;
-      }
-    }
-  });
-
-  function handleAction(type) {
-    dispatch(type, { schema, database, connection });
+  function handleAction(event) {
+    const { action } = event.detail;
+    dispatch(action, { schema, database, connection });
   }
 </script>
 
-<div
-  bind:this={menuElement}
-  class="context-menu"
-  style="left: {adjustedX}px; top: {adjustedY}px;"
-  role="menu"
-  tabindex="-1"
-  on:click|stopPropagation
-  on:keydown|stopPropagation
-  in:fly={{ y: -10, duration: 200, easing: quintOut }}
->
-  <div class="context-menu-section">
-    <button
-      class="context-menu-item"
-      on:click={() => handleAction("sqlEditor")}
-    >
-      <i class="fas fa-terminal"></i>
-      <span>SQL Editor</span>
-      <kbd>F3</kbd>
-    </button>
-
-    <button class="context-menu-item context-menu-item-with-arrow" disabled>
-      <i class="fas fa-plus"></i>
-      <span>Create (TODO)</span>
-      <i class="fas fa-chevron-right ms-auto"></i>
-    </button>
-  </div>
-
-  <div class="context-menu-divider"></div>
-
-  <div class="context-menu-section">
-    <button
-      class="context-menu-item"
-      on:click={() => handleAction("viewSchema")}
-    >
-      <i class="fas fa-eye"></i>
-      <span>View Schema</span>
-      <kbd>F4</kbd>
-    </button>
-
-    <button class="context-menu-item context-menu-item-with-arrow" disabled>
-      <i class="fas fa-filter"></i>
-      <span>Filter (TODO)</span>
-      <i class="fas fa-chevron-right ms-auto"></i>
-    </button>
-
-    <button
-      class="context-menu-item"
-      on:click={() => handleAction("viewDiagram")}
-    >
-      <i class="fas fa-project-diagram"></i>
-      <span>View Diagram</span>
-      <kbd>Ctrl+Shift+Enter</kbd>
-    </button>
-  </div>
-
-  <div class="context-menu-divider"></div>
-
-  <div class="context-menu-section">
-    <button class="context-menu-item context-menu-item-with-arrow" disabled>
-      <i class="fas fa-code-compare"></i>
-      <span>Compare/Migrate (TODO)</span>
-      <i class="fas fa-chevron-right ms-auto"></i>
-    </button>
-
-    <button
-      class="context-menu-item"
-      on:click={() => handleAction("importData")}
-    >
-      <i class="fas fa-file-import"></i>
-      <span>Import Data</span>
-    </button>
-
-    <button class="context-menu-item context-menu-item-with-arrow" disabled>
-      <i class="fas fa-wrench"></i>
-      <span>Tools (TODO)</span>
-      <i class="fas fa-chevron-right ms-auto"></i>
-    </button>
-
-    <button
-      class="context-menu-item"
-      on:click={() => handleAction("generateSql")}
-    >
-      <i class="fas fa-code"></i>
-      <span>Generate SQL</span>
-      <i class="fas fa-chevron-right ms-auto"></i>
-    </button>
-  </div>
-
-  <div class="context-menu-divider"></div>
-
-  <div class="context-menu-section">
-    <button class="context-menu-item" on:click={() => handleAction("copy")}>
-      <i class="fas fa-copy"></i>
-      <span>Copy</span>
-      <kbd>Ctrl+C</kbd>
-    </button>
-
-    <button class="context-menu-item" on:click={() => handleAction("paste")}>
-      <i class="fas fa-paste"></i>
-      <span>Paste</span>
-      <kbd>Ctrl+V</kbd>
-    </button>
-
-    <button
-      class="context-menu-item"
-      on:click={() => handleAction("copyAdvancedInfo")}
-    >
-      <i class="fas fa-info-circle"></i>
-      <span>Copy Advanced Info</span>
-      <kbd>Ctrl+Shift+C</kbd>
-    </button>
-  </div>
-
-  <div class="context-menu-divider"></div>
-
-  <div class="context-menu-section">
-    <button
-      class="context-menu-item text-danger"
-      on:click={() => handleAction("delete")}
-    >
-      <i class="fas fa-trash"></i>
-      <span>Delete</span>
-      <kbd>Delete</kbd>
-    </button>
-
-    <button class="context-menu-item" on:click={() => handleAction("rename")}>
-      <i class="fas fa-edit"></i>
-      <span>Rename</span>
-      <kbd>F2</kbd>
-    </button>
-  </div>
-
-  <div class="context-menu-divider"></div>
-
-  <div class="context-menu-section">
-    <button class="context-menu-item" on:click={() => handleAction("refresh")}>
-      <i class="fas fa-sync"></i>
-      <span>Refresh</span>
-      <kbd>F5</kbd>
-    </button>
-  </div>
-</div>
-
-<style>
-  .context-menu {
-    position: fixed;
-    background: var(--bg-dropdown);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    box-shadow: var(--shadow-dropdown);
-    z-index: 10000;
-    min-width: 240px;
-    padding: 4px;
-    font-size: 12px;
-  }
-
-  .context-menu-section {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .context-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    background: transparent;
-    border: none;
-    color: var(--text-primary);
-    cursor: pointer;
-    text-align: left;
-    border-radius: 4px;
-    transition: background-color 0.15s;
-    width: 100%;
-    white-space: nowrap;
-  }
-
-  .context-menu-item:hover:not(:disabled) {
-    background: var(--hover-bg);
-  }
-
-  .context-menu-item:disabled {
-    color: var(--text-muted);
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-
-  .context-menu-item.text-danger {
-    color: var(--accent-red);
-  }
-
-  .context-menu-item.text-danger:hover:not(:disabled) {
-    background: var(--accent-red-light);
-  }
-
-  .context-menu-item i:first-child {
-    width: 16px;
-    font-size: 11px;
-    text-align: center;
-  }
-
-  .context-menu-item span {
-    flex: 1;
-  }
-
-  .context-menu-item kbd {
-    font-size: 10px;
-    padding: 2px 6px;
-    background: var(--bg-tertiary);
-    border-radius: 3px;
-    color: var(--text-muted);
-    font-family: monospace;
-    margin-left: auto;
-  }
-
-  .context-menu-item-with-arrow {
-    padding-right: 8px;
-  }
-
-  .context-menu-item-with-arrow i.fa-chevron-right {
-    font-size: 10px;
-    color: var(--text-muted);
-    margin-left: auto;
-  }
-
-  .context-menu-divider {
-    height: 1px;
-    background: var(--border-light);
-    margin: 4px 0;
-  }
-</style>
+<BaseContextMenu {x} {y} items={menuItems} on:action={handleAction} on:close />

@@ -1,13 +1,12 @@
 <script>
   import { onMount } from "svelte";
-  import { createEventDispatcher } from "svelte";
+  import BaseModal from "./base/BaseModal.svelte";
+  import { focusElement } from "../../composables/useModalFocus";
   import { queryListStore } from "../../stores/queryList";
   import {
     loadQueriesFromFolder,
     deleteQueryFile,
   } from "../../services/queryFileService";
-
-  const dispatch = createEventDispatcher();
 
   export let show = false;
 
@@ -48,13 +47,8 @@
     );
   });
 
-  function close() {
-    dispatch("close");
-  }
-
   function openQuery(query) {
-    dispatch("open", query);
-    close();
+    show = false;
   }
 
   async function deleteQuery(query, event) {
@@ -87,154 +81,120 @@
     const date = new Date(dateString);
     return date.toLocaleDateString() + " " + date.toLocaleTimeString();
   }
-
-  function handleKeydown(event) {
-    if (event.key === "Escape") {
-      close();
-    }
-  }
-
-  function focusSearch(node) {
-    node.focus();
-  }
 </script>
 
-{#if show}
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="modal-backdrop show" on:click={close}></div>
-  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div
-    class="modal d-block"
-    tabindex="-1"
-    on:keydown={handleKeydown}
-    role="dialog"
-  >
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div
-      class="modal-dialog modal-dialog-centered modal-lg"
-      on:click|stopPropagation
-    >
-      <div class="modal-content">
-        <div class="modal-header bg-primary text-white">
-          <h5 class="modal-title">
-            <i class="fas fa-list"></i> Saved Queries
-          </h5>
-          <button
-            type="button"
-            class="btn-close btn-close-white"
-            on:click={close}
-          ></button>
-        </div>
-
-        <div class="modal-body">
-          <div class="search-box mb-3">
-            <i class="fas fa-search search-icon"></i>
-            <input
-              type="text"
-              class="form-control"
-              placeholder="Search queries by title, content, or description..."
-              bind:value={searchQuery}
-              use:focusSearch
-            />
-          </div>
-
-          {#if loading}
-            <div class="loading-state">
-              <i class="fas fa-spinner fa-spin"></i>
-              <p>Loading queries...</p>
-            </div>
-          {:else if filteredQueries.length > 0}
-            <div class="query-list">
-              {#each filteredQueries as query (query.id)}
-                <div
-                  class="query-item"
-                  on:click={() => openQuery(query)}
-                  on:keydown={(e) => e.key === "Enter" && openQuery(query)}
-                  role="button"
-                  tabindex="0"
-                >
-                  <div class="query-header">
-                    <div class="query-title">
-                      <i class="fas fa-file-code"></i>
-                      {query.title}
-                      {#if query.isFile || query.is_file}
-                        <span class="badge bg-secondary ms-2">File</span>
-                      {/if}
-                    </div>
-                    <button
-                      class="btn btn-sm btn-danger btn-delete"
-                      on:click={(e) => deleteQuery(query, e)}
-                      title="Delete query"
-                    >
-                      <i class="fas fa-trash"></i>
-                    </button>
-                  </div>
-                  {#if query.description}
-                    <div class="query-description">{query.description}</div>
-                  {/if}
-                  <div class="query-preview">
-                    <code
-                      >{query.content.substring(0, 150)}{query.content.length >
-                      150
-                        ? "..."
-                        : ""}</code
-                    >
-                  </div>
-                  <div class="query-footer">
-                    {#if query.createdAt || query.created_at}
-                      <span class="query-date">
-                        <i class="fas fa-clock"></i>
-                        Created: {formatDate(
-                          query.createdAt || query.created_at
-                        )}
-                      </span>
-                    {/if}
-                    {#if query.lastModified || query.last_modified}
-                      <span class="query-date">
-                        <i class="fas fa-edit"></i>
-                        Modified: {formatDate(
-                          query.lastModified || query.last_modified
-                        )}
-                      </span>
-                    {:else if query.lastUsed}
-                      <span class="query-date">
-                        <i class="fas fa-history"></i>
-                        Last used: {formatDate(query.lastUsed)}
-                      </span>
-                    {/if}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {:else if searchQuery}
-            <div class="empty-state">
-              <i class="fas fa-search"></i>
-              <p>No queries found matching "{searchQuery}"</p>
-            </div>
-          {:else}
-            <div class="empty-state">
-              <i class="fas fa-inbox"></i>
-              <p>No saved queries yet</p>
-              <small>Save queries from the Query List panel</small>
-            </div>
-          {/if}
-        </div>
-
-        <div class="modal-footer">
-          <div class="query-count">
-            {filteredQueries.length}
-            {filteredQueries.length === 1 ? "query" : "queries"}
-          </div>
-          <button type="button" class="btn btn-secondary" on:click={close}>
-            <i class="fas fa-times"></i> Close
-          </button>
-        </div>
-      </div>
-    </div>
+<BaseModal {show} size="lg" showCloseButton on:close>
+  <div slot="header" class="bg-primary text-white">
+    <h5 class="modal-title">
+      <i class="fas fa-list"></i> Saved Queries
+    </h5>
   </div>
-{/if}
+
+  <div slot="body">
+    <div class="search-box mb-3">
+      <i class="fas fa-search search-icon"></i>
+      <input
+        type="text"
+        class="form-control"
+        placeholder="Search queries by title, content, or description..."
+        bind:value={searchQuery}
+        use:focusElement
+      />
+    </div>
+
+    {#if loading}
+      <div class="loading-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>Loading queries...</p>
+      </div>
+    {:else if filteredQueries.length > 0}
+      <div class="query-list">
+        {#each filteredQueries as query (query.id)}
+          <div
+            class="query-item"
+            on:click={() => openQuery(query)}
+            on:keydown={(e) => e.key === "Enter" && openQuery(query)}
+            role="button"
+            tabindex="0"
+          >
+            <div class="query-header">
+              <div class="query-title">
+                <i class="fas fa-file-code"></i>
+                {query.title}
+                {#if query.isFile || query.is_file}
+                  <span class="badge bg-secondary ms-2">File</span>
+                {/if}
+              </div>
+              <button
+                class="btn btn-sm btn-danger btn-delete"
+                on:click={(e) => deleteQuery(query, e)}
+                title="Delete query"
+              >
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+            {#if query.description}
+              <div class="query-description">{query.description}</div>
+            {/if}
+            <div class="query-preview">
+              <code
+                >{query.content.substring(0, 150)}{query.content.length > 150
+                  ? "..."
+                  : ""}</code
+              >
+            </div>
+            <div class="query-footer">
+              {#if query.createdAt || query.created_at}
+                <span class="query-date">
+                  <i class="fas fa-clock"></i>
+                  Created: {formatDate(query.createdAt || query.created_at)}
+                </span>
+              {/if}
+              {#if query.lastModified || query.last_modified}
+                <span class="query-date">
+                  <i class="fas fa-edit"></i>
+                  Modified: {formatDate(
+                    query.lastModified || query.last_modified
+                  )}
+                </span>
+              {:else if query.lastUsed}
+                <span class="query-date">
+                  <i class="fas fa-history"></i>
+                  Last used: {formatDate(query.lastUsed)}
+                </span>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    {:else if searchQuery}
+      <div class="empty-state">
+        <i class="fas fa-search"></i>
+        <p>No queries found matching "{searchQuery}"</p>
+      </div>
+    {:else}
+      <div class="empty-state">
+        <i class="fas fa-inbox"></i>
+        <p>No saved queries yet</p>
+        <small>Save queries from the Query List panel</small>
+      </div>
+    {/if}
+  </div>
+
+  <div slot="footer">
+    <div class="query-count">
+      {filteredQueries.length}
+      {filteredQueries.length === 1 ? "query" : "queries"}
+    </div>
+    <button
+      type="button"
+      class="btn btn-secondary"
+      on:click={() => (show = false)}
+    >
+      <i class="fas fa-times"></i> Close
+    </button>
+  </div>
+</BaseModal>
 
 <style>
   .search-box {
@@ -342,63 +302,10 @@
     gap: 4px;
   }
 
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
-    color: var(--text-muted);
-    text-align: center;
-  }
-
-  .empty-state i {
-    font-size: 48px;
-    margin-bottom: 16px;
-    opacity: 0.5;
-  }
-
-  .empty-state p {
-    margin: 0;
-    font-size: 16px;
-    color: var(--text-secondary);
-  }
-
-  .empty-state small {
-    margin-top: 8px;
-    font-size: 13px;
-  }
-
-  .loading-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
-    color: var(--text-muted);
-    text-align: center;
-  }
-
-  .loading-state i {
-    font-size: 48px;
-    margin-bottom: 16px;
-    color: var(--accent-blue);
-  }
-
-  .loading-state p {
-    margin: 0;
-    font-size: 16px;
-    color: var(--text-secondary);
-  }
-
   .query-count {
     flex: 1;
     text-align: left;
     color: var(--text-secondary);
     font-size: 13px;
-  }
-
-  .modal-lg {
-    max-width: 800px;
   }
 </style>
