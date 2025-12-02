@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from "svelte";
-  import Sidebar from "../navigation/Sidebar.svelte";
+  import Sidebar2 from "../sidebar2/Sidebar2.svelte";
 
   const dispatch = createEventDispatcher();
 
@@ -35,9 +35,10 @@
     class="sidebar-container border-end"
     style="width: {width}px; flex-shrink: 0; position: relative;"
   >
-    <Sidebar
+    <Sidebar2
       on:openTableTab={forwardEvent}
       on:openProcedureTab={forwardEvent}
+      on:openSqlEditor={forwardEvent}
     />
     <button
       class="resize-handle"
