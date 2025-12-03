@@ -1,7 +1,6 @@
 import { fileService, showMessage, showError } from "../services/fileService";
 import { get } from "svelte/store";
 import {
-  executeQuery,
   getNextQueryNumber,
   loadTableData,
   disconnectFromDatabase,

@@ -8,11 +8,10 @@
   import { queryHistoryStore } from "../../stores/queryHistory";
   import { getDefaultQuery } from "../../utils/defaultQueries";
   import { getMonacoTheme } from "../../services/themeService";
-  import { formatSql } from "../../utils/sqlFormatter";
+  import { formatSql, stripSqlComments } from "../../utils/sqlFormatter";
   import {
-    executeQuery,
-    getDatabases,
-    getTables,
+    loadTableData,
+    getDatabaseObject,
     getPropertiesObject,
     saveAutoQuery,
     loadAutoQuery,
@@ -31,8 +30,6 @@
   let selectedConn = null;
   let selectedDb = null;
   let loadingDatabases = false;
-  let tables = [];
-  let schema = {};
   let currentTheme = null;
   let loadedDatabases = {}; // Cache for database tables
   let tableAliasMap = new Map(); // Track used aliases to prevent duplicates
@@ -68,7 +65,8 @@
 
     loadingDatabases = true;
     try {
-      databases = await getDatabases(selectedConn);
+      const result = await getDatabaseObject(selectedConn.id, "database_list");
+      databases = result.databases || [];
       if (databases.length > 0 && !selectedDb) {
         selectedDb = databases[0].name;
         selectedDatabase.set(selectedDb);
@@ -78,46 +76,6 @@
       databases = [];
     }
     loadingDatabases = false;
-  }
-
-  async function loadTablesAndSchema() {
-    if (!selectedConn || !selectedDb) return;
-
-    try {
-      tables = await getTables(selectedConn, selectedDb);
-
-      // Build schema for autocomplete
-      const newSchema = {};
-      for (const table of tables) {
-        try {
-          const tableSchema = await getPropertiesObject(
-            selectedConn.id,
-            "schema",
-            selectedDb,
-            table.name
-          );
-          newSchema[table.name] = tableSchema.columns.map((col) => col.name);
-        } catch (error) {
-          console.error(
-            `Failed to load schema for table ${table.name}:`,
-            error
-          );
-        }
-      }
-      schema = newSchema;
-
-      // Cache tables for selected database
-      if (selectedDb) {
-        loadedDatabases[selectedDb] = { tables, schema: newSchema };
-      }
-
-      // Update editor with new schema
-      if (editorView) {
-        updateEditorExtensions();
-      }
-    } catch (error) {
-      console.error("Failed to load tables:", error);
-    }
   }
 
   // Helper to generate table alias
@@ -157,7 +115,12 @@
     }
 
     try {
-      const dbTables = await getTables(selectedConn, dbName);
+      const result = await getDatabaseObject(
+        selectedConn.id,
+        "database_info",
+        dbName
+      );
+      const dbTables = result.tables || [];
 
       // Only store table names, don't load schema yet
       loadedDatabases[dbName] = { tables: dbTables, schema: {} };
@@ -207,14 +170,7 @@
   function createCompletionProvider() {
     return {
       triggerCharacters: [" ", ".", "\n"],
-      provideCompletionItems: async (model, position, context, token) => {
-        const textUntilPosition = model.getValueInRange({
-          startLineNumber: 1,
-          startColumn: 1,
-          endLineNumber: position.lineNumber,
-          endColumn: position.column,
-        });
-
+      provideCompletionItems: async (model, position) => {
         const line = model.getLineContent(position.lineNumber);
         const textBefore = line.slice(0, position.column - 1);
 
@@ -439,7 +395,6 @@
         ];
 
         // Get the word range for completion
-        const word = model.getWordUntilPosition(position);
 
         // Add SQL keywords
         suggestions.push(
@@ -652,43 +607,6 @@
     }
   });
 
-  function addLimitClause(query, dbType) {
-    let trimmedQuery = query.trim();
-    const upperQuery = trimmedQuery.toUpperCase();
-
-    // Remove trailing semicolon if present
-    if (trimmedQuery.endsWith(";")) {
-      trimmedQuery = trimmedQuery.slice(0, -1).trim();
-    }
-
-    // Only add limit to SELECT queries (check if contains SELECT, not just starts with)
-    // This handles cases with comments at the beginning
-    if (!upperQuery.includes("SELECT")) {
-      return trimmedQuery;
-    }
-
-    // Check if query already has a limit/top clause
-    if (
-      upperQuery.includes("LIMIT") ||
-      upperQuery.includes("TOP ") ||
-      upperQuery.includes("ROWNUM") ||
-      upperQuery.includes("FETCH")
-    ) {
-      return trimmedQuery;
-    }
-
-    // Add appropriate limit clause based on database type
-    const dbTypeUpper = (dbType || "").toUpperCase();
-
-    if (dbTypeUpper.includes(DatabaseType.MSSQL.toUpperCase())) {
-      // SQL Server: insert TOP before SELECT
-      return trimmedQuery.replace(/SELECT\s+/i, "SELECT TOP 200 ");
-    } else {
-      // MySQL, PostgreSQL, SQLite, etc.: append LIMIT
-      return trimmedQuery + " LIMIT 200";
-    }
-  }
-
   async function runQuery() {
     if (!selectedConn || !selectedDb) {
       alert("Please select connection and database first");
@@ -771,13 +689,6 @@
         }
       }
     }, 2000);
-  }
-
-  function clearEditor() {
-    if (editor) {
-      editor.setValue("");
-      tableAliasMap.clear();
-    }
   }
 
   function handleEditorContextMenu(event) {
@@ -914,7 +825,13 @@
       }
     }
 
-    executeQueryText(text, false);
+    let cleanedText = stripSqlComments(text, selectedConn.db_type);
+    if (!cleanedText) {
+      alert("Query is empty after removing comments");
+      return;
+    }
+
+    executeQueryText(cleanedText, false);
   }
 
   function executeSelectedInNewTab() {
@@ -945,7 +862,13 @@
       }
     }
 
-    executeQueryText(text, true);
+    let cleanedText = stripSqlComments(text, selectedConn.db_type);
+    if (!cleanedText) {
+      alert("Query is empty after removing comments");
+      return;
+    }
+
+    executeQueryText(cleanedText, true);
   }
 
   async function executeQueryText(query, createNewTab = false) {
@@ -959,10 +882,19 @@
     );
 
     try {
-      const queryWithLimit = addLimitClause(query, selectedConn.db_type);
+      const cleanedQuery = query.replace(/;+\s*$/, ""); // Remove trailing semicolons
       const startTime = Date.now();
 
-      const result = await executeQuery(selectedConn, queryWithLimit);
+      // Use loadTableData with subquery wrapper
+      const result = await loadTableData(
+        selectedConn.id,
+        selectedConn.db_type,
+        `RustDBGridQuery(${cleanedQuery})`,
+        {
+          limit: 200,
+          offset: 0,
+        }
+      );
 
       const executionTime = Date.now() - startTime;
 
@@ -1036,7 +968,7 @@
       return;
     }
 
-    const formatted = formatSql(text, false);
+    const formatted = formatSql(text);
 
     const range = new monaco.Range(
       selection.startLineNumber,
@@ -1049,7 +981,7 @@
 
   function formatAllText() {
     const text = editor.getValue();
-    const formatted = formatSql(text, true);
+    const formatted = formatSql(text);
     editor.setValue(formatted);
   }
 

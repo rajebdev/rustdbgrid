@@ -1,8 +1,7 @@
 <script>
-  import { onMount, afterUpdate, tick } from "svelte";
+  import { onMount, afterUpdate } from "svelte";
   import { tabDataStore } from "../../../stores/tabData";
-  import { settings } from "../../../stores/settings";
-  import { executeQuery } from "../../../utils/tauri";
+  import { loadTableData } from "../../../utils/tauri";
   import { DatabaseType } from "../../../utils/databaseTypes";
 
   // Views
@@ -25,34 +24,22 @@
     reloadDataWithFilters,
     loadMoreData,
     loadFilterValuesFromServer,
-    getDistinctValues as getDistinctValuesService,
   } from "../../../services/dataGridService";
   import {
     startEdit,
     trackEditedRow,
     cancelAllEdits as cancelAllEditsService,
     generateUpdateSql,
-    hasEdits,
   } from "../../../services/gridEditService";
   import {
-    applyColumnFilter,
-    clearColumnFilter,
-    clearAllFilters,
     openFilterModal as openFilterModalService,
-    handleFilterKeydown,
     getDistinctValues,
   } from "../../../services/gridFilterService";
   import { handleSort } from "../../../services/gridSortService";
 
   // Utils
   import {
-    formatValue,
-    isNumericColumn,
-    stringifyRowWithOrder,
-  } from "../../../utils/dataFormatters";
-  import {
     syncColumnWidths,
-    handleWheel as handleWheelUtil,
     isScrolledNearBottom,
     isScrollingDown,
     shouldLoadMore,
@@ -380,23 +367,6 @@
     }
   }
 
-  function handleGridWheel(event) {
-    const scrollStep = $settings.grid_scroll_step || 0;
-    if (!scrollStep || scrollStep <= 0) return;
-
-    event.preventDefault();
-
-    const direction = event.deltaY > 0 ? 1 : -1;
-    const scrollAmount = direction * scrollStep;
-
-    if (tableWrapper) {
-      tableWrapper.scrollTop += scrollAmount;
-      if (rowNumbersWrapper) {
-        rowNumbersWrapper.scrollTop = tableWrapper.scrollTop;
-      }
-    }
-  }
-
   // Sorting
   function handleSortClick(column) {
     const result = handleSort(
@@ -646,7 +616,13 @@
 
     try {
       for (const update of pendingUpdates) {
-        await executeQuery(connection, update.sql);
+        // Execute UPDATE/DELETE/INSERT statements using loadTableData with subquery
+        await loadTableData(
+          connection.id,
+          connection.db_type,
+          `RustDBGridQuery(${update.sql})`,
+          { limit: 1, offset: 0 }
+        );
       }
 
       editedRows.clear();
@@ -717,7 +693,6 @@
         onFilter={handleFilterClick}
         onCellDoubleClick={handleCellDoubleClick}
         onScroll={handleGridScroll}
-        onWheel={handleGridWheel}
       />
     {:else}
       <JsonView

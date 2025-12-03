@@ -52,58 +52,6 @@ export async function getConnectedDatabases() {
   return await invoke("get_connected_databases");
 }
 
-export async function executeQuery(config, query) {
-  return await invoke("execute_query", { config, query });
-}
-
-export async function executeQueryWithFilters(
-  config,
-  baseQuery,
-  filters = null,
-  sortColumn = null,
-  sortDirection = null,
-  limit = null,
-  offset = null
-) {
-  if (!baseQuery || baseQuery.trim() === "") {
-    throw new Error("baseQuery is required and cannot be empty");
-  }
-
-  if (!config) {
-    throw new Error("config is required");
-  }
-
-  console.log("📤 executeQueryWithFilters called with:", {
-    config: config
-      ? {
-          id: config.id,
-          name: config.name,
-          db_type: config.db_type,
-        }
-      : "NULL",
-    baseQuery: baseQuery.substring(0, 100),
-    filters,
-    sortColumn,
-    sortDirection,
-    limit,
-    offset,
-  });
-
-  const payload = {
-    config,
-    baseQuery: baseQuery, // Try camelCase instead of snake_case
-    filters,
-    sortColumn: sortColumn,
-    sortDirection: sortDirection,
-    limit,
-    offset,
-  };
-
-  console.log("📦 Full payload:", JSON.stringify(payload, null, 2));
-
-  return await invoke("execute_query_with_filters", payload);
-}
-
 /**
  * Load table data using JSON request structure
  * @param {string} connectionId - Connection ID
@@ -151,14 +99,14 @@ export async function loadTableData(
 }
 
 export async function getFilterValues(
-  config,
+  connectionId,
   query,
   column,
   searchQuery = null,
   limit = 1000
 ) {
   return await invoke("get_filter_values", {
-    config,
+    connection_id: connectionId,
     query,
     column,
     search_query: searchQuery,
@@ -226,30 +174,6 @@ export async function getPropertiesObject(
     database,
     table,
   });
-}
-
-export async function getDatabases(config) {
-  return await invoke("get_databases", { config });
-}
-
-export async function getTables(config, database) {
-  return await invoke("get_tables", { config, database });
-}
-
-export async function getViews(config, database, schema = null) {
-  return await invoke("get_views", { config, database, schema });
-}
-
-export async function getIndexes(config, database, schema = null) {
-  return await invoke("get_indexes", { config, database, schema });
-}
-
-export async function getProcedures(config, database, schema = null) {
-  return await invoke("get_procedures", { config, database, schema });
-}
-
-export async function getEvents(config, database, schema = null) {
-  return await invoke("get_events", { config, database, schema });
 }
 
 export async function getStorageInfo() {

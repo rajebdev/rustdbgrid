@@ -1,5 +1,5 @@
 <script>
-  import { afterUpdate, onMount } from "svelte";
+  import { afterUpdate } from "svelte";
   import {
     syncColumnWidths,
     isScrolledNearBottom,
@@ -30,7 +30,6 @@
   export let onCellClick = null;
   export let onCellDoubleClick = null;
   export let onScroll = null;
-  export let onWheel = null;
 
   let tableWrapper;
   let headerWrapper;
@@ -60,26 +59,6 @@
     }
 
     return numericCount / sampleSize > 0.7;
-  }
-
-  onMount(() => {
-    // Add passive wheel event listener to improve performance
-    if (tableWrapper) {
-      tableWrapper.addEventListener("wheel", handleWheelPassive, {
-        passive: false,
-      });
-      return () => {
-        if (tableWrapper) {
-          tableWrapper.removeEventListener("wheel", handleWheelPassive);
-        }
-      };
-    }
-  });
-
-  function handleWheelPassive(event) {
-    if (onWheel) {
-      onWheel(event);
-    }
   }
 
   afterUpdate(() => {
@@ -245,6 +224,7 @@
       class="table-body-wrapper"
       bind:this={tableWrapper}
       on:scroll={handleScroll}
+      on:wheel={handleScroll}
       role="grid"
       aria-label="Data grid"
     >

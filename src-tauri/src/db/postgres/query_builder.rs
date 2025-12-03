@@ -31,18 +31,28 @@ impl QueryBuilder for PostgreSQLQueryBuilder {
     }
 
     fn format_table_name(&self, request: &QueryRequest) -> String {
-        let table = self.quote_identifier(&request.table);
+        let table = &request.table;
+        
+        // If table is wrapped with RustDBGridQuery(), extract and return the inner query
+        let trimmed = table.trim();
+        if trimmed.starts_with("RustDBGridQuery(") && trimmed.ends_with(')') {
+            let query = &trimmed[16..trimmed.len()-1]; // Extract between RustDBGridQuery( and )
+            return format!("({}) AS __query", query);
+        }
+        
+        // Normal table - quote it
+        let quoted_table = self.quote_identifier(table);
 
         match (&request.database, &request.schema) {
             (Some(db), Some(schema)) => format!(
                 "{}.{}.{}",
                 self.quote_identifier(db),
                 self.quote_identifier(schema),
-                table
+                quoted_table
             ),
-            (None, Some(schema)) => format!("{}.{}", self.quote_identifier(schema), table),
-            (Some(db), None) => format!("{}.{}", self.quote_identifier(db), table),
-            (None, None) => table,
+            (None, Some(schema)) => format!("{}.{}", self.quote_identifier(schema), quoted_table),
+            (Some(db), None) => format!("{}.{}", self.quote_identifier(db), quoted_table),
+            (None, None) => quoted_table,
         }
     }
 

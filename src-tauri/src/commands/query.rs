@@ -1,367 +1,44 @@
 use crate::commands::connection::ConnectionStore;
-use crate::models::connection::*;
 use crate::models::query_result::*;
 use futures::FutureExt;
-use std::collections::HashMap;
 use tauri::State;
 
 #[tauri::command]
-pub async fn execute_query(
-    config: ConnectionConfig,
-    query: String,
-    state: State<'_, ConnectionStore>,
-) -> Result<QueryResult, String> {
-    let connection_id = config.id.clone();
-
-    tracing::debug!(
-        "🔍 [QUERY] Executing query for connection: {}",
-        connection_id
-    );
-    tracing::debug!(
-        "🔍 [QUERY] Query: {}",
-        query.chars().take(100).collect::<String>()
-    );
-
-    // Check if already connected, if not connect first
-    if !state.pool.is_connected(&connection_id).await {
-        tracing::info!("🔌 [QUERY] Connection not found in pool, connecting...");
-        state.pool.connect(config).await?;
-    }
-
-    // Use connection from pool
-    let query_clone = query.clone();
-    let result = state
-        .pool
-        .with_connection(&connection_id, |conn| {
-            async move { conn.execute_query(&query_clone).await }.boxed()
-        })
-        .await;
-
-    match &result {
-        Ok(res) => {
-            tracing::info!(
-                "✅ [QUERY] Query executed successfully. Rows: {}, Time: {:?}",
-                res.rows.len(),
-                res.execution_time
-            );
-        }
-        Err(e) => {
-            tracing::error!("❌ [QUERY] Query execution failed: {}", e);
-        }
-    }
-
-    result
-}
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub async fn execute_query_with_filters(
-    config: ConnectionConfig,
-    base_query: String,
-    filters: Option<HashMap<String, serde_json::Value>>,
-    sort_column: Option<String>,
-    sort_direction: Option<String>,
-    limit: Option<usize>,
-    offset: Option<usize>,
-    state: State<'_, ConnectionStore>,
-) -> Result<QueryResult, String> {
-    let connection_id = config.id.clone();
-
-    // Check if already connected, if not connect first
-    if !state.pool.is_connected(&connection_id).await {
-        state.pool.connect(config.clone()).await?;
-    }
-
-    // For MongoDB, Redis, and Apache Ignite - execute original query without modification
-    // These databases use their own query format (not standard SQL)
-    use crate::models::connection::DatabaseType;
-    if matches!(
-        config.db_type,
-        DatabaseType::MongoDB | DatabaseType::Redis | DatabaseType::Ignite
-    ) {
-        let query_clone = base_query.clone();
-        let mut result = state
-            .pool
-            .with_connection(&connection_id, |conn| {
-                async move { conn.execute_query(&query_clone).await }.boxed()
-            })
-            .await?;
-
-        // Keep original query for display
-        result.final_query = Some(base_query);
-        return Ok(result);
-    }
-
-    // For MSSQL, if query already has pagination (ROW_NUMBER or TOP) AND no filters/sort are applied, use it as-is
-    // Frontend buildPaginatedQuery already handles MSSQL pagination correctly
-    // But when filters or sort are applied, we need to rebuild the query
-    if matches!(config.db_type, DatabaseType::MSSQL)
-        && (base_query.to_uppercase().contains("ROW_NUMBER()")
-            || base_query.to_uppercase().contains("TOP "))
-        && filters.is_none()
-        && sort_column.is_none()
-    {
-        let query_clone = base_query.clone();
-        let mut result = state
-            .pool
-            .with_connection(&connection_id, |conn| {
-                async move { conn.execute_query(&query_clone).await }.boxed()
-            })
-            .await?;
-
-        result.final_query = Some(base_query);
-        return Ok(result);
-    }
-
-    // For SQL databases, proceed with query building
-    // Extract table name from simple SELECT queries to avoid subquery
-    // Preserve database.table format for cross-database queries
-    let cleaned_query = base_query.trim().to_uppercase();
-
-    tracing::info!(
-        "🔍 [FILTER] Building query with filters for {:?}",
-        config.db_type
-    );
-    tracing::info!("🔍 [FILTER] base_query: {}", base_query);
-    tracing::info!("🔍 [FILTER] filters: {:?}", filters);
-    tracing::info!("🔍 [FILTER] sort_column: {:?}", sort_column);
-
-    // For MSSQL with complex pagination queries (ROW_NUMBER), extract the original table
-    let table_name =
-        if matches!(config.db_type, DatabaseType::MSSQL) && cleaned_query.contains("ROW_NUMBER") {
-            // For MSSQL ROW_NUMBER queries like:
-            // SELECT * FROM (SELECT ROW_NUMBER() OVER ... * FROM [db].[schema].[table]) AS __Paginated WHERE ...
-            // We need to extract [db].[schema].[table] from the innermost FROM
-
-            // Find the innermost FROM clause (after ROW_NUMBER)
-            if let Some(row_num_pos) = cleaned_query.find("ROW_NUMBER") {
-                let after_row_num = &base_query[row_num_pos..];
-                if let Some(from_pos) = after_row_num.to_uppercase().find("FROM") {
-                    let after_from = &after_row_num[from_pos + 4..].trim();
-
-                    // Find end of table name (before closing paren or AS)
-                    let end_markers = [")", "AS ", "WHERE", "ORDER BY", "GROUP BY"];
-                    let mut table_end = after_from.len();
-
-                    for marker in &end_markers {
-                        if let Some(pos) = after_from.to_uppercase().find(marker) {
-                            table_end = table_end.min(pos);
-                        }
-                    }
-
-                    after_from[..table_end].trim().to_string()
-                } else {
-                    base_query.clone()
-                }
-            } else {
-                base_query.clone()
-            }
-        } else if cleaned_query.starts_with("SELECT") && cleaned_query.contains("FROM") {
-            if let Some(from_pos) = cleaned_query.find("FROM") {
-                let after_from = &base_query[from_pos + 4..].trim();
-
-                // Add MSSQL-specific end markers (OFFSET, FETCH, TOP detection in subquery)
-                let end_markers = [
-                    "LIMIT", "WHERE", "ORDER BY", "GROUP BY", "OFFSET", "FETCH", ";",
-                ];
-                let mut table_end = after_from.len();
-
-                for marker in &end_markers {
-                    if let Some(pos) = after_from.to_uppercase().find(marker) {
-                        table_end = table_end.min(pos);
-                    }
-                }
-
-                // Extract and preserve database.table format (e.g., apps_config.jns_config)
-                let table = after_from[..table_end].trim().to_string();
-                table
-            } else {
-                base_query.clone()
-            }
-        } else {
-            base_query.clone()
-        };
-
-    // Build filtered query - use table directly if simple, otherwise use subquery
-    // For MSSQL, always try to use direct table to avoid subquery complications
-    let use_direct_table = !table_name.contains("SELECT")
-        && !table_name.contains("(")
-        && !table_name.to_uppercase().contains("ROW_NUMBER");
-
-    tracing::info!("🔍 [FILTER] Extracted table_name: {}", table_name);
-    tracing::info!("🔍 [FILTER] use_direct_table: {}", use_direct_table);
-
-    let mut query = if use_direct_table {
-        format!("SELECT * FROM {}", table_name)
-    } else {
-        format!("SELECT * FROM ({}) AS subquery", base_query)
-    };
-
-    // Add WHERE clause for filters
-    if let Some(filter_map) = filters {
-        if !filter_map.is_empty() {
-            let mut where_clauses = Vec::new();
-            let is_mssql = matches!(config.db_type, DatabaseType::MSSQL);
-
-            for (column, value) in filter_map.iter() {
-                // Escape column name for MSSQL
-                let col_escaped = if is_mssql {
-                    format!("[{}]", column.replace("]", "]]"))
-                } else {
-                    column.clone()
-                };
-
-                // Check if value is array (from modal) or string (from text input)
-                if let Some(arr) = value.as_array() {
-                    // Array filter - use IN clause
-                    if !arr.is_empty() {
-                        let values: Vec<String> = arr
-                            .iter()
-                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                            .collect();
-
-                        if !values.is_empty() {
-                            // Handle NULL values separately
-                            if values.contains(&"NULL".to_string()) {
-                                let non_null_values: Vec<String> = values
-                                    .iter()
-                                    .filter(|v| v.as_str() != "NULL")
-                                    .map(|v| format!("'{}'", v.replace("'", "''")))
-                                    .collect();
-
-                                if non_null_values.is_empty() {
-                                    where_clauses.push(format!("{} IS NULL", col_escaped));
-                                } else {
-                                    where_clauses.push(format!(
-                                        "({} IN ({}) OR {} IS NULL)",
-                                        col_escaped,
-                                        non_null_values.join(", "),
-                                        col_escaped
-                                    ));
-                                }
-                            } else {
-                                let escaped_values: Vec<String> = values
-                                    .iter()
-                                    .map(|v| format!("'{}'", v.replace("'", "''")))
-                                    .collect();
-                                where_clauses.push(format!(
-                                    "{} IN ({})",
-                                    col_escaped,
-                                    escaped_values.join(", ")
-                                ));
-                            }
-                        }
-                    }
-                } else if let Some(str_value) = value.as_str() {
-                    // String filter - use LIKE clause with case-insensitive search
-                    if !str_value.is_empty() {
-                        let escaped_value = str_value.replace("'", "''");
-                        if is_mssql {
-                            // MSSQL uses COLLATE for case-insensitive search
-                            where_clauses.push(format!(
-                                "{} LIKE '%{}%' COLLATE Latin1_General_CI_AI",
-                                col_escaped, escaped_value
-                            ));
-                        } else {
-                            // Standard SQL uses LOWER() for case-insensitive search
-                            where_clauses.push(format!(
-                                "LOWER({}) LIKE '%{}%'",
-                                col_escaped,
-                                escaped_value.to_lowercase()
-                            ));
-                        }
-                    }
-                }
-            }
-
-            if !where_clauses.is_empty() {
-                query.push_str(&format!(" WHERE {}", where_clauses.join(" AND ")));
-            }
-        }
-    }
-
-    // Add ORDER BY clause
-    if let Some(col) = sort_column {
-        let direction = sort_direction.unwrap_or_else(|| "ASC".to_string());
-        let col_escaped = if matches!(config.db_type, DatabaseType::MSSQL) {
-            format!("[{}]", col.replace("]", "]]"))
-        } else {
-            col
-        };
-        query.push_str(&format!(" ORDER BY {} {}", col_escaped, direction));
-    }
-
-    // Add LIMIT/OFFSET pagination clause based on database type
-    let offset_val = offset.unwrap_or(0);
-    if let Some(limit_val) = limit {
-        match config.db_type {
-            DatabaseType::MSSQL => {
-                // SQL Server uses OFFSET-FETCH (requires ORDER BY) or ROW_NUMBER for offset
-                if offset_val > 0 {
-                    // Need to use ROW_NUMBER() for MSSQL pagination with offset
-                    // Wrap the current query in a ROW_NUMBER subquery
-                    let inner_query = query.replace(
-                        "SELECT",
-                        "SELECT ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS __RowNum,",
-                    );
-                    query =
-                        format!(
-                        "SELECT * FROM ({}) AS __Paginated WHERE __RowNum > {} AND __RowNum <= {}",
-                        inner_query, offset_val, offset_val + limit_val
-                    );
-                } else if query.to_uppercase().contains("ORDER BY") {
-                    // Has ORDER BY, use OFFSET-FETCH for first page
-                    query.push_str(&format!(
-                        " OFFSET 0 ROWS FETCH NEXT {} ROWS ONLY",
-                        limit_val
-                    ));
-                } else {
-                    // No ORDER BY and no offset, use simple TOP
-                    query = query.replace("SELECT", &format!("SELECT TOP {}", limit_val));
-                }
-            }
-            _ => {
-                // Standard SQL LIMIT/OFFSET for MySQL, PostgreSQL, SQLite, etc.
-                query.push_str(&format!(" LIMIT {} OFFSET {}", limit_val, offset_val));
-            }
-        }
-    }
-
-    tracing::info!("🔍 [FILTER] Final query: {}", query);
-
-    let query_clone = query.clone();
-    let mut result = state
-        .pool
-        .with_connection(&connection_id, |conn| {
-            async move { conn.execute_query(&query_clone).await }.boxed()
-        })
-        .await?;
-
-    // Add the final query to result for display (the actual executed query)
-    result.final_query = Some(query);
-
-    Ok(result)
-}
-
-#[tauri::command]
 pub async fn get_filter_values(
-    config: ConnectionConfig,
+    connection_id: String,
     query: String,
     column: String,
     search_query: Option<String>,
     _limit: Option<usize>, // Intentionally unused - we want all distinct values
     state: State<'_, ConnectionStore>,
 ) -> Result<FilterValuesResult, String> {
-    let connection_id = config.id.clone();
-
     // Check if already connected, if not connect first
     if !state.pool.is_connected(&connection_id).await {
-        state.pool.connect(config.clone()).await?;
+        let config = {
+            let connections = state.connections.lock().unwrap();
+            connections
+                .iter()
+                .find(|c| c.id == connection_id)
+                .ok_or_else(|| format!("Connection '{}' not found", connection_id))?
+                .clone()
+        };
+        state.pool.connect(config).await?;
     }
+
+    // Get db_type from connection
+    let db_type = {
+        let connections = state.connections.lock().unwrap();
+        connections
+            .iter()
+            .find(|c| c.id == connection_id)
+            .map(|c| c.db_type.clone())
+            .ok_or_else(|| format!("Connection '{}' not found", connection_id))?
+    };
 
     use crate::models::connection::DatabaseType;
 
     // For Ignite with SCAN queries, we need to get all data and extract distinct values client-side
-    if matches!(config.db_type, DatabaseType::Ignite) {
+    if matches!(db_type, DatabaseType::Ignite) {
         // For SCAN queries, execute the query and extract distinct values
         let query_clone = query.clone();
         let column_clone = column.clone();
@@ -437,7 +114,7 @@ pub async fn get_filter_values(
     };
 
     // Build query based on database type
-    let filter_query = match config.db_type {
+    let filter_query = match db_type {
         DatabaseType::MSSQL => {
             // MSSQL uses brackets for column names and different case-insensitive syntax
             let col_escaped = format!("[{}]", column.replace("]", "]]"));

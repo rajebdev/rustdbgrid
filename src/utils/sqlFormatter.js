@@ -1,114 +1,56 @@
+import { format } from "sql-formatter";
+import { DatabaseType } from "./databaseTypes";
+
 /**
  * Simple SQL Formatter
  * Formats SQL queries dengan indentation dan line breaks yang lebih readable
  */
 
-function formatSqlSimple(sql) {
+/**
+ * Strip SQL comments dan semicolon dari query
+ * @param {string} sql - SQL query
+ * @returns {string} - Query tanpa comments dan semicolon
+ */
+export function stripSqlComments(sql, dbType) {
   if (!sql || typeof sql !== "string") return sql;
 
-  let formatted = sql;
+  let result = sql;
 
-  // Keywords yang harus diikuti newline
-  const keywordsNewline = [
-    "SELECT",
-    "FROM",
-    "WHERE",
-    "AND",
-    "OR",
-    "NOT",
-    "JOIN",
-    "INNER JOIN",
-    "LEFT JOIN",
-    "RIGHT JOIN",
-    "FULL JOIN",
-    "CROSS JOIN",
-    "ON",
-    "GROUP BY",
-    "ORDER BY",
-    "HAVING",
-    "LIMIT",
-    "OFFSET",
-    "UNION",
-    "EXCEPT",
-    "INTERSECT",
-    "INSERT INTO",
-    "UPDATE",
-    "DELETE FROM",
-    "CREATE",
-    "ALTER",
-    "DROP",
-    "WITH",
-  ];
+  // Remove multi-line comments /* ... */
+  result = result.replace(/\/\*[\s\S]*?\*\//g, "");
 
-  // Replace multiple spaces/newlines dengan single space
-  formatted = formatted.replace(/\s+/g, " ").trim();
+  // Remove single-line comments -- ...
+  result = result.replace(/--[^\n]*/g, "");
 
-  // Add newlines sebelum keywords (case-insensitive)
-  keywordsNewline.forEach((keyword) => {
-    const regex = new RegExp(`\\s+(${keyword})\\s+`, "gi");
-    formatted = formatted.replace(regex, `\n${keyword} `);
-  });
-
-  // Handle commas dalam SELECT (tambah newline setelah comma untuk columns)
-  formatted = formatted.replace(/,\s+/g, ",\n  ");
-
-  // Add indentation
-  const lines = formatted.split("\n");
-  const indented = lines
-    .map((line) => {
-      line = line.trim();
-      if (!line) return "";
-
-      // Keywords utama tanpa indent
-      if (
-        /^(SELECT|FROM|WHERE|GROUP|ORDER|UNION|INTERSECT|EXCEPT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH)/.test(
-          line
-        )
-      ) {
-        return line;
-      }
-      // Indentasi untuk bagian lain
-      return "  " + line;
-    })
-    .filter((line) => line.trim());
-
-  return indented.join("\n");
-}
-
-export function formatSql(sql, fullText = false) {
-  if (!sql || typeof sql !== "string") return sql;
-
-  if (fullText) {
-    return formatSqlSimple(sql);
+  // Remove hash comments # ... (untuk MySQL)
+  if (dbType === DatabaseType.MYSQL) {
+    result = result.replace(/#[^\n]*/g, "");
   }
 
-  // Untuk selected text, lebih simple formatting
-  let formatted = sql.trim();
+  // Remove empty lines and trim, join with space
+  result = result
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join(" ");
 
-  // Replace multiple spaces dengan single space
-  formatted = formatted.replace(/\s+/g, " ");
+  return result.trim();
+}
 
-  // Simple keywords formatting untuk selected text
-  const keywords = [
-    "SELECT",
-    "FROM",
-    "WHERE",
-    "AND",
-    "OR",
-    "NOT",
-    "JOIN",
-    "ON",
-    "GROUP BY",
-    "ORDER BY",
-    "LIMIT",
-  ];
+export function formatSql(sql) {
+  if (!sql || typeof sql !== "string") return sql;
 
-  keywords.forEach((keyword) => {
-    const regex = new RegExp(`\\b${keyword}\\b`, "gi");
-    formatted = formatted.replace(regex, keyword.toUpperCase());
-  });
-
-  return formatted;
+  try {
+    return format(sql, {
+      language: "sql",
+      indentStyle: "standard",
+      keywordCase: "upper",
+      linesBetweenQueries: 2,
+    });
+  } catch (error) {
+    console.error("Error formatting SQL:", error);
+    return sql;
+  }
 }
 
 export default formatSql;

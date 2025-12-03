@@ -3,12 +3,7 @@
  * Handles all data loading, pagination, and filtering operations
  */
 
-import {
-  getFilterValues,
-  executeQueryWithFilters,
-  executeQuery,
-  loadTableData,
-} from "../utils/tauri";
+import { getFilterValues, loadTableData } from "../utils/tauri";
 import { DatabaseType } from "../utils/databaseTypes";
 
 /**
@@ -251,14 +246,31 @@ export async function reloadDataWithFilters(
         );
       }
     } else {
-      result = await executeQueryWithFilters(
-        connection,
-        executedQuery,
-        Object.keys(filters).length > 0 ? filters : null,
-        sortColumn,
-        sortColumn ? sortDirection.toUpperCase() : null,
-        200,
-        0
+      // Convert columnFilters to new filter format
+      const filterArray = [];
+      for (const [column, value] of Object.entries(columnFilters)) {
+        if (Array.isArray(value) && value.length > 0) {
+          filterArray.push({ column, operator: "in", value });
+        } else if (typeof value === "string" && value.trim() !== "") {
+          filterArray.push({ column, operator: "like", value: `%${value}%` });
+        }
+      }
+
+      const orderBy = sortColumn
+        ? [{ column: sortColumn, direction: sortDirection.toLowerCase() }]
+        : [];
+
+      // Use loadTableData with subquery wrapper
+      result = await loadTableData(
+        connection.id,
+        connection.db_type,
+        `RustDBGridQuery(${executedQuery})`,
+        {
+          limit: 200,
+          offset: 0,
+          filters: filterArray,
+          orderBy,
+        }
       );
     }
 
@@ -342,17 +354,19 @@ export async function loadFilterValuesFromServer(
   try {
     console.log("🔍 Loading filter values for column:", column);
 
+    // Build a simple SELECT DISTINCT query for the table
+    const query = schemaName
+      ? `SELECT DISTINCT ${column} FROM ${schemaName}.${tableName}`
+      : databaseName
+      ? `SELECT DISTINCT ${column} FROM ${databaseName}.${tableName}`
+      : `SELECT DISTINCT ${column} FROM ${tableName}`;
+
     const result = await getFilterValues(
       connection.id,
-      connection.db_type,
-      tableName,
-      {
-        database: databaseName || null,
-        schema: schemaName || null,
-        column,
-        search: searchTerm || null,
-        limit: 1000,
-      }
+      query,
+      column,
+      searchTerm,
+      1000
     );
 
     console.log("✅ Filter values loaded:", result);

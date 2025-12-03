@@ -234,8 +234,10 @@
               item={proc}
               name={proc.name}
               type="procedure"
-              badge={proc.procedure_type === "FUNCTION" ? "F" : "P"}
-              badgeType={proc.procedure_type === "FUNCTION"
+              badge={proc.procedure_type.toUpperCase() === "FUNCTION"
+                ? "F"
+                : "P"}
+              badgeType={proc.procedure_type.toUpperCase() === "FUNCTION"
                 ? "success"
                 : "secondary"}
               indent={4}
