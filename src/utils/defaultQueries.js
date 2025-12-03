@@ -1,3 +1,5 @@
+import { DatabaseType } from "./databaseTypes";
+
 /**
  * Get default query template based on database type
  * @param {string} dbType - Type of database connection
@@ -133,7 +135,7 @@ export function buildPaginatedQuery(
 
   // Remove existing pagination clauses
   switch (dbType) {
-    case "MSSQL":
+    case DatabaseType.MSSQL:
       // Remove existing TOP clause
       baseQuery = baseQuery.replace(/\s+TOP\s+\d+/gi, "");
 
@@ -182,15 +184,15 @@ export function buildPaginatedQuery(
         return `${baseQuery} OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`;
       }
 
-    case "MongoDB":
+    case DatabaseType.MONGODB:
       // MongoDB doesn't use SQL LIMIT, return as-is (handled differently in backend)
       return baseQuery;
 
-    case "Redis":
+    case DatabaseType.REDIS:
       // Redis doesn't use SQL LIMIT, return as-is
       return baseQuery;
 
-    case "Ignite":
+    case DatabaseType.IGNITE:
       // Apache Ignite SCAN uses custom format: SCAN cache_name LIMIT x OFFSET y
       // Check if it's a SCAN operation
       if (baseQuery.toUpperCase().startsWith("SCAN ")) {
@@ -207,8 +209,8 @@ export function buildPaginatedQuery(
     // Fall through to default for non-SCAN queries
     // But Ignite should always use SCAN for cache data
 
-    case "MySQL":
-    case "PostgreSQL":
+    case DatabaseType.MYSQL:
+    case DatabaseType.POSTGRESQL:
     case "SQLite":
     default:
       // Standard SQL LIMIT OFFSET syntax

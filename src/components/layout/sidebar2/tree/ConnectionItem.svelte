@@ -83,7 +83,7 @@
   .connection-status-badge {
     position: absolute;
     bottom: -2px;
-    right: -4px;
+    left: -4px;
     font-size: 8px;
     color: #28a745;
   }
@@ -104,7 +104,7 @@
   }
 
   .connection-details {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--bs-secondary-color, #6c757d);
     overflow: hidden;
     text-overflow: ellipsis;

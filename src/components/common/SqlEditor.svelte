@@ -1,4 +1,5 @@
 <script>
+  import { DatabaseType } from "../../utils/databaseTypes";
   import { onMount, onDestroy } from "svelte";
   import * as monaco from "monaco-editor";
   import { activeConnection, selectedDatabase } from "../../stores/connections";
@@ -59,7 +60,7 @@
   }
 
   $: tabData = $tabDataStore[tabId] || {
-    queryText: getDefaultQuery(selectedConn?.db_type || "MySQL"),
+    queryText: getDefaultQuery(selectedConn?.db_type || DatabaseType.MYSQL),
   };
 
   async function loadDatabases() {
@@ -497,7 +498,7 @@
     let initialQuery =
       tab?.initialContent ||
       tabData.queryText ||
-      getDefaultQuery(selectedConn?.db_type || "MySQL");
+      getDefaultQuery(selectedConn?.db_type || DatabaseType.MYSQL);
 
     try {
       const autoSaved = await loadAutoQuery();
@@ -673,7 +674,7 @@
     // Add appropriate limit clause based on database type
     const dbTypeUpper = (dbType || "").toUpperCase();
 
-    if (dbTypeUpper.includes("MSSQL")) {
+    if (dbTypeUpper.includes(DatabaseType.MSSQL.toUpperCase())) {
       // SQL Server: insert TOP before SELECT
       return trimmedQuery.replace(/SELECT\s+/i, "SELECT TOP 200 ");
     } else {

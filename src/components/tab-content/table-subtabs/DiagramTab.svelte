@@ -1,6 +1,7 @@
 <script>
   import { getTableRelationships, getTableSchema } from "../../../utils/tauri";
   import { activeConnection } from "../../../stores/connections";
+  import { DatabaseType } from "../../../utils/databaseTypes";
 
   export let tableInfo;
   export let connection;
@@ -49,9 +50,9 @@
 
       // Build table identifier with schema for PostgreSQL and MSSQL
       let tableIdentifier = tableInfo.name;
-      if (conn.db_type === "PostgreSQL" && tableInfo.schema) {
+      if (conn.db_type === DatabaseType.POSTGRESQL && tableInfo.schema) {
         tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
-      } else if (conn.db_type === "MSSQL" && tableInfo.schema) {
+      } else if (conn.db_type === DatabaseType.MSSQL && tableInfo.schema) {
         tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
       }
 
@@ -113,9 +114,9 @@
 
           // If it doesn't already have schema prefix, add default schema based on DB type
           if (!tableName.includes(".")) {
-            if (conn.db_type === "PostgreSQL") {
+            if (conn.db_type === DatabaseType.POSTGRESQL) {
               relatedTableIdentifier = `public.${tableName}`;
-            } else if (conn.db_type === "MSSQL") {
+            } else if (conn.db_type === DatabaseType.MSSQL) {
               relatedTableIdentifier = `dbo.${tableName}`;
             }
           }

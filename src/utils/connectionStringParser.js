@@ -1,3 +1,5 @@
+import { DatabaseType } from "./databaseTypes";
+
 /**
  * Parse connection string and extract connection parameters
  * Supports multiple database types: MySQL, PostgreSQL, MongoDB, Redis, MSSQL
@@ -14,7 +16,7 @@ export function parseConnectionString(connectionString, dbType) {
       database: "",
     };
 
-    if (dbType === "MySQL") {
+    if (dbType === DatabaseType.MYSQL) {
       // JDBC: jdbc:mysql://host:port/database or mysql://user:password@host:port/database
       let match = str.match(
         /^jdbc:mysql:\/\/([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
@@ -35,7 +37,7 @@ export function parseConnectionString(connectionString, dbType) {
           if (match[5]) result.database = match[5];
         }
       }
-    } else if (dbType === "PostgreSQL") {
+    } else if (dbType === DatabaseType.POSTGRESQL) {
       // JDBC: jdbc:postgresql://host:port/database or postgresql://user:password@host:port/database
       let match = str.match(
         /^jdbc:postgresql:\/\/([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
@@ -56,7 +58,7 @@ export function parseConnectionString(connectionString, dbType) {
           if (match[5]) result.database = match[5];
         }
       }
-    } else if (dbType === "MongoDB") {
+    } else if (dbType === DatabaseType.MONGODB) {
       // mongodb://user:password@host:port/database or mongodb+srv://...
       const match = str.match(
         /^mongodb(?:\+srv)?:\/\/(?:([^:]+):([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/([^?]+))?/
@@ -68,7 +70,7 @@ export function parseConnectionString(connectionString, dbType) {
         result.port = match[4] ? parseInt(match[4]) : 27017;
         if (match[5]) result.database = match[5];
       }
-    } else if (dbType === "Redis") {
+    } else if (dbType === DatabaseType.REDIS) {
       // redis://[:password@]host:port[/database]
       const match = str.match(
         /^redis:\/\/(?::([^@]+)@)?([^:\/]+)(?::(\d+))?(?:\/(\d+))?/
@@ -79,7 +81,7 @@ export function parseConnectionString(connectionString, dbType) {
         result.port = match[3] ? parseInt(match[3]) : 6379;
         if (match[4]) result.database = match[4];
       }
-    } else if (dbType === "MSSQL") {
+    } else if (dbType === DatabaseType.MSSQL) {
       // mssql://user:password@host:port/database or jdbc:sqlserver://host:port;databaseName=database
       let match = str.match(
         /^jdbc:sqlserver:\/\/([^:;]+)(?::(\d+))?(?:;databaseName=([^;]+))?/
@@ -116,12 +118,12 @@ export function parseConnectionString(connectionString, dbType) {
  */
 export function getDefaultPort(dbType) {
   const ports = {
-    MySQL: 3306,
-    PostgreSQL: 5432,
-    MongoDB: 27017,
-    Redis: 6379,
-    Ignite: 10800,
-    MSSQL: 1433,
+    [DatabaseType.MYSQL]: 3306,
+    [DatabaseType.POSTGRESQL]: 5432,
+    [DatabaseType.MONGODB]: 27017,
+    [DatabaseType.REDIS]: 6379,
+    [DatabaseType.IGNITE]: 10800,
+    [DatabaseType.MSSQL]: 1433,
   };
   return ports[dbType] || 3306;
 }
@@ -131,15 +133,15 @@ export function getDefaultPort(dbType) {
  */
 export function getConnectionStringFormats(dbType) {
   const formats = {
-    MySQL:
+    [DatabaseType.MYSQL]:
       "mysql://user:password@host:port/database or jdbc:mysql://host:port/database",
-    PostgreSQL:
+    [DatabaseType.POSTGRESQL]:
       "postgresql://user:password@host:port/database or jdbc:postgresql://host:port/database",
-    MongoDB: "mongodb://user:password@host:port/database",
-    Redis: "redis://:password@host:port/database",
-    MSSQL:
+    [DatabaseType.MONGODB]: "mongodb://user:password@host:port/database",
+    [DatabaseType.REDIS]: "redis://:password@host:port/database",
+    [DatabaseType.MSSQL]:
       "mssql://user:password@host:port/database or jdbc:sqlserver://host:port;databaseName=database",
-    Ignite: "Connection string not supported for Ignite",
+    [DatabaseType.IGNITE]: "Connection string not supported for Ignite",
   };
   return formats[dbType] || "Connection string format varies by database type";
 }

@@ -1,5 +1,6 @@
 import { writable, get } from "svelte/store";
 import { tabDataStore } from "./tabData";
+import { DatabaseType } from "../utils/databaseTypes";
 
 /**
  * Tab Management Store and Logic
@@ -121,7 +122,7 @@ function createTabStore() {
 
         // Create new tab
         const displayName =
-          connection.db_type === "PostgreSQL" && table.schema
+          connection.db_type === DatabaseType.POSTGRESQL && table.schema
             ? `${table.schema}.${table.name}`
             : table.name;
 
@@ -164,8 +165,8 @@ function createTabStore() {
 
         // Create new tab - include schema in display name for PostgreSQL/MSSQL
         const displayName =
-          (connection.db_type === "PostgreSQL" ||
-            connection.db_type === "MSSQL") &&
+          (connection.db_type === DatabaseType.POSTGRESQL ||
+            connection.db_type === DatabaseType.MSSQL) &&
           procedure.schema
             ? `${procedure.schema}.${procedure.name}`
             : procedure.name;

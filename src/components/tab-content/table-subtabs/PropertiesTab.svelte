@@ -7,6 +7,7 @@
   } from "../../../utils/tauri";
   import { activeConnection } from "../../../stores/connections";
   import { tabDataStore } from "../../../stores/tabData";
+  import { DatabaseType } from "../../../utils/databaseTypes";
 
   export let tabId;
   export let tableInfo;
@@ -31,8 +32,8 @@
 
   // Get database type
   $: conn = connection || $activeConnection;
-  $: isMssql = conn?.db_type === "MSSQL";
-  $: isPostgres = conn?.db_type === "PostgreSQL";
+  $: isMssql = conn?.db_type === DatabaseType.MSSQL;
+  $: isPostgres = conn?.db_type === DatabaseType.POSTGRESQL;
 
   // Define tabs based on database type
   $: tabs = isMssql
@@ -189,9 +190,9 @@
 
       // Build table identifier with schema for PostgreSQL and MSSQL
       let tableIdentifier = tableInfo.name;
-      if (conn.db_type === "PostgreSQL" && tableInfo.schema) {
+      if (conn.db_type === DatabaseType.POSTGRESQL && tableInfo.schema) {
         tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
-      } else if (conn.db_type === "MSSQL" && tableInfo.schema) {
+      } else if (conn.db_type === DatabaseType.MSSQL && tableInfo.schema) {
         tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
       }
 
@@ -219,9 +220,9 @@
 
       // Build table identifier with schema for PostgreSQL and MSSQL
       let tableIdentifier = tableInfo.name;
-      if (conn.db_type === "PostgreSQL" && tableInfo.schema) {
+      if (conn.db_type === DatabaseType.POSTGRESQL && tableInfo.schema) {
         tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
-      } else if (conn.db_type === "MSSQL" && tableInfo.schema) {
+      } else if (conn.db_type === DatabaseType.MSSQL && tableInfo.schema) {
         tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
       }
 
@@ -251,9 +252,9 @@
 
       // Build table identifier with schema for PostgreSQL and MSSQL
       let tableIdentifier = tableInfo.name;
-      if (conn.db_type === "PostgreSQL" && tableInfo.schema) {
+      if (conn.db_type === DatabaseType.POSTGRESQL && tableInfo.schema) {
         tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
-      } else if (conn.db_type === "MSSQL" && tableInfo.schema) {
+      } else if (conn.db_type === DatabaseType.MSSQL && tableInfo.schema) {
         tableIdentifier = `${tableInfo.schema}.${tableInfo.name}`;
       }
 

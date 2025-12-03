@@ -13,6 +13,7 @@
   import SqlPreviewModal from "../modals/SqlPreviewModal.svelte";
   import FilterModal from "../modals/FilterModal.svelte";
   import CellEditorModal from "../modals/CellEditorModal.svelte";
+  import { DatabaseType } from "../../utils/databaseTypes";
 
   export let data = null;
   export let tabId = null;
@@ -87,7 +88,7 @@
 
   // Set default view mode based on database type
   $: if (connection && !$tabDataStore[tabId]?.viewMode) {
-    viewMode = connection.db_type === "MongoDB" ? "json" : "grid";
+    viewMode = connection.db_type === DatabaseType.MONGODB ? "json" : "grid";
   }
 
   // Load saved state when tab changes (only when tabId actually changes)
@@ -101,7 +102,7 @@
       sortDirection = savedState.sortDirection || "asc";
       viewMode =
         savedState.viewMode ||
-        (connection?.db_type === "MongoDB" ? "json" : "grid");
+        (connection?.db_type === DatabaseType.MONGODB ? "json" : "grid");
 
       // Restore scroll position after a short delay, only once per tab change
       if (tableWrapper && savedState.scrollPosition) {
@@ -299,8 +300,8 @@
 
       console.log("📦 Filters to send:", filters);
 
-      const dbType = connection?.db_type || "MySQL";
-      const isIgnite = dbType === "Ignite";
+      const dbType = connection?.db_type || DatabaseType.MYSQL;
+      const isIgnite = dbType === DatabaseType.IGNITE;
 
       let result;
 
@@ -327,7 +328,7 @@
           result = await loadTableData({
             connection_id: connection.id,
             query: {
-              db_type: "Ignite",
+              db_type: DatabaseType.IGNITE,
               database: cacheName,
               schema: null,
               table: "",

@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import { tabStore } from "../../stores/tabs";
+  import { DatabaseType } from "../../utils/databaseTypes";
 
   const dispatch = createEventDispatcher();
   const { activeTab } = tabStore;
@@ -61,7 +62,8 @@
     // Format: schema@database for PostgreSQL/MSSQL with schema, otherwise just database
     if (
       schema &&
-      (connection?.db_type === "PostgreSQL" || connection?.db_type === "MSSQL")
+      (connection?.db_type === DatabaseType.POSTGRESQL ||
+        connection?.db_type === DatabaseType.MSSQL)
     ) {
       return `${schema}@${database}`;
     }
@@ -143,17 +145,17 @@
     <div class="toolbar-info">
       {#if activeConnectionInfo}
         <span class="info-item connection-item" title="Active Connection">
-          {#if connectionDbType === "MySQL"}
+          {#if connectionDbType === DatabaseType.MYSQL}
             <span class="db-icon">🐬</span>
-          {:else if connectionDbType === "PostgreSQL"}
+          {:else if connectionDbType === DatabaseType.POSTGRESQL}
             <span class="db-icon">🐘</span>
-          {:else if connectionDbType === "MongoDB"}
+          {:else if connectionDbType === DatabaseType.MONGODB}
             <span class="db-icon">🍃</span>
-          {:else if connectionDbType === "Redis"}
+          {:else if connectionDbType === DatabaseType.REDIS}
             <i class="fas fa-database"></i>
-          {:else if connectionDbType === "Ignite"}
+          {:else if connectionDbType === DatabaseType.IGNITE}
             <span class="db-icon">🔥</span>
-          {:else if connectionDbType === "MSSQL"}
+          {:else if connectionDbType === DatabaseType.MSSQL}
             <span class="db-icon">🗄️</span>
           {:else}
             <i class="fas fa-server"></i>

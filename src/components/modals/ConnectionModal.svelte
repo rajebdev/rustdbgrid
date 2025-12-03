@@ -7,6 +7,7 @@
     getDefaultPort,
     getConnectionStringFormats,
   } from "../../utils/connectionStringParser";
+  import { DatabaseType } from "../../utils/databaseTypes";
 
   export let connection = null;
   export let show = true;
@@ -14,7 +15,7 @@
   let formData = {
     id: crypto.randomUUID(),
     name: "",
-    db_type: "MySQL",
+    db_type: DatabaseType.MYSQL,
     host: "localhost",
     port: 3306,
     username: "root",
@@ -154,12 +155,12 @@
           id="dbType"
           bind:value={formData.db_type}
         >
-          <option value="MySQL">🐬 MySQL</option>
-          <option value="PostgreSQL">🐘 PostgreSQL</option>
-          <option value="MongoDB">🍃 MongoDB</option>
-          <option value="Redis">📕 Redis</option>
-          <option value="Ignite">🔥 Apache Ignite</option>
-          <option value="MSSQL">🗄️ Microsoft SQL Server</option>
+          <option value={DatabaseType.MYSQL}>🐬 MySQL</option>
+          <option value={DatabaseType.POSTGRESQL}>🐘 PostgreSQL</option>
+          <option value={DatabaseType.MONGODB}>🍃 MongoDB</option>
+          <option value={DatabaseType.REDIS}>📕 Redis</option>
+          <option value={DatabaseType.IGNITE}>🔥 Apache Ignite</option>
+          <option value={DatabaseType.MSSQL}>🗄️ Microsoft SQL Server</option>
         </select>
       </div>
 
@@ -189,8 +190,8 @@
       <div class="row">
         <div class="col-md-6 mb-3">
           <label class="form-label" for="username"
-            >Username {formData.db_type === "Redis" ||
-            formData.db_type === "Ignite"
+            >Username {formData.db_type === DatabaseType.REDIS ||
+            formData.db_type === DatabaseType.IGNITE
               ? "(optional)"
               : ""}</label
           >
@@ -203,8 +204,8 @@
         </div>
         <div class="col-md-6 mb-3">
           <label class="form-label" for="password"
-            >Password {formData.db_type === "Redis" ||
-            formData.db_type === "Ignite"
+            >Password {formData.db_type === DatabaseType.REDIS ||
+            formData.db_type === DatabaseType.IGNITE
               ? "(optional)"
               : ""}</label
           >
