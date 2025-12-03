@@ -386,6 +386,8 @@
     const conn = e.detail;
     if (connectedConnections[conn.id]) {
       // Reconnect
+      loadingConnections[conn.id] = true;
+      loadingConnections = { ...loadingConnections };
       try {
         await disconnectFromDatabase(conn.id);
         await connectToDatabase(conn.id);
@@ -400,12 +402,16 @@
         console.error("Failed to reconnect:", error);
         alert(`Failed to reconnect: ${error}`);
       }
+      loadingConnections[conn.id] = false;
+      loadingConnections = { ...loadingConnections };
     }
     contextMenu = null;
   }
 
   async function handleConnectionConnect(e) {
     const conn = e.detail;
+    loadingConnections[conn.id] = true;
+    loadingConnections = { ...loadingConnections };
     try {
       await connectToDatabase(conn.id);
       await syncConnectedStatus();
@@ -418,11 +424,15 @@
       console.error("Failed to connect:", error);
       alert(`Failed to connect: ${error}`);
     }
+    loadingConnections[conn.id] = false;
+    loadingConnections = { ...loadingConnections };
     contextMenu = null;
   }
 
   async function handleConnectionDisconnect(e) {
     const conn = e.detail;
+    loadingConnections[conn.id] = true;
+    loadingConnections = { ...loadingConnections };
     try {
       await disconnectFromDatabase(conn.id);
       await syncConnectedStatus();
@@ -436,6 +446,8 @@
       console.error("Failed to disconnect:", error);
       alert(`Failed to disconnect: ${error}`);
     }
+    loadingConnections[conn.id] = false;
+    loadingConnections = { ...loadingConnections };
     contextMenu = null;
   }
 
