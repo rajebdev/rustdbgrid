@@ -7,7 +7,7 @@
     shouldLoadMore,
   } from "../../../../utils/gridScrollSync";
   import { formatValue } from "../../../../utils/dataFormatters";
-  import ArrayCell from "../../ArrayCell.svelte";
+  import ArrayCell from "../partials/ArrayCell.svelte";
 
   export let displayData = null;
   export let displayNames = [];

@@ -140,7 +140,7 @@
           <span>{error}</span>
         </div>
       {:else if activeTab === "Columns"}
-        <ColumnsTabContent {tableSchema} {loading} />
+        <ColumnsTabContent {tableSchema} />
       {:else if activeTab === "Constraints"}
         <ConstraintsTabContent
           {tableSchema}
