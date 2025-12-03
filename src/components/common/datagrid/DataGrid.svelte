@@ -289,7 +289,12 @@
   }
 
   async function handleLoadMore() {
-    if (isLoadingMore || !hasMoreData || !connection || !tableName) {
+    if (isLoadingMore || !hasMoreData || !connection) {
+      return;
+    }
+
+    // Skip if no table name and no executed query
+    if (!tableName && (!executedQuery || executedQuery.trim() === "")) {
       return;
     }
 
@@ -304,7 +309,8 @@
         columnFilters,
         sortColumn,
         sortDirection,
-        currentOffset
+        currentOffset,
+        executedQuery // Pass executedQuery for custom queries
       );
 
       if (result?.rows && displayData) {

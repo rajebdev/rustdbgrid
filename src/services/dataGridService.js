@@ -292,9 +292,15 @@ export async function loadMoreData(
   columnFilters,
   sortColumn,
   sortDirection,
-  currentOffset
+  currentOffset,
+  executedQuery = null
 ) {
-  if (!connection || !tableName) {
+  if (!connection) {
+    return null;
+  }
+
+  // Must have either table name or executed query
+  if (!tableName && (!executedQuery || executedQuery.trim() === "")) {
     return null;
   }
 
@@ -314,19 +320,37 @@ export async function loadMoreData(
       ? [{ column: sortColumn, direction: sortDirection.toLowerCase() }]
       : [];
 
-    const result = await loadTableData(
-      connection.id,
-      connection.db_type,
-      tableName,
-      {
-        database: databaseName || null,
-        schema: schemaName || null,
-        limit: 200,
-        offset: currentOffset,
-        filters,
-        orderBy,
-      }
-    );
+    let result;
+
+    // If executedQuery exists, wrap it with RustDBGridQuery for custom queries
+    if (executedQuery && executedQuery.trim() !== "") {
+      result = await loadTableData(
+        connection.id,
+        connection.db_type,
+        `RustDBGridQuery(${executedQuery})`,
+        {
+          limit: 200,
+          offset: currentOffset,
+          filters,
+          orderBy,
+        }
+      );
+    } else {
+      // Normal table query
+      result = await loadTableData(
+        connection.id,
+        connection.db_type,
+        tableName,
+        {
+          database: databaseName || null,
+          schema: schemaName || null,
+          limit: 200,
+          offset: currentOffset,
+          filters,
+          orderBy,
+        }
+      );
+    }
 
     console.log("✅ More data loaded:", result);
     return result;

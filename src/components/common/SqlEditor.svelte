@@ -900,7 +900,7 @@
 
       // Add to history
       queryHistoryStore.addToHistory(
-        query,
+        cleanedQuery,
         selectedConn.id,
         selectedDb,
         executionTime
@@ -913,7 +913,7 @@
             detail: {
               tabId,
               result,
-              query,
+              query: cleanedQuery,
               executionTime,
             },
           })
@@ -925,14 +925,14 @@
             detail: {
               tabId,
               result,
-              query,
+              query: cleanedQuery,
               executionTime,
             },
           })
         );
         // Also update store for persistence
         tabDataStore.setQueryResult(tabId, result);
-        tabDataStore.setExecutedQuery(tabId, query);
+        tabDataStore.setExecutedQuery(tabId, cleanedQuery);
       }
     } catch (error) {
       alert("Query execution failed: " + error);
