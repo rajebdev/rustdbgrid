@@ -19,21 +19,10 @@ export async function loadTableDataWithFilters(
   sortDirection
 ) {
   if (!connection || !tableName) {
-    console.log("⚠️ Cannot load table data - missing connection or table name");
     return null;
   }
 
   try {
-    console.log("🔄 Loading table data with new API:", {
-      connection: connection.id,
-      table: tableName,
-      database: databaseName,
-      schema: schemaName,
-      filters: columnFilters,
-      sortColumn,
-      sortDirection,
-    });
-
     // Convert columnFilters to new filter format
     const filters = [];
     for (const [column, value] of Object.entries(columnFilters)) {
@@ -78,7 +67,6 @@ export async function loadTableDataWithFilters(
       }
     );
 
-    console.log("✅ Table data loaded:", result);
     return result;
   } catch (error) {
     console.error("❌ Failed to load table data:", error);
@@ -99,23 +87,14 @@ export async function reloadDataWithFilters(
   sortDirection
 ) {
   if (!executedQuery || executedQuery.trim() === "") {
-    console.log("⚠️ Cannot reload - executedQuery is empty");
     return null;
   }
 
   if (!connection) {
-    console.log("⚠️ Cannot reload - no active connection");
     return null;
   }
 
   try {
-    console.log("🔄 Reloading with filters:", {
-      executedQuery: executedQuery.substring(0, 100),
-      columnFilters,
-      sortColumn,
-      sortDirection,
-    });
-
     // Convert columnFilters to the format expected by backend
     const filters = {};
     for (const [col, value] of Object.entries(columnFilters)) {
@@ -125,8 +104,6 @@ export async function reloadDataWithFilters(
         filters[col] = value;
       }
     }
-
-    console.log("📦 Filters to send:", filters);
 
     const dbType = connection?.db_type || DatabaseType.MYSQL;
     const isIgnite = dbType === DatabaseType.IGNITE;
@@ -141,13 +118,6 @@ export async function reloadDataWithFilters(
         const scanMatch = executedQuery.match(/^SCAN\s+(\S+)/i);
         cacheName = scanMatch ? scanMatch[1] : "";
       }
-
-      console.log("🔥 Ignite reload with SCAN:", {
-        cacheName,
-        databaseName,
-        tableName,
-        executedQuery: executedQuery.substring(0, 50),
-      });
 
       if (cacheName) {
         result = await loadTableData({
@@ -305,8 +275,6 @@ export async function loadMoreData(
   }
 
   try {
-    console.log("📥 Loading more data, offset:", currentOffset);
-
     const filters = [];
     for (const [column, value] of Object.entries(columnFilters)) {
       if (Array.isArray(value) && value.length > 0) {
@@ -352,7 +320,6 @@ export async function loadMoreData(
       );
     }
 
-    console.log("✅ More data loaded:", result);
     return result;
   } catch (error) {
     console.error("❌ Failed to load more data:", error);
@@ -376,8 +343,6 @@ export async function loadFilterValuesFromServer(
   }
 
   try {
-    console.log("🔍 Loading filter values for column:", column);
-
     // Build a simple SELECT DISTINCT query for the table
     const query = schemaName
       ? `SELECT DISTINCT ${column} FROM ${schemaName}.${tableName}`
@@ -393,7 +358,6 @@ export async function loadFilterValuesFromServer(
       1000
     );
 
-    console.log("✅ Filter values loaded:", result);
     return result?.values || [];
   } catch (error) {
     console.error("❌ Failed to load filter values:", error);

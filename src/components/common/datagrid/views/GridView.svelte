@@ -27,6 +27,7 @@
   export let onLoadMore = null;
   export let onSort = null;
   export let onFilter = null;
+  export let onFilterInput = null;
   export let onCellClick = null;
   export let onCellDoubleClick = null;
   export let onScroll = null;
@@ -37,6 +38,7 @@
   let lastScrollTop = 0;
   let lastLoadTriggeredAt = 0;
   let isRestoringScroll = false;
+  let filterInputValues = {}; // Local state for input values before Enter
 
   // Track if filters are active (used for accessibility)
   $: hasActiveFilters = Object.keys(selectedFilterValues).some(
@@ -136,6 +138,45 @@
       onCellDoubleClick(rowIndex, column, currentValue, event);
     }
   }
+
+  function handleFilterKeydown(column, event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (onFilterInput) {
+        onFilterInput(column, event.target.value);
+      }
+    }
+  }
+
+  function handleFilterInputChange(column, event) {
+    filterInputValues[column] = event.target.value;
+    filterInputValues = { ...filterInputValues };
+  }
+
+  function getFilterDisplayValue(column) {
+    if (Array.isArray(columnFilters[column])) {
+      return `${columnFilters[column].length} selected`;
+    }
+    // Use local input value if exists, otherwise use filter value
+    if (filterInputValues[column] !== undefined) {
+      return filterInputValues[column];
+    }
+    return columnFilters[column] || "";
+  }
+
+  // Sync local input values with actual filters
+  $: {
+    if (columnFilters) {
+      Object.keys(columnFilters).forEach((col) => {
+        if (
+          !Array.isArray(columnFilters[col]) &&
+          filterInputValues[col] === undefined
+        ) {
+          filterInputValues[col] = columnFilters[col];
+        }
+      });
+    }
+  }
 </script>
 
 <div
@@ -160,7 +201,7 @@
       <div
         class="row-number-cell"
         class:row-even={true}
-        style="height: 60px;"
+        style="height: 100px;"
       ></div>
     </div>
   </div>
@@ -177,10 +218,12 @@
           <tr>
             {#each columnNames as column, idx}
               {@const displayName = displayNames[idx] || column}
-              <th>
+              {@const isNumeric = isNumericColumn(column)}
+              <th class:text-end={isNumeric}>
                 <div class="column-header">
                   <button
                     class="sort-button"
+                    class:numeric-sort={isNumeric}
                     on:click={() => handleSortClick(column)}
                   >
                     <span class="column-name">{displayName}</span>
@@ -212,8 +255,20 @@
                     </button>
                   {/if}
                 </div>
+                <div class="filter-input-wrapper">
+                  <input
+                    type="text"
+                    class="filter-input {isNumeric ? 'text-end' : ''}"
+                    placeholder="Press Enter to filter..."
+                    value={getFilterDisplayValue(column)}
+                    readonly={Array.isArray(columnFilters[column])}
+                    on:input={(e) => handleFilterInputChange(column, e)}
+                    on:keydown={(e) => handleFilterKeydown(column, e)}
+                  />
+                </div>
               </th>
             {/each}
+            <th></th>
           </tr>
         </thead>
       </table>
@@ -234,7 +289,11 @@
       >
         <tbody>
           {#each displayRows as row, rowIndex}
-            <tr class:edited-row={originalRowData.has(rowIndex)}>
+            <tr
+              class:edited-row={originalRowData.has(rowIndex)}
+              class:row-even={rowIndex % 2 === 0}
+              class:row-odd={rowIndex % 2 !== 0}
+            >
               {#each columnNames as column, colIndex}
                 {@const cellValue = Array.isArray(row)
                   ? row[colIndex]
@@ -365,7 +424,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     padding: 2px 0.5rem;
-    border: 1px solid var(--grid-border);
+    border-bottom: 1px solid var(--grid-border);
     max-width: 500px;
     min-width: 100px;
   }
@@ -386,7 +445,7 @@
 
   .row-number-header-cell {
     height: auto;
-    min-height: 62px;
+    min-height: 64px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -551,6 +610,43 @@
   .column-name {
     font-weight: 600;
     font-size: 12px;
+  }
+
+  .filter-input-wrapper {
+    padding: 0.25rem 0;
+    margin-top: 0.25rem;
+  }
+
+  .filter-input {
+    width: 100%;
+    padding: 0.25rem 0.5rem;
+    font-size: 11px;
+    border: 1px solid var(--grid-border);
+    border-radius: 3px;
+    background-color: var(--bg-input);
+    color: var(--text-primary);
+    transition: border-color 0.15s ease-in-out;
+  }
+
+  .filter-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.15);
+  }
+
+  .filter-input:read-only {
+    background-color: var(--grid-row-even);
+    color: var(--text-muted);
+    cursor: not-allowed;
+    font-style: italic;
+  }
+
+  .filter-input.text-end {
+    text-align: right;
+  }
+
+  .sort-button.numeric-sort {
+    justify-content: flex-end;
   }
 
   .null-value {

@@ -64,6 +64,7 @@
   let columnFilters = {};
   let sortColumn = null;
   let sortDirection = "asc";
+  let isCustomQuery = false; // Flag to distinguish custom SQL vs table query
   let showFilterModal = false;
   let filterModalColumn = null;
   let filterModalPosition = { top: 0, left: 0 };
@@ -164,6 +165,9 @@
       currentOffset = data?.rows?.length || 0;
       hasMoreData = data?.rows?.length === 200;
       lastLoadedQueryId = queryId;
+      // Determine if this is a custom query (from SQL editor) or table query (from sidebar)
+      isCustomQuery =
+        !tableName && executedQuery && executedQuery.trim() !== "";
     }
   }
 
@@ -176,6 +180,7 @@
     currentOffset = 0;
     hasMoreData = true;
     lastLoadedQueryId = null;
+    isCustomQuery = !tableName && executedQuery.trim() !== "";
   }
 
   afterUpdate(() => {
@@ -203,49 +208,7 @@
     resizeObserver.observe(tableWrapper);
   }
 
-  // Data loading
-  async function handleLoadTableData() {
-    const previousData = displayData;
-    displayData = null;
-    isLoadingData = true;
-    isFiltered = Object.keys(columnFilters).length > 0 || sortColumn !== null;
-    currentOffset = 0;
-    hasMoreData = true;
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    try {
-      const result = await loadTableDataWithFilters(
-        connection,
-        tableName,
-        databaseName,
-        schemaName,
-        columnFilters,
-        sortColumn,
-        sortDirection
-      );
-
-      displayData = result;
-      totalRows = result.rows.length;
-      currentOffset = result.rows.length;
-      hasMoreData = result.has_more_data;
-      finalQuery = result.final_query;
-      lastLoadedQueryId =
-        tableName + JSON.stringify(columnFilters) + sortColumn + sortDirection;
-    } catch (error) {
-      console.error("❌ Failed to load table data:", error);
-      displayData = previousData;
-      isFiltered = false;
-    } finally {
-      isLoadingData = false;
-    }
-  }
-
   async function handleReloadData() {
-    if (!executedQuery || executedQuery.trim() === "") {
-      return;
-    }
-
     const previousData = displayData;
     displayData = null;
     isLoadingData = true;
@@ -256,25 +219,52 @@
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     try {
-      const result = await reloadDataWithFilters(
-        connection,
-        executedQuery,
-        tableName,
-        databaseName,
-        columnFilters,
-        sortColumn,
-        sortDirection
-      );
+      let result;
+
+      // If this is a table query (from sidebar), use loadTableDataWithFilters
+      if (tableName && !isCustomQuery) {
+        result = await loadTableDataWithFilters(
+          connection,
+          tableName,
+          databaseName,
+          schemaName,
+          columnFilters,
+          sortColumn,
+          sortDirection
+        );
+        lastLoadedQueryId =
+          tableName +
+          JSON.stringify(columnFilters) +
+          sortColumn +
+          sortDirection;
+      }
+      // If this is a custom query (from SQL editor), use reloadDataWithFilters
+      else if (executedQuery && executedQuery.trim() !== "") {
+        result = await reloadDataWithFilters(
+          connection,
+          executedQuery,
+          tableName,
+          databaseName,
+          columnFilters,
+          sortColumn,
+          sortDirection
+        );
+        lastLoadedQueryId =
+          executedQuery +
+          JSON.stringify(columnFilters) +
+          sortColumn +
+          sortDirection;
+      } else {
+        // No valid query or table
+        displayData = previousData;
+        isLoadingData = false;
+        return;
+      }
 
       displayData = result;
       totalRows = result?.total_count || result?.rows?.length || 0;
       currentOffset = result?.rows?.length || 0;
       hasMoreData = result?.rows?.length === 200;
-      lastLoadedQueryId =
-        executedQuery +
-        JSON.stringify(columnFilters) +
-        sortColumn +
-        sortDirection;
 
       if (result.final_query) {
         finalQuery = result.final_query;
@@ -500,6 +490,28 @@
     handleReloadData();
   }
 
+  // Inline filter input - triggered on Enter key press
+  function handleFilterInput(column, value) {
+    // Don't allow typing if array filter is active
+    if (Array.isArray(columnFilters[column])) {
+      return;
+    }
+
+    if (value && value.trim() !== "") {
+      columnFilters[column] = value.trim();
+    } else {
+      delete columnFilters[column];
+    }
+
+    columnFilters = { ...columnFilters };
+
+    if (tabId) {
+      tabDataStore.setFilters(tabId, columnFilters);
+    }
+
+    handleReloadData();
+  }
+
   // Editing
   function handleCellDoubleClick(rowIndex, column, currentValue) {
     const result = startEdit(rowIndex, column, currentValue);
@@ -697,6 +709,7 @@
         onLoadMore={handleLoadMore}
         onSort={handleSortClick}
         onFilter={handleFilterClick}
+        onFilterInput={handleFilterInput}
         onCellDoubleClick={handleCellDoubleClick}
         onScroll={handleGridScroll}
       />
