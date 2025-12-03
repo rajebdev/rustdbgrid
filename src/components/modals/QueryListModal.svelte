@@ -48,6 +48,18 @@
   });
 
   function openQuery(query) {
+    // Dispatch event to parent with query data
+    const event = new CustomEvent("open-query", {
+      detail: {
+        title: query.title,
+        content: query.content,
+        description: query.description || "",
+        id: query.id,
+        isFile: query.isFile || query.is_file,
+        filePath: query.filePath || query.file_path,
+      },
+    });
+    window.dispatchEvent(event);
     show = false;
   }
 

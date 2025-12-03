@@ -344,7 +344,7 @@
             class="tab-title"
             style="font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
           >
-            {tab.title}
+            {#if tab.modified}*{/if}{tab.title}
           </span>
           {#if tab.modified}
             <span
@@ -410,7 +410,7 @@
                     class="flex-grow-1 text-truncate"
                     style="font-size: 12px;"
                   >
-                    {tab.title}
+                    {#if tab.modified}*{/if}{tab.title}
                   </span>
                   {#if tab.modified}
                     <span class="text-primary" style="font-size: 16px;">●</span>

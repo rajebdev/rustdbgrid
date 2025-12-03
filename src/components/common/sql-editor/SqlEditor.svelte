@@ -5,23 +5,20 @@
     selectedDatabase,
   } from "../../../stores/connections";
   import { tabDataStore } from "../../../stores/tabData";
+  import { tabStore } from "../../../stores/tabs";
   import { activeTheme } from "../../../stores/theme";
   import { getDefaultQuery } from "../../../utils/defaultQueries";
   import { DatabaseType } from "../../../utils/databaseTypes";
   import { formatSql } from "../../../utils/sqlFormatter";
 
   // Services
-  import {
-    loadDatabasesForEditor,
-    loadAutoSavedQuery,
-  } from "../../../services/sqlEditorService";
+  import { loadDatabasesForEditor } from "../../../services/sqlEditorService";
   import { createCompletionProvider } from "../../../services/editorAutoCompleteService";
   import {
     executeQuery,
     validateQuery,
     cleanQuery,
   } from "../../../services/queryExecutionService";
-  import { setupAutoSave } from "../../../services/editorAutoSaveService";
 
   // Components
   import EditorToolbar from "./partials/EditorToolbar.svelte";
@@ -40,7 +37,6 @@
   let selectedDb = null;
   let loadedDatabases = {};
   let tableAliasMap = new Map();
-  let autoSave = null;
 
   // Reactive statements
   $: if ($activeConnection) {
@@ -108,9 +104,17 @@
   }
 
   function handleEditorChange(text) {
+    const currentText = tabDataStore.get(tabId)?.queryText || "";
+    const initialContent = tab?.initialContent || "";
+
+    // Update query text
     tabDataStore.setQueryText(tabId, text);
-    if (autoSave) {
-      autoSave.trigger();
+
+    // Mark as modified if text has changed from initial content
+    // Only for query tabs
+    if (tab?.type === "query") {
+      const hasChanges = text !== initialContent;
+      tabStore.markTabAsModified(tabId, hasChanges);
     }
   }
 
@@ -372,23 +376,11 @@
   }
 
   onMount(async () => {
-    // Load auto-saved query
+    // Load initial query
     let initialQuery =
       tab?.initialContent ||
       tabData.queryText ||
       getDefaultQuery(selectedConn?.db_type || DatabaseType.MYSQL);
-
-    const autoSavedQuery = await loadAutoSavedQuery(tabId);
-    if (autoSavedQuery) {
-      initialQuery = autoSavedQuery;
-    }
-
-    // Setup auto-save
-    autoSave = setupAutoSave(tabId, () => monacoEditor?.getValue() || "", {
-      connId: selectedConn?.id,
-      dbName: selectedDb,
-      filePath: tab?.filePath,
-    });
 
     // Load databases if connection is selected
     if (selectedConn) {
@@ -456,10 +448,6 @@
       document.removeEventListener("editor-redo", handleRedo);
       document.removeEventListener("editor-paste", handlePaste);
       window.removeEventListener("load-query", handleLoadQuery);
-
-      if (autoSave) {
-        autoSave.cleanup();
-      }
     };
   });
 </script>

@@ -9,6 +9,7 @@
   import KeyboardShortcutsModal from "./components/modals/KeyboardShortcutsModal.svelte";
   import InputModal from "./components/modals/InputModal.svelte";
   import QueryListModal from "./components/modals/QueryListModal.svelte";
+  import UnsavedChangesModal from "./components/modals/UnsavedChangesModal.svelte";
   import { activeConnection } from "./stores/connections";
   import { tabDataStore } from "./stores/tabData";
   import { tabStore } from "./stores/tabs";
@@ -42,6 +43,8 @@
   let renameModalTitle = "";
   let renameModalValue = "";
   let renameModalCallback = null;
+  let showUnsavedChangesModal = false;
+  let unsavedChangesTab = null;
 
   // Resize state
   let sidebarWidth = 320;
@@ -66,8 +69,10 @@
   function handleOpenQueryFromList(event) {
     const query = event.detail;
 
-    // Mark query as used
-    queryListStore.markUsed(query.id);
+    // Mark query as used (if it has an ID from localStorage)
+    if (query.id && !query.isFile && !query.is_file) {
+      queryListStore.markUsed(query.id);
+    }
 
     // Create new query tab with the query content
     tabStore.addQueryTab(get(activeConnection), query.content);
@@ -75,24 +80,34 @@
     // Get the newly created tab and update its title
     const newTab = get(tabStore.activeTab);
     if (newTab) {
-      newTab.title = query.title;
-      tabs = tabs; // Force reactivity
+      // Create updated tab object with new properties
+      const updatedTab = {
+        ...newTab,
+        title: query.title,
+        filePath: query.filePath || query.file_path || newTab.filePath,
+        modified: false, // File from list is not modified
+        initialContent: query.content, // Store initial content
+      };
+
+      // Update tab in store
+      tabStore.updateTab(updatedTab);
     }
 
     showQueryListModal = false;
   }
+
+  // Handle open query from QueryListModal window event
+  const handleOpenQueryWindowEvent = (event) => {
+    handleOpenQueryFromList({ detail: event.detail });
+  };
 
   // Menu handlers
   const menuHandlers = createMenuHandlers({
     tabStore,
     tabDataStore,
     activeConnection,
-    addNewQueryTab: handleAddQueryTab,
-    setShowModal: (val) => (showModal = val),
     setShowToolbar: (val) => (showToolbar = val),
-    setShowAboutModal: (val) => (showAboutModal = val),
     runningQueries,
-    updateTabs: () => (tabs = tabs), // Force re-render
   });
 
   // Action map for menu events
@@ -243,6 +258,7 @@
 
     window.addEventListener("execute-query-new-tab", handleExecuteQueryNewTab);
     document.addEventListener("save-query", handleSaveQuery);
+    window.addEventListener("open-query", handleOpenQueryWindowEvent);
 
     return () => {
       window.removeEventListener(
@@ -250,13 +266,19 @@
         handleExecuteQueryNewTab
       );
       document.removeEventListener("save-query", handleSaveQuery);
+      window.removeEventListener("open-query", handleOpenQueryWindowEvent);
     };
   });
 
   // Event handlers
   function handleMenuAction(event) {
     const handler = actionHandlers[event.type];
-    handler ? handler() : console.warn("Unknown action:", event.type);
+    if (handler) {
+      // Pass the event to handler so it can access event.detail if needed
+      handler(event);
+    } else {
+      console.warn("Unknown action:", event.type);
+    }
   }
 
   function handleTabSelect(event) {
@@ -264,8 +286,47 @@
   }
 
   function handleTabClose(event) {
-    tabDataStore.removeTab(event.detail.id);
-    tabStore.closeTab(event.detail);
+    const tab = event.detail;
+
+    // Check if tab has unsaved changes
+    if (tab.modified && tab.type === "query") {
+      unsavedChangesTab = tab;
+      showUnsavedChangesModal = true;
+    } else {
+      // No unsaved changes, close directly
+      tabDataStore.removeTab(tab.id);
+      tabStore.closeTab(tab);
+    }
+  }
+
+  async function handleUnsavedChangesSave() {
+    showUnsavedChangesModal = false;
+    if (unsavedChangesTab) {
+      // Save the query first
+      const currentActive = get(activeTab);
+      tabStore.selectTab(unsavedChangesTab);
+      await menuHandlers.handleSaveQuery();
+
+      // Then close the tab
+      tabDataStore.removeTab(unsavedChangesTab.id);
+      tabStore.closeTab(unsavedChangesTab);
+      unsavedChangesTab = null;
+    }
+  }
+
+  function handleUnsavedChangesDiscard() {
+    showUnsavedChangesModal = false;
+    if (unsavedChangesTab) {
+      // Close without saving
+      tabDataStore.removeTab(unsavedChangesTab.id);
+      tabStore.closeTab(unsavedChangesTab);
+      unsavedChangesTab = null;
+    }
+  }
+
+  function handleUnsavedChangesCancel() {
+    showUnsavedChangesModal = false;
+    unsavedChangesTab = null;
   }
 
   async function handleNewScript(event) {
@@ -477,7 +538,7 @@
       on:tabSelect={handleTabSelect}
       on:tabClose={handleTabClose}
       on:newTab={handleAddQueryTab}
-      on:newQuery={handleAddQueryTab}
+      on:newQuery={menuHandlers.handleNewQuery}
       on:newScript={handleNewScript}
       on:revealInExplorer={handleRevealInExplorer}
       on:copyFilePath={() => {}}
@@ -521,4 +582,12 @@
   placeholder="Filename"
   on:submit={handleRenameSubmit}
   on:cancel={() => (showRenameModal = false)}
+/>
+
+<UnsavedChangesModal
+  bind:show={showUnsavedChangesModal}
+  tabTitle={unsavedChangesTab?.title || ""}
+  on:save={handleUnsavedChangesSave}
+  on:discard={handleUnsavedChangesDiscard}
+  on:cancel={handleUnsavedChangesCancel}
 />

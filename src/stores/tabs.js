@@ -3,6 +3,16 @@ import { tabDataStore } from "./tabData";
 import { DatabaseType } from "../utils/databaseTypes";
 
 /**
+ * Generate unique ID for tabs
+ */
+let lastId = Date.now();
+function generateUniqueId() {
+  const now = Date.now();
+  lastId = now > lastId ? now : lastId + 1;
+  return lastId;
+}
+
+/**
  * Tab Management Store and Logic
  */
 function createTabStore() {
@@ -17,11 +27,54 @@ function createTabStore() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        initialTabs = JSON.parse(saved);
+        const loadedTabs = JSON.parse(saved);
+
+        // Ensure all tabs have unique IDs and update lastId
+        const seenIds = new Set();
+        initialTabs = loadedTabs.map((tab) => {
+          let tabId = tab.id;
+
+          // If ID is duplicate or invalid, generate new one
+          if (!tabId || seenIds.has(tabId)) {
+            const newId = generateUniqueId();
+            console.warn(
+              `Tab "${tab.title}" has duplicate/invalid ID ${tabId}, assigning new ID ${newId}`
+            );
+            tabId = newId;
+          } else {
+            seenIds.add(tabId);
+            // Update lastId to ensure future IDs are higher
+            if (tabId >= lastId) {
+              lastId = tabId + 1;
+            }
+          }
+
+          return { ...tab, id: tabId };
+        });
+
+        console.log(
+          `Loaded ${initialTabs.length} tabs from storage, lastId set to ${lastId}`
+        );
       }
       const savedActive = localStorage.getItem(ACTIVE_TAB_KEY);
       if (savedActive) {
         initialActiveTab = JSON.parse(savedActive);
+        // Verify active tab ID exists in tabs and is unique
+        if (initialActiveTab && initialTabs.length > 0) {
+          const matchingTab = initialTabs.find(
+            (t) => t.id === initialActiveTab.id
+          );
+          if (matchingTab) {
+            // Use the tab from initialTabs (which has validated ID)
+            initialActiveTab = matchingTab;
+          } else {
+            // If active tab doesn't exist in tabs, set to first tab
+            console.warn(
+              `Active tab ID ${initialActiveTab.id} not found in tabs, setting to first tab`
+            );
+            initialActiveTab = initialTabs[0];
+          }
+        }
       }
     } catch (e) {
       console.error("Failed to load tabs from storage:", e);
@@ -82,7 +135,7 @@ function createTabStore() {
     addQueryTab: (connection = null, initialContent = null) => {
       tabs.update((currentTabs) => {
         const newTab = {
-          id: Date.now(),
+          id: generateUniqueId(),
           title: `Query ${currentTabs.length + 1}`,
           type: "query",
           modified: false,
@@ -127,7 +180,7 @@ function createTabStore() {
             : table.name;
 
         const newTab = {
-          id: Date.now(),
+          id: generateUniqueId(),
           title: displayName,
           type: "table",
           modified: false,
@@ -172,7 +225,7 @@ function createTabStore() {
             : procedure.name;
 
         const newTab = {
-          id: Date.now(),
+          id: generateUniqueId(),
           title: displayName,
           type: "procedure",
           modified: false,
@@ -274,6 +327,29 @@ function createTabStore() {
           t.id === updatedTab.id ? updatedTab : t
         );
       });
+
+      // Also update activeTab if this is the active tab
+      const currentActive = get(activeTab);
+      if (currentActive && currentActive.id === updatedTab.id) {
+        activeTab.set(updatedTab);
+      }
+    },
+
+    /**
+     * Mark tab as modified
+     */
+    markTabAsModified: (tabId, modified = true) => {
+      tabs.update((currentTabs) => {
+        return currentTabs.map((t) =>
+          t.id === tabId ? { ...t, modified } : t
+        );
+      });
+
+      // Also update activeTab if this is the active tab
+      const currentActive = get(activeTab);
+      if (currentActive && currentActive.id === tabId) {
+        activeTab.set({ ...currentActive, modified });
+      }
     },
 
     /**

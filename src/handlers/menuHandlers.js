@@ -61,7 +61,7 @@ export async function handleOpenTableTab(event, tabStore, tabDataStore) {
 /**
  * Handle opening procedure tab (shows procedure source code)
  */
-export async function handleOpenProcedureTab(event, tabStore, tabDataStore) {
+export async function handleOpenProcedureTab(event, tabStore) {
   const { procedure, database, connection } = event.detail;
 
   // Add a procedure tab
@@ -75,14 +75,9 @@ export function createMenuHandlers(context) {
   const {
     tabStore,
     tabDataStore,
-    addNewQueryTab,
     activeConnection,
-    showModal,
-    showSidebar,
     showToolbar,
-    showAboutModal,
     runningQueries,
-    updateTabs,
   } = context;
 
   // Get activeTab from tabStore (it's a derived store)
@@ -92,6 +87,7 @@ export function createMenuHandlers(context) {
     // File Menu Handlers
     async handleNewQuery() {
       try {
+        console.log("Creating new query tab...");
         // Get next query number from both files and active tabs
         const currentTabs = get(tabStore);
         const queryTabs = currentTabs.filter(
@@ -122,31 +118,20 @@ export function createMenuHandlers(context) {
         // addQueryTab will automatically initialize tabDataStore with the content
         tabStore.addQueryTab(get(activeConnection), newContent);
 
-        // Get the newly created tab and update its title and file path
+        // Get the newly created tab and update its title
         const newTab = get(activeTab);
         if (newTab) {
-          // Update tab properties
-          newTab.title = fileName;
-          newTab.filePath = `queries/${fileName}`;
+          // Create updated tab object with new properties
+          const updatedTab = {
+            ...newTab,
+            title: fileName,
+            filePath: null, // No file path until first save
+            modified: false, // Not modified yet - waiting for user changes
+            initialContent: newContent, // Store initial template content
+          };
 
           // Save the updated tab back to the store
-          tabStore.updateTab(newTab);
-
-          // Auto-save the new query to local file immediately
-          try {
-            const configDir = await invoke("get_config_dir");
-            const sep = navigator.platform.toLowerCase().includes("win")
-              ? "\\"
-              : "/";
-            const fullPath = `${configDir}${sep}rustdbgrid${sep}queries${sep}${fileName}`;
-
-            await invoke("auto_save_query_file", {
-              filePath: fullPath,
-              content: newContent,
-            });
-          } catch (saveError) {
-            console.error("Failed to auto-save new query file:", saveError);
-          }
+          tabStore.updateTab(updatedTab);
         }
       } catch (error) {
         console.error("Failed to create new query:", error);
@@ -169,9 +154,14 @@ export function createMenuHandlers(context) {
           const newTab = get(tabStore.activeTab);
           if (newTab) {
             // Update with file info
-            newTab.filePath = file.path;
-            newTab.title = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
-            context.updateTabs();
+            const updatedTab = {
+              ...newTab,
+              filePath: file.path,
+              title: file.name.replace(/\.[^/.]+$/, ""), // Remove extension
+              modified: false, // File just opened, not modified
+              initialContent: file.content, // Store initial content
+            };
+            tabStore.updateTab(updatedTab);
           }
         }
       } catch (error) {
@@ -195,9 +185,14 @@ export function createMenuHandlers(context) {
         const newTab = get(tabStore.activeTab);
         if (newTab) {
           // Update with file info
-          newTab.filePath = file.path;
-          newTab.title = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
-          context.updateTabs();
+          const updatedTab = {
+            ...newTab,
+            filePath: file.path,
+            title: file.name.replace(/\.[^/.]+$/, ""), // Remove extension
+            modified: false, // File just opened, not modified
+            initialContent: content, // Store initial content
+          };
+          tabStore.updateTab(updatedTab);
         }
       } catch (error) {
         console.error("Failed to open recent file:", error);
@@ -240,9 +235,14 @@ export function createMenuHandlers(context) {
         );
 
         if (result) {
-          currentTab.filePath = result.path;
-          currentTab.modified = false;
-          context.updateTabs();
+          // Update tab with saved state
+          const updatedTab = {
+            ...currentTab,
+            filePath: result.path,
+            modified: false,
+            initialContent: tabData.queryText, // Update initial content to saved content
+          };
+          tabStore.updateTab(updatedTab);
 
           // Add to recent files
           const fileName = result.path.split(/[\\/]/).pop();
@@ -308,10 +308,15 @@ export function createMenuHandlers(context) {
         );
 
         if (result) {
-          currentTab.filePath = result.path;
-          currentTab.modified = false;
-          currentTab.title = result.name;
-          context.updateTabs();
+          // Update tab with saved state
+          const updatedTab = {
+            ...currentTab,
+            filePath: result.path,
+            modified: false,
+            title: result.name,
+            initialContent: tabData.queryText, // Update initial content to saved content
+          };
+          tabStore.updateTab(updatedTab);
 
           // Add to recent files
           const fileName = result.path.split(/[\\/]/).pop();
