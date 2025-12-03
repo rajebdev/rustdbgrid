@@ -199,6 +199,35 @@ export async function getDatabaseObject(
   });
 }
 
+/**
+ * Universal function to get table properties (schema, statistics, relationships, etc)
+ * @param {string} connectionId - Connection ID
+ * @param {string} requestType - Type of request: 'schema', 'statistics', 'relationships', 'triggers', 'pg_constraints', 'pg_foreign_keys', 'pg_indexes', 'pg_references', 'pg_partitions'
+ * @param {string} database - Database name
+ * @param {string} table - Table name/identifier
+ * @returns {Promise<object>} Property data
+ */
+export async function getPropertiesObject(
+  connectionId,
+  requestType,
+  database,
+  table
+) {
+  console.log("📤 getPropertiesObject called with:", {
+    connectionId,
+    requestType,
+    database,
+    table,
+  });
+
+  return await invoke("get_properties_object", {
+    connectionId: connectionId,
+    requestType: requestType,
+    database,
+    table,
+  });
+}
+
 export async function getDatabases(config) {
   return await invoke("get_databases", { config });
 }
@@ -219,20 +248,8 @@ export async function getProcedures(config, database, schema = null) {
   return await invoke("get_procedures", { config, database, schema });
 }
 
-export async function getTriggers(config, database, schema = null) {
-  return await invoke("get_triggers", { config, database, schema });
-}
-
 export async function getEvents(config, database, schema = null) {
   return await invoke("get_events", { config, database, schema });
-}
-
-export async function getTableSchema(config, database, table) {
-  return await invoke("get_table_schema", { config, database, table });
-}
-
-export async function getTableRelationships(config, database, table) {
-  return await invoke("get_table_relationships", { config, database, table });
 }
 
 export async function getStorageInfo() {

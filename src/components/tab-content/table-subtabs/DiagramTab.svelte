@@ -1,5 +1,5 @@
 <script>
-  import { getTableRelationships, getTableSchema } from "../../../utils/tauri";
+  import { getPropertiesObject } from "../../../utils/tauri";
   import { activeConnection } from "../../../stores/connections";
   import { DatabaseType } from "../../../utils/databaseTypes";
 
@@ -11,7 +11,7 @@
   let error = null;
   let svgWidth = 1600;
   let svgHeight = 1000;
-  let zoom = 0.7; // Default zoom 70%
+  let zoom = 1.0; // Default zoom 100%
   let panX = 0;
   let panY = 0;
   let isPanning = false;
@@ -65,8 +65,9 @@
       });
 
       // Load current table schema
-      currentTableSchema = await getTableSchema(
-        conn,
+      currentTableSchema = await getPropertiesObject(
+        conn.id,
+        "schema",
         tableInfo.database,
         tableIdentifier
       );
@@ -77,8 +78,9 @@
       });
 
       // Load relationships
-      relationships = await getTableRelationships(
-        conn,
+      relationships = await getPropertiesObject(
+        conn.id,
+        "relationships",
         tableInfo.database,
         tableIdentifier
       );
@@ -121,8 +123,9 @@
             }
           }
 
-          const schema = await getTableSchema(
-            conn,
+          const schema = await getPropertiesObject(
+            conn.id,
+            "schema",
             tableInfo.database,
             relatedTableIdentifier
           );

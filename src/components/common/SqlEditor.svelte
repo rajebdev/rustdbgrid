@@ -13,7 +13,7 @@
     executeQuery,
     getDatabases,
     getTables,
-    getTableSchema,
+    getPropertiesObject,
     saveAutoQuery,
     loadAutoQuery,
   } from "../../utils/tauri";
@@ -90,8 +90,9 @@
       const newSchema = {};
       for (const table of tables) {
         try {
-          const tableSchema = await getTableSchema(
-            selectedConn,
+          const tableSchema = await getPropertiesObject(
+            selectedConn.id,
+            "schema",
             selectedDb,
             table.name
           );
@@ -177,7 +178,12 @@
     }
 
     try {
-      const tableSchema = await getTableSchema(selectedConn, dbName, tableName);
+      const tableSchema = await getPropertiesObject(
+        selectedConn.id,
+        "schema",
+        dbName,
+        tableName
+      );
       const columns = tableSchema.columns.map((col) => col.name);
 
       if (!loadedDatabases[dbName]) {

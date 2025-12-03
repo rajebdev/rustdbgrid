@@ -1,10 +1,5 @@
 <script>
-  import { invoke } from "@tauri-apps/api/core";
-  import {
-    getTableSchema,
-    getTableRelationships,
-    getTriggers,
-  } from "../../../utils/tauri";
+  import { getPropertiesObject } from "../../../utils/tauri";
   import { activeConnection } from "../../../stores/connections";
   import { tabDataStore } from "../../../stores/tabData";
   import { DatabaseType } from "../../../utils/databaseTypes";
@@ -125,31 +120,36 @@
       // Load all PostgreSQL-specific data in parallel
       const [constraints, foreignKeys, indexes, references, partitions] =
         await Promise.all([
-          invoke("get_pg_constraints", {
-            config: conn,
-            database: tableInfo.database,
-            table: tableIdentifier,
-          }),
-          invoke("get_pg_foreign_keys", {
-            config: conn,
-            database: tableInfo.database,
-            table: tableIdentifier,
-          }),
-          invoke("get_pg_indexes", {
-            config: conn,
-            database: tableInfo.database,
-            table: tableIdentifier,
-          }),
-          invoke("get_pg_references", {
-            config: conn,
-            database: tableInfo.database,
-            table: tableIdentifier,
-          }),
-          invoke("get_pg_partitions", {
-            config: conn,
-            database: tableInfo.database,
-            table: tableIdentifier,
-          }),
+          getPropertiesObject(
+            conn.id,
+            "pg_constraints",
+            tableInfo.database,
+            tableIdentifier
+          ),
+          getPropertiesObject(
+            conn.id,
+            "pg_foreign_keys",
+            tableInfo.database,
+            tableIdentifier
+          ),
+          getPropertiesObject(
+            conn.id,
+            "pg_indexes",
+            tableInfo.database,
+            tableIdentifier
+          ),
+          getPropertiesObject(
+            conn.id,
+            "pg_references",
+            tableInfo.database,
+            tableIdentifier
+          ),
+          getPropertiesObject(
+            conn.id,
+            "pg_partitions",
+            tableInfo.database,
+            tableIdentifier
+          ),
         ]);
 
       pgConstraints = constraints;
@@ -157,14 +157,6 @@
       pgIndexes = indexes;
       pgReferences = references;
       pgPartitions = partitions;
-
-      console.log("PostgreSQL data loaded:", {
-        constraints,
-        foreignKeys,
-        indexes,
-        references,
-        partitions,
-      });
     } catch (e) {
       console.error("Error loading PostgreSQL data:", e);
       pgConstraints = [];
@@ -197,8 +189,9 @@
       }
 
       // Call Tauri command to get table schema
-      tableSchema = await getTableSchema(
-        conn,
+      tableSchema = await getPropertiesObject(
+        conn.id,
+        "schema",
         tableInfo.database,
         tableIdentifier
       );
@@ -227,13 +220,12 @@
       }
 
       // Call Tauri command to get table statistics
-      tableStatistics = await invoke("get_table_statistics", {
-        config: conn,
-        database: tableInfo.database,
-        table: tableIdentifier,
-      });
-
-      console.log("Table statistics loaded:", tableStatistics);
+      tableStatistics = await getPropertiesObject(
+        conn.id,
+        "statistics",
+        tableInfo.database,
+        tableIdentifier
+      );
     } catch (e) {
       console.error("Error loading table statistics:", e);
       // Don't set error, just log it - statistics is optional
@@ -259,13 +251,12 @@
       }
 
       // Call Tauri command to get table relationships (references)
-      tableReferences = await getTableRelationships(
-        conn,
+      tableReferences = await getPropertiesObject(
+        conn.id,
+        "relationships",
         tableInfo.database,
         tableIdentifier
       );
-
-      console.log("Table references loaded:", tableReferences);
     } catch (e) {
       console.error("Error loading table references:", e);
       tableReferences = [];
@@ -286,14 +277,17 @@
       }
 
       // Call Tauri command to get triggers for this database
-      const allTriggers = await getTriggers(conn, tableInfo.database, null);
+      const allTriggers = await getPropertiesObject(
+        conn.id,
+        "triggers",
+        tableInfo.database,
+        tableInfo.name
+      );
 
       // Filter triggers for this specific table
       tableTriggers = allTriggers.filter(
         (trigger) => trigger.table_name === tableInfo.name
       );
-
-      console.log("Table triggers loaded:", tableTriggers);
     } catch (e) {
       console.error("Error loading table triggers:", e);
       tableTriggers = [];
@@ -307,9 +301,9 @@
     if (bytes === null || bytes === undefined) return "N/A";
     if (bytes === 0) return "0";
     const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const sizes = ["B", "K", "M", "G", "T"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + "" + sizes[i];
   }
 
   function formatNumber(num) {
