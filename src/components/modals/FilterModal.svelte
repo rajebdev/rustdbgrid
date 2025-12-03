@@ -7,6 +7,7 @@
   export let availableValues = [];
   export let loading = false;
   export let searchQuery = "";
+  export let position = { top: 0, left: 0 };
 
   function apply() {
     show = false;
@@ -39,7 +40,14 @@
 </script>
 
 {#if show && column}
-  <BaseModal {show} backdrop={true} centered={false} keyboard={true} on:close>
+  <BaseModal
+    {show}
+    backdrop={true}
+    centered={false}
+    keyboard={true}
+    on:close
+    style="--position-top: {position.top}px; --position-left: {position.left}px;"
+  >
     <div slot="header">
       <h5 class="modal-title">
         <i class="fas fa-filter"></i> Filter: {column}

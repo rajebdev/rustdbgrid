@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import SqlEditor from "../common/SqlEditor.svelte";
-  import DataGrid from "../common/DataGrid.svelte";
+  import DataGrid from "../common/datagrid/DataGrid.svelte";
   import { activeConnection } from "../../stores/connections";
   import { tabDataStore } from "../../stores/tabData";
 

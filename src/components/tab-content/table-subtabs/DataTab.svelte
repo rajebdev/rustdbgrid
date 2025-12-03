@@ -1,5 +1,5 @@
 <script>
-  import DataGrid from "../../common/DataGrid.svelte";
+  import DataGrid from "../../common/datagrid/DataGrid.svelte";
   import { loadTableData } from "../../../utils/tauri";
   import { tabDataStore } from "../../../stores/tabData";
 
