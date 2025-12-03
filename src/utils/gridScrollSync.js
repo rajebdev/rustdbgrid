@@ -25,10 +25,17 @@ export async function syncColumnWidths(headerWrapper, tableWrapper) {
 
   bodyCells.forEach((bodyCell, index) => {
     if (headerCells[index]) {
-      const width = bodyCell.getBoundingClientRect().width;
+      const bodyWidth = bodyCell.getBoundingClientRect().width;
+      const headerWidth = headerCells[index].getBoundingClientRect().width;
+      const width = Math.max(bodyWidth, headerWidth);
+
       headerCells[index].style.width = `${width}px`;
       headerCells[index].style.minWidth = `${width}px`;
       headerCells[index].style.maxWidth = `${width}px`;
+
+      bodyCell.style.width = `${width}px`;
+      bodyCell.style.minWidth = `${width}px`;
+      bodyCell.style.maxWidth = `${width}px`;
     }
   });
 }

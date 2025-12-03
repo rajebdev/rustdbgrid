@@ -45,22 +45,35 @@
     (col) => selectedFilterValues[col] && selectedFilterValues[col].size > 0
   );
 
-  // Detect if column is numeric by sampling first 10 rows
-  function isNumericColumn(column) {
-    if (!displayData?.rows || displayData.rows.length === 0) return false;
+  // Detect if column is numeric by checking data type from metadata
+  function isNumericColumn(column, columnIndex) {
+    if (!displayData?.columns || displayData.columns.length === 0) return false;
 
-    const sampleSize = Math.min(10, displayData.rows.length);
-    let numericCount = 0;
+    const columnMeta = displayData.columns[columnIndex];
+    if (!columnMeta) return false;
 
-    for (let i = 0; i < sampleSize; i++) {
-      const value = displayData.rows[i][column];
-      if (value === null || value === undefined) continue;
-      if (typeof value === "number") {
-        numericCount++;
-      }
-    }
+    const dataType = columnMeta.data_type?.toUpperCase() || "";
 
-    return numericCount / sampleSize > 0.7;
+    // Check if data type is numeric
+    const numericTypes = [
+      "INT",
+      "INT2",
+      "INT4",
+      "INT8",
+      "SMALLINT",
+      "BIGINT",
+      "TINYINT",
+      "DECIMAL",
+      "NUMERIC",
+      "FLOAT",
+      "REAL",
+      "DOUBLE",
+      "MONEY",
+      "SMALLMONEY",
+      "NUMBER",
+    ];
+
+    return numericTypes.some((type) => dataType.includes(type));
   }
 
   afterUpdate(() => {
@@ -218,12 +231,11 @@
           <tr>
             {#each columnNames as column, idx}
               {@const displayName = displayNames[idx] || column}
-              {@const isNumeric = isNumericColumn(column)}
-              <th class:text-end={isNumeric}>
+              {@const isNumeric = isNumericColumn(column, idx)}
+              <th>
                 <div class="column-header">
                   <button
                     class="sort-button"
-                    class:numeric-sort={isNumeric}
                     on:click={() => handleSortClick(column)}
                   >
                     <span class="column-name">{displayName}</span>
@@ -302,7 +314,7 @@
                   editingCell?.rowIndex === rowIndex &&
                   editingCell?.column === column}
                 {@const isEdited = editedRows.get(rowIndex)?.has(column)}
-                {@const isNumeric = isNumericColumn(column)}
+                {@const isNumeric = isNumericColumn(column, colIndex)}
                 {@const isArrayValue = Array.isArray(cellValue)}
                 <td
                   class:editing={isEditing}
@@ -554,7 +566,7 @@
 
   /* Numeric column styling - right-align and monospace font */
   .data-table tbody td.numeric-cell {
-    text-align: right;
+    text-align: right !important;
     font-family: var(--bs-font-monospace);
     font-size: 11px;
   }
@@ -643,10 +655,6 @@
 
   .filter-input.text-end {
     text-align: right;
-  }
-
-  .sort-button.numeric-sort {
-    justify-content: flex-end;
   }
 
   .null-value {
