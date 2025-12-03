@@ -147,8 +147,11 @@ pub async fn connect_to_database(
     connection_id: String,
     state: State<'_, ConnectionStore>,
 ) -> Result<(), String> {
-    tracing::info!("🔌 [COMMAND] Connecting to database with ID: '{}'", connection_id);
-    
+    tracing::info!(
+        "🔌 [COMMAND] Connecting to database with ID: '{}'",
+        connection_id
+    );
+
     // Get connection config from storage
     let config = {
         let connections = state.connections.lock().unwrap();
@@ -158,7 +161,7 @@ pub async fn connect_to_database(
             .ok_or_else(|| format!("Connection '{}' not found", connection_id))?
             .clone()
     };
-    
+
     tracing::info!("🔌 [COMMAND] Connecting to database: '{}'", config.name);
     let result = state.pool.connect(config.clone()).await;
 

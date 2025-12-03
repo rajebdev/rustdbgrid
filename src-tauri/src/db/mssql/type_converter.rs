@@ -21,7 +21,11 @@ pub enum MssqlColType {
 }
 
 /// Optimized helper function using pre-computed type
-pub fn row_value_to_json_typed(row: &Row, index: usize, col_type: MssqlColType) -> serde_json::Value {
+pub fn row_value_to_json_typed(
+    row: &Row,
+    index: usize,
+    col_type: MssqlColType,
+) -> serde_json::Value {
     match col_type {
         MssqlColType::String => {
             if let Some(v) = row.try_get::<&str, _>(index).ok().flatten() {

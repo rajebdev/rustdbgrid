@@ -1,7 +1,7 @@
 pub mod driver;
+pub mod metadata_ops;
 pub mod query_builder;
 pub mod type_converter;
-pub mod metadata_ops;
 
 pub use driver::MSSQLConnection;
 pub use query_builder::MSSQLQueryBuilder;

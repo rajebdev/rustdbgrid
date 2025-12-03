@@ -1,5 +1,5 @@
-use crate::db::traits::QueryBuilder;
 use crate::db::mysql::query_builder::MySQLQueryBuilder;
+use crate::db::traits::QueryBuilder;
 use crate::models::table_request::*;
 use anyhow::Result;
 
@@ -102,5 +102,4 @@ impl QueryBuilder for MSSQLQueryBuilder {
             "".to_string()
         }
     }
-
 }

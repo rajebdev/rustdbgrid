@@ -243,8 +243,13 @@ pub async fn get_database_object(
                         } else {
                             Some("PROCEDURE".to_string())
                         };
-                        conn.get_procedure_source(&db, &proc_name_clone, proc_type, proc_schema_clone)
-                            .await
+                        conn.get_procedure_source(
+                            &db,
+                            &proc_name_clone,
+                            proc_type,
+                            proc_schema_clone,
+                        )
+                        .await
                     }
                     .boxed()
                 })

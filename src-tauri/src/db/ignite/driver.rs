@@ -5,11 +5,11 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::process::Child;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::time::Instant;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[cfg(windows)]
 use tokio::net::windows::named_pipe::ClientOptions;

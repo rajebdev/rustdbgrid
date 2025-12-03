@@ -1,6 +1,6 @@
-use crate::db::traits::DatabaseConnection;
-use crate::db::postgres::type_converter::{map_pg_type, extract_pg_value_typed, PgColType};
 use crate::db::postgres::metadata_ops::*;
+use crate::db::postgres::type_converter::{extract_pg_value_typed, map_pg_type, PgColType};
+use crate::db::traits::DatabaseConnection;
 use crate::models::{connection::*, query_result::*, schema::*};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -481,14 +481,17 @@ impl DatabaseConnection for PostgresConnection {
         let schema_name = schema.as_deref().unwrap_or("public");
 
         // Try multiple approaches to find and get the function definition
-        
+
         // Approach 1: Try with pg_get_functiondef using schema-qualified name
         let query1 = format!(
             "SELECT pg_get_functiondef('{}.{}'::regprocedure::oid) as source",
             schema_name, procedure_name
         );
 
-        if let Ok(Some(source)) = sqlx::query_scalar::<_, String>(&query1).fetch_optional(pool).await {
+        if let Ok(Some(source)) = sqlx::query_scalar::<_, String>(&query1)
+            .fetch_optional(pool)
+            .await
+        {
             if !source.is_empty() {
                 return Ok(source);
             }
@@ -504,7 +507,10 @@ impl DatabaseConnection for PostgresConnection {
             procedure_name, schema_name
         );
 
-        if let Ok(Some(source)) = sqlx::query_scalar::<_, String>(&query2).fetch_optional(pool).await {
+        if let Ok(Some(source)) = sqlx::query_scalar::<_, String>(&query2)
+            .fetch_optional(pool)
+            .await
+        {
             if !source.is_empty() {
                 return Ok(source);
             }
@@ -519,7 +525,10 @@ impl DatabaseConnection for PostgresConnection {
             procedure_name, schema_name
         );
 
-        match sqlx::query_scalar::<_, String>(&query3).fetch_optional(pool).await {
+        match sqlx::query_scalar::<_, String>(&query3)
+            .fetch_optional(pool)
+            .await
+        {
             Ok(Some(source)) => {
                 if !source.is_empty() {
                     return Ok(source);

@@ -164,7 +164,8 @@ impl MySqlMetadataOps {
             .map(|row| {
                 let name: String = row.try_get("name").unwrap_or_default();
                 let status: Option<String> = row.try_get("status").ok();
-                let interval_value: Option<String> = row.try_get::<String, _>("interval_value").ok();
+                let interval_value: Option<String> =
+                    row.try_get::<String, _>("interval_value").ok();
                 let interval_field: Option<String> = row.try_get("interval_field").ok();
                 Event {
                     name,

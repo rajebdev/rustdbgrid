@@ -1,5 +1,5 @@
-use crate::db::traits::DatabaseConnection;
 use crate::db::mysql::metadata_ops::MySqlMetadataOps;
+use crate::db::traits::DatabaseConnection;
 use crate::models::{connection::*, query_result::*, schema::*};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -517,7 +517,10 @@ impl DatabaseConnection for MySQLConnection {
                     procedure_name,
                     e
                 );
-                Ok(format!("-- Error retrieving source: {}\n-- {}", e, procedure_name))
+                Ok(format!(
+                    "-- Error retrieving source: {}\n-- {}",
+                    e, procedure_name
+                ))
             }
         }
     }
