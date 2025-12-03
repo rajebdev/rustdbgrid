@@ -14,7 +14,9 @@
     getTables,
     getTableSchema,
     saveAutoQuery,
+    loadAutoQuery,
   } from "../../utils/tauri";
+  import { invoke } from "@tauri-apps/api/core";
   import EditorContextMenu from "../context-menus/EditorContextMenu.svelte";
 
   export let tabId;
@@ -498,7 +500,6 @@
       getDefaultQuery(selectedConn?.db_type || "MySQL");
 
     try {
-      const { loadAutoQuery } = await import("../../utils/tauri");
       const autoSaved = await loadAutoQuery();
       if (autoSaved && autoSaved.tab_id === tabId) {
         // Use auto-saved query if available and matches current tab
@@ -733,7 +734,6 @@
 
           // Also save to the actual file if tab has a filePath
           if (tab?.filePath) {
-            const { invoke } = await import("@tauri-apps/api/core");
             const configDir = await invoke("get_config_dir");
 
             // Build full absolute path

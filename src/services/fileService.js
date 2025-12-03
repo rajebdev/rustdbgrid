@@ -1,4 +1,6 @@
-import { message } from "@tauri-apps/plugin-dialog";
+import { message, open, save } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
+import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 
 // Helper function for showing messages
 export async function showMessage(msg, title = "RustDBGrid") {
@@ -27,7 +29,6 @@ export const fileService = {
    * Open SQL file
    */
   async openFile() {
-    const { open } = await import("@tauri-apps/plugin-dialog");
     const filePath = await open({
       title: "Open SQL File",
       filters: [
@@ -39,7 +40,6 @@ export const fileService = {
     });
 
     if (filePath) {
-      const { readTextFile } = await import("@tauri-apps/plugin-fs");
       const content = await readTextFile(filePath);
       const fileName = filePath.split(/[\\/]/).pop();
       return {
@@ -55,7 +55,6 @@ export const fileService = {
    * Save query to file
    */
   async saveQuery(filePath, content) {
-    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
     await writeTextFile(filePath, content);
   },
 
@@ -63,7 +62,6 @@ export const fileService = {
    * Save query as new file
    */
   async saveQueryAs(defaultFileName, content) {
-    const { save } = await import("@tauri-apps/plugin-dialog");
     const filePath = await save({
       title: "Save SQL File",
       filters: [
@@ -76,7 +74,6 @@ export const fileService = {
     });
 
     if (filePath) {
-      const { writeTextFile } = await import("@tauri-apps/plugin-fs");
       await writeTextFile(filePath, content);
       const fileName = filePath.split(/[\\/]/).pop().replace(".sql", "");
       return {
@@ -91,7 +88,6 @@ export const fileService = {
    * Export data to file
    */
   async exportData(data, format = null) {
-    const { save } = await import("@tauri-apps/plugin-dialog");
     const filters = [
       { name: "CSV Files", extensions: ["csv"] },
       { name: "JSON Files", extensions: ["json"] },
@@ -104,7 +100,6 @@ export const fileService = {
     });
 
     if (filePath) {
-      const { invoke } = await import("@tauri-apps/api/core");
       const ext = format || filePath.split(".").pop().toLowerCase();
       await invoke("export_data", {
         data,
@@ -120,7 +115,6 @@ export const fileService = {
    * Import data from file
    */
   async importData() {
-    const { open } = await import("@tauri-apps/plugin-dialog");
     const file = await open({
       title: "Import Data",
       filters: [
@@ -141,8 +135,6 @@ export const fileService = {
    * Auto-save query to queries folder
    */
   async autoSaveQuery(fileName, content) {
-    const { invoke } = await import("@tauri-apps/api/core");
-
     try {
       // Get config directory and create queries folder path
       const configDir = await invoke("get_config_dir");

@@ -1,6 +1,7 @@
 /**
  * Query File Service - untuk mengelola penyimpanan query ke file lokal
  */
+import { invoke } from "@tauri-apps/api/core";
 
 export async function saveQueryToFile(query, filename) {
   try {
@@ -70,8 +71,6 @@ export function downloadQueries(queries, filename = "queries.json") {
  * Load all query files from queries folder
  */
 export async function loadQueriesFromFolder() {
-  const { invoke } = await import("@tauri-apps/api/core");
-
   try {
     // Get config directory
     const configDir = await invoke("get_config_dir");
@@ -93,8 +92,6 @@ export async function loadQueriesFromFolder() {
  * Delete a query file
  */
 export async function deleteQueryFile(filePath) {
-  const { invoke } = await import("@tauri-apps/api/core");
-
   try {
     await invoke("delete_query_file", { filePath });
     return true;

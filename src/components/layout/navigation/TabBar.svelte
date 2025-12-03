@@ -241,7 +241,6 @@
 
         // Convert relative path to absolute if needed
         if (!fullPath.match(/^[a-zA-Z]:[\\\\/]/) && !fullPath.startsWith("/")) {
-          const { invoke } = await import("@tauri-apps/api/core");
           const configDir = await invoke("get_config_dir");
           const sep = navigator.platform.toLowerCase().includes("win")
             ? "\\"

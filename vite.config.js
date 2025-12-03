@@ -27,6 +27,29 @@ export default defineConfig({
     target: ["es2021", "chrome100", "safari13"],
     minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_DEBUG,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Monaco Editor - separate chunk (very large)
+          monaco: ["monaco-editor"],
+          // Tauri APIs - separate chunk
+          "tauri-api": [
+            "@tauri-apps/api/core",
+            "@tauri-apps/api/event",
+            "@tauri-apps/api/window",
+            "@tauri-apps/api/path",
+          ],
+          "tauri-plugins": [
+            "@tauri-apps/plugin-dialog",
+            "@tauri-apps/plugin-fs",
+            "@tauri-apps/plugin-shell",
+          ],
+          // Svelte runtime
+          svelte: ["svelte", "svelte/store"],
+        },
+      },
+    },
   },
   // Pre-bundle heavy dependencies for faster dev startup
   optimizeDeps: {

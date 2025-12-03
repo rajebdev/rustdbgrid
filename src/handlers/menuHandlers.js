@@ -4,8 +4,13 @@ import {
   executeQuery,
   getNextQueryNumber,
   loadTableData,
+  disconnectFromDatabase,
 } from "../utils/tauri";
 import { recentFilesStore } from "../stores/recentFiles";
+import { invoke } from "@tauri-apps/api/core";
+import { readTextFile } from "@tauri-apps/plugin-fs";
+import { open as openUrl } from "@tauri-apps/plugin-shell";
+import { isSaving, saveStatus } from "../stores/connections";
 
 /**
  * Handle opening table tab
@@ -130,7 +135,6 @@ export function createMenuHandlers(context) {
 
           // Auto-save the new query to local file immediately
           try {
-            const { invoke } = await import("@tauri-apps/api/core");
             const configDir = await invoke("get_config_dir");
             const sep = navigator.platform.toLowerCase().includes("win")
               ? "\\"
@@ -180,7 +184,6 @@ export function createMenuHandlers(context) {
     async handleOpenRecentFile(file) {
       try {
         // Read file content
-        const { readTextFile } = await import("@tauri-apps/plugin-fs");
         const content = await readTextFile(file.path);
 
         // Update recent files (move to top)
@@ -219,9 +222,6 @@ export function createMenuHandlers(context) {
       }
 
       try {
-        // Import saveStatus store
-        const { isSaving, saveStatus } = await import("../stores/connections");
-
         // Set saving status
         isSaving.set(true);
         saveStatus.set({
@@ -264,8 +264,7 @@ export function createMenuHandlers(context) {
       } catch (error) {
         console.error("Failed to auto-save query:", error);
 
-        // Import saveStatus store for error
-        const { saveStatus } = await import("../stores/connections");
+        // Set error status
         saveStatus.set({
           message: `Save failed: ${error.message}`,
           type: "error",
@@ -278,12 +277,11 @@ export function createMenuHandlers(context) {
         }, 5000);
       } finally {
         // Always clear saving status
-        const { isSaving } = await import("../stores/connections");
         isSaving.set(false);
       }
     },
 
-    async handleSaveAs() {
+    async handleSaveQueryAs() {
       const currentTab = get(activeTab);
       if (!currentTab || currentTab.type !== "query") {
         await showError("No query tab is active");
@@ -297,9 +295,6 @@ export function createMenuHandlers(context) {
       }
 
       try {
-        // Import saveStatus store
-        const { isSaving, saveStatus } = await import("../stores/connections");
-
         // Set saving status
         isSaving.set(true);
         saveStatus.set({
@@ -338,8 +333,7 @@ export function createMenuHandlers(context) {
       } catch (error) {
         console.error("Failed to save query:", error);
 
-        // Import saveStatus store for error
-        const { saveStatus } = await import("../stores/connections");
+        // Set error status
         saveStatus.set({
           message: `Save failed: ${error.message}`,
           type: "error",
@@ -352,7 +346,6 @@ export function createMenuHandlers(context) {
         }, 5000);
       } finally {
         // Always clear saving status
-        const { isSaving } = await import("../stores/connections");
         isSaving.set(false);
       }
     },
@@ -483,7 +476,6 @@ export function createMenuHandlers(context) {
       }
 
       try {
-        const { disconnectFromDatabase } = await import("../utils/tauri");
         const connectionId = activeConnection.id;
         await disconnectFromDatabase(connectionId);
 
@@ -597,8 +589,7 @@ export function createMenuHandlers(context) {
     // Help Menu Handlers
     async handleDocumentation() {
       try {
-        const { open } = await import("@tauri-apps/plugin-shell");
-        await open("https://github.com/yourusername/rustdbgrid#readme");
+        await openUrl("https://github.com/yourusername/rustdbgrid#readme");
       } catch (error) {
         console.error("Failed to open documentation:", error);
         await showMessage(

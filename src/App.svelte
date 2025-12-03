@@ -26,6 +26,10 @@
   } from "./handlers/menuHandlers";
   import { initializeApplication } from "./services/appService";
   import { initializeTheme, toggleTheme } from "./services/themeService";
+  import { loadTableData } from "./utils/tauri";
+  import { invoke } from "@tauri-apps/api/core";
+  import { message, ask } from "@tauri-apps/plugin-dialog";
+  import { saveStatus } from "./stores/connections";
 
   // UI State
   let showSidebar = true;
@@ -180,7 +184,6 @@
     tabStore.validateTabs();
 
     // Auto-load table data for restored table tabs
-    const { loadTableData } = await import("./utils/tauri");
     const restoredTabs = get(tabStore);
 
     for (const tab of restoredTabs) {
@@ -274,8 +277,6 @@
     const tab = event.detail;
     if (tab && tab.filePath) {
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
-
         // Convert relative path to absolute if needed
         let fullPath = tab.filePath;
         if (!fullPath.match(/^[a-zA-Z]:[\\\\/]/) && !fullPath.startsWith("/")) {
@@ -303,32 +304,23 @@
     const tab = event.detail;
     if (tab && tab.filePath) {
       try {
-        const { message, ask } = await import("@tauri-apps/plugin-dialog");
-
         const confirmed = await ask(`Delete "${tab.title}"?`, {
           title: "Confirm Delete",
           kind: "warning",
         });
 
         if (confirmed) {
-          const { invoke } = await import("@tauri-apps/api/core");
           await invoke("delete_file", { path: tab.filePath });
 
           // Close the tab
           tabDataStore.removeTab(tab.id);
           tabStore.closeTab(tab);
 
-          const { message: showMsg } = await import(
-            "@tauri-apps/plugin-dialog"
-          );
-          await showMsg("File deleted successfully", { kind: "info" });
+          await message("File deleted successfully", { kind: "info" });
         }
       } catch (error) {
         console.error("Failed to delete file:", error);
-        const { message: showError } = await import(
-          "@tauri-apps/plugin-dialog"
-        );
-        await showError("Failed to delete file: " + error.message, {
+        await message("Failed to delete file: " + error.message, {
           kind: "error",
         });
       }
@@ -343,13 +335,8 @@
       renameModalCallback = async (newName) => {
         if (newName && newName !== tab.title) {
           try {
-            // Import saveStatus store
-            const { saveStatus } = await import("./stores/connections");
-
             // If file has been saved to disk, rename the file
             if (tab.filePath) {
-              const { invoke } = await import("@tauri-apps/api/core");
-
               // Get the directory path
               const lastSlash = tab.filePath.lastIndexOf("/");
               const lastBackslash = tab.filePath.lastIndexOf("\\");
@@ -389,7 +376,6 @@
             console.error("Failed to rename file:", error);
 
             // Show error in status bar
-            const { saveStatus } = await import("./stores/connections");
             saveStatus.set({
               message: `Rename failed: ${error.message}`,
               type: "error",
