@@ -101,6 +101,15 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Dummy signing (disable real macOS signing)
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          TAURI_SIGNING_DIST_CERT: ""
+          TAURI_SIGNING_DIST_CERT_PASSWORD: ""
+
+          # Skip dev server for frontend
+          TAURI_SKIP_DEVSERVER: true
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "RustDBGrid ${{ github.ref_name }}"
