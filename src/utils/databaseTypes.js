@@ -23,31 +23,6 @@ export function usesSchemas(dbType) {
 }
 
 /**
- * Check if database type is NoSQL
- */
-export function isNoSQL(dbType) {
-  return [
-    DatabaseType.MONGODB,
-    DatabaseType.REDIS,
-    DatabaseType.CASSANDRA,
-  ].includes(dbType);
-}
-
-/**
- * Check if database type is relational
- */
-export function isRelational(dbType) {
-  return [
-    DatabaseType.POSTGRESQL,
-    DatabaseType.MSSQL,
-    DatabaseType.MYSQL,
-    DatabaseType.MARIADB,
-    DatabaseType.SQLITE,
-    DatabaseType.ORACLE,
-  ].includes(dbType);
-}
-
-/**
  * Get display name for database type
  */
 export function getDisplayName(dbType) {
@@ -83,23 +58,4 @@ export function getIconClass(dbType) {
     [DatabaseType.CASSANDRA]: "fas fa-server",
   };
   return icons[dbType] || "fas fa-database";
-}
-
-/**
- * Get primary object type name (tables, collections, keys, etc.)
- */
-export function getPrimaryObjectType(dbType) {
-  const objectTypes = {
-    [DatabaseType.POSTGRESQL]: "tables",
-    [DatabaseType.MSSQL]: "tables",
-    [DatabaseType.MYSQL]: "tables",
-    [DatabaseType.MONGODB]: "collections",
-    [DatabaseType.REDIS]: "keys",
-    [DatabaseType.IGNITE]: "caches",
-    [DatabaseType.MARIADB]: "tables",
-    [DatabaseType.SQLITE]: "tables",
-    [DatabaseType.ORACLE]: "tables",
-    [DatabaseType.CASSANDRA]: "tables",
-  };
-  return objectTypes[dbType] || "tables";
 }

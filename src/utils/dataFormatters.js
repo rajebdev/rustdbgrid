@@ -79,26 +79,3 @@ export function formatArrayCell(value, maxLength = 50) {
 
   return value.length > 3 ? `[${formatted}, ...]` : `[${formatted}]`;
 }
-
-/**
- * Format null value display
- */
-export function formatNullValue() {
-  return "NULL";
-}
-
-/**
- * Parse display data format
- */
-export function parseDisplayData(data) {
-  if (!data) return null;
-
-  return {
-    columns: data.columns || [],
-    rows: data.rows || [],
-    total_count: data.total_count || data.rows?.length || 0,
-    has_more_data: data.has_more_data || false,
-    final_query: data.final_query || "",
-    column_types: data.column_types || {},
-  };
-}

@@ -47,7 +47,7 @@
 <style>
   .database-icon {
     font-size: 11px;
-    color: var(--bs-secondary-color, #6c757d);
+    color: var(--text-secondary, #6c757d);
   }
 
   .database-label {

@@ -44,41 +44,6 @@ export async function initializeTheme() {
 }
 
 /**
- * Get the current active theme
- */
-export function getCurrentTheme() {
-  return get(activeTheme);
-}
-
-/**
- * Get the current theme preference
- */
-export function getThemePreference() {
-  return get(themePreference);
-}
-
-/**
- * Set theme to light mode
- */
-export function setLightTheme() {
-  themePreference.setLight();
-}
-
-/**
- * Set theme to dark mode
- */
-export function setDarkTheme() {
-  themePreference.setDark();
-}
-
-/**
- * Set theme to auto (follow system)
- */
-export function setAutoTheme() {
-  themePreference.setAuto();
-}
-
-/**
  * Toggle between themes: light -> dark -> auto -> light
  */
 export function toggleTheme() {

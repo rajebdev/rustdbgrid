@@ -95,34 +95,28 @@ function sendToRust(level, formattedMessage) {
 }
 
 /**
+ * Create a log function for a specific level
+ * @param {string} level - The log level (uppercase)
+ * @param {Function} consoleFn - The original console function to use
+ * @returns {Function} Log function
+ */
+function createLogFunction(level, consoleFn) {
+  return (...args) => {
+    const msg = formatLogLine(level, formatMessage(...args));
+    sendToRust(level.toLowerCase(), msg);
+    consoleFn(msg);
+  };
+}
+
+/**
  * Log functions that send to Rust stdout
  */
 export const log = {
-  trace: (...args) => {
-    const msg = formatLogLine("TRACE", formatMessage(...args));
-    sendToRust("trace", msg);
-    originalConsole.log(msg);
-  },
-  debug: (...args) => {
-    const msg = formatLogLine("DEBUG", formatMessage(...args));
-    sendToRust("debug", msg);
-    originalConsole.debug(msg);
-  },
-  info: (...args) => {
-    const msg = formatLogLine("INFO", formatMessage(...args));
-    sendToRust("info", msg);
-    originalConsole.info(msg);
-  },
-  warn: (...args) => {
-    const msg = formatLogLine("WARN", formatMessage(...args));
-    sendToRust("warn", msg);
-    originalConsole.warn(msg);
-  },
-  error: (...args) => {
-    const msg = formatLogLine("ERROR", formatMessage(...args));
-    sendToRust("error", msg);
-    originalConsole.error(msg);
-  },
+  trace: createLogFunction("TRACE", originalConsole.log),
+  debug: createLogFunction("DEBUG", originalConsole.debug),
+  info: createLogFunction("INFO", originalConsole.info),
+  warn: createLogFunction("WARN", originalConsole.warn),
+  error: createLogFunction("ERROR", originalConsole.error),
 };
 
 /**

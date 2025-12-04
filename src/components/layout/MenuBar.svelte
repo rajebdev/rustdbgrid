@@ -2,11 +2,6 @@
   import { createEventDispatcher } from "svelte";
   import { themePreference, activeTheme } from "../../stores/theme";
   import { recentFilesStore } from "../../stores/recentFiles";
-  import {
-    setLightTheme,
-    setDarkTheme,
-    setAutoTheme,
-  } from "../../services/themeService";
 
   const dispatch = createEventDispatcher();
 
@@ -26,9 +21,9 @@
   }
 
   function handleThemeChange(theme) {
-    if (theme === "light") setLightTheme();
-    else if (theme === "dark") setDarkTheme();
-    else setAutoTheme();
+    if (theme === "light") themePreference.setLight();
+    else if (theme === "dark") themePreference.setDark();
+    else themePreference.setAuto();
     closeMenu();
   }
 

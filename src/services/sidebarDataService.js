@@ -30,69 +30,94 @@ export function cancelAllOperations() {
 }
 
 /**
+ * Generic load handler factory
+ * Creates a load handler with abort controller and loading state management
+ */
+function createLoadHandler(config) {
+  const {
+    getOperationKey,
+    getLoadingKey,
+    setLoadingState,
+    loadData,
+    processResult,
+    errorMessage = "Failed to load data",
+  } = config;
+
+  return async (...args) => {
+    const opKey = getOperationKey(...args);
+    const loadingKey = getLoadingKey ? getLoadingKey(...args) : null;
+
+    // Cancel previous operation if exists
+    cancelOperation(opKey);
+
+    const controller = new AbortController();
+    abortControllers.set(opKey, controller);
+
+    if (setLoadingState && loadingKey) {
+      setLoadingState(loadingKey, true);
+    }
+
+    try {
+      const result = await loadData(...args);
+
+      if (controller.signal.aborted) return null;
+
+      await processResult(result, ...args);
+
+      return result;
+    } catch (error) {
+      if (controller.signal.aborted) return null;
+      console.error(errorMessage, error);
+      throw error;
+    } finally {
+      if (setLoadingState && loadingKey) {
+        setLoadingState(loadingKey, false);
+      }
+      abortControllers.delete(opKey);
+    }
+  };
+}
+
+/**
  * Load databases for a connection
  */
-export async function loadConnectionDatabases(connId) {
-  const opKey = `conn-${connId}`;
-
-  // Cancel previous operation if exists
-  cancelOperation(opKey);
-
-  const controller = new AbortController();
-  abortControllers.set(opKey, controller);
-
-  sidebarStore.setConnectionLoading(connId, true);
-
-  try {
+export const loadConnectionDatabases = createLoadHandler({
+  getOperationKey: (connId) => `conn-${connId}`,
+  getLoadingKey: (connId) => connId,
+  setLoadingState: (key, loading) =>
+    sidebarStore.setConnectionLoading(key, loading),
+  loadData: async (connId) => {
     const result = await getDatabaseObject(connId, "database_list");
-
-    if (controller.signal.aborted) return null;
-
-    const databases = result.databases || [];
+    return result.databases || [];
+  },
+  processResult: (databases, connId) => {
     sidebarStore.toggleConnection(connId, { databases });
     sidebarStore.setConnectionConnected(connId, true);
-
-    return databases;
-  } catch (error) {
-    if (controller.signal.aborted) return null;
-    console.error("Failed to load databases:", error);
-    throw error;
-  } finally {
-    sidebarStore.setConnectionLoading(connId, false);
-    abortControllers.delete(opKey);
-  }
-}
+  },
+  errorMessage: "Failed to load databases:",
+});
 
 /**
  * Load database info (tables, views, etc.)
  */
-export async function loadDatabaseInfo(connId, dbName, dbType) {
-  const dbKey = `${connId}-${dbName}`;
-  const opKey = `db-${dbKey}`;
-
-  cancelOperation(opKey);
-
-  const controller = new AbortController();
-  abortControllers.set(opKey, controller);
-
-  sidebarStore.setDatabaseLoading(dbKey, true);
-
-  try {
-    let result;
+export const loadDatabaseInfo = createLoadHandler({
+  getOperationKey: (connId, dbName) => `db-${connId}-${dbName}`,
+  getLoadingKey: (connId, dbName) => `${connId}-${dbName}`,
+  setLoadingState: (key, loading) =>
+    sidebarStore.setDatabaseLoading(key, loading),
+  loadData: async (connId, dbName, dbType) => {
+    if (dbType === DatabaseType.POSTGRESQL) {
+      return getDatabaseObject(connId, "schema_list", dbName);
+    } else {
+      return getDatabaseObject(connId, "database_info", dbName);
+    }
+  },
+  processResult: (result, connId, dbName, dbType) => {
+    const dbKey = `${connId}-${dbName}`;
 
     if (dbType === DatabaseType.POSTGRESQL) {
-      // PostgreSQL: Load schemas
-      result = await getDatabaseObject(connId, "schema_list", dbName);
-
-      if (controller.signal.aborted) return null;
-
       sidebarStore.setCachedData(dbKey, { schemas: result.schemas || [] });
     } else {
-      // MySQL/MSSQL/Others: Load database info
-      result = await getDatabaseObject(connId, "database_info", dbName);
-
-      if (controller.signal.aborted) return null;
-
       sidebarStore.setCachedData(dbKey, {
         tables: result.tables || [],
         views: result.views || [],
@@ -104,41 +129,25 @@ export async function loadDatabaseInfo(connId, dbName, dbType) {
     }
 
     sidebarStore.toggleDatabase(dbKey, true);
-
-    return result;
-  } catch (error) {
-    if (controller.signal.aborted) return null;
-    console.error("Failed to load database:", error);
-    throw error;
-  } finally {
-    sidebarStore.setDatabaseLoading(dbKey, false);
-    abortControllers.delete(opKey);
-  }
-}
+  },
+  errorMessage: "Failed to load database:",
+});
 
 /**
  * Load schema info (tables, views, etc.)
  */
-export async function loadSchemaInfo(connId, dbName, schemaName) {
-  const schemaKey = `${connId}-${dbName}-${schemaName}`;
-  const opKey = `schema-${schemaKey}`;
-
-  cancelOperation(opKey);
-
-  const controller = new AbortController();
-  abortControllers.set(opKey, controller);
-
-  sidebarStore.setSchemaLoading(schemaKey, true);
-
-  try {
-    const result = await getDatabaseObject(
-      connId,
-      "schema_info",
-      dbName,
-      schemaName
-    );
-
-    if (controller.signal.aborted) return null;
+export const loadSchemaInfo = createLoadHandler({
+  getOperationKey: (connId, dbName, schemaName) =>
+    `schema-${connId}-${dbName}-${schemaName}`,
+  getLoadingKey: (connId, dbName, schemaName) =>
+    `${connId}-${dbName}-${schemaName}`,
+  setLoadingState: (key, loading) =>
+    sidebarStore.setSchemaLoading(key, loading),
+  loadData: async (connId, dbName, schemaName) => {
+    return getDatabaseObject(connId, "schema_info", dbName, schemaName);
+  },
+  processResult: (result, connId, dbName, schemaName) => {
+    const schemaKey = `${connId}-${dbName}-${schemaName}`;
 
     sidebarStore.setCachedData(schemaKey, {
       tables: result.tables || [],
@@ -149,17 +158,9 @@ export async function loadSchemaInfo(connId, dbName, schemaName) {
     });
 
     sidebarStore.toggleSchema(schemaKey, true);
-
-    return result;
-  } catch (error) {
-    if (controller.signal.aborted) return null;
-    console.error("Failed to load schema:", error);
-    throw error;
-  } finally {
-    sidebarStore.setSchemaLoading(schemaKey, false);
-    abortControllers.delete(opKey);
-  }
-}
+  },
+  errorMessage: "Failed to load schema:",
+});
 
 /**
  * Sync connected database status
@@ -210,8 +211,10 @@ export async function connectDatabase(connId) {
 
 /**
  * Disconnect from a database
+ * @param {string} connId - Connection ID
+ * @param {boolean} preserveExpandState - If true, don't collapse the connection
  */
-export async function disconnectDatabase(connId) {
+export async function disconnectDatabase(connId, preserveExpandState = false) {
   const opKey = `disconnect-${connId}`;
 
   cancelOperation(opKey);
@@ -228,8 +231,10 @@ export async function disconnectDatabase(connId) {
 
     await syncConnectedStatus();
 
-    // Collapse connection after disconnect
-    sidebarStore.toggleConnection(connId, null);
+    // Collapse connection after disconnect (unless we want to preserve state)
+    if (!preserveExpandState) {
+      sidebarStore.toggleConnection(connId, null);
+    }
   } catch (error) {
     if (controller.signal.aborted) return;
     console.error("Failed to disconnect:", error);
@@ -253,7 +258,15 @@ export async function refreshConnection(connId) {
 
   sidebarStore.setConnectionLoading(connId, true);
 
+  // Save expanded state before disconnect
+  let wasExpanded = false;
+  const unsubscribe = sidebarStore.subscribe((state) => {
+    wasExpanded = !!state.expandedConnections[connId];
+  });
+  unsubscribe();
+
   try {
+    // Disconnect from backend but don't collapse UI
     await disconnectFromDatabase(connId);
 
     if (controller.signal.aborted) return;
@@ -264,8 +277,10 @@ export async function refreshConnection(connId) {
 
     await syncConnectedStatus();
 
-    // Reload data
-    await loadConnectionDatabases(connId);
+    // Reload data if was expanded
+    if (wasExpanded) {
+      await loadConnectionDatabases(connId);
+    }
   } catch (error) {
     if (controller.signal.aborted) return;
     console.error("Failed to refresh:", error);
@@ -300,6 +315,28 @@ export async function refreshSchema(connId, dbName, schemaName) {
 
   // Reload if expanded
   return loadSchemaInfo(connId, dbName, schemaName);
+}
+
+/**
+ * Generic refresh handler for tables and views
+ * Refreshes a specific object type by reloading database info
+ */
+export async function refreshDatabaseObject(connId, dbName, objectType) {
+  const dbKey = `${connId}-${dbName}`;
+
+  try {
+    const response = await getDatabaseObject(connId, "database_info", dbName);
+
+    if (response && response[objectType]) {
+      sidebarStore.updateCachedData(dbKey, (data) => ({
+        ...data,
+        [objectType]: response[objectType],
+      }));
+    }
+  } catch (error) {
+    console.error(`Failed to refresh ${objectType}:`, error);
+    throw error;
+  }
 }
 
 /**

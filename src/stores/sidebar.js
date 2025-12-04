@@ -1,5 +1,47 @@
 import { writable, derived } from "svelte/store";
 
+/**
+ * Creates a generic toggle handler for expanding/collapsing items
+ * @param {Function} update - The store's update function
+ * @param {string} stateKey - The key in state to toggle (e.g., 'expandedConnections')
+ * @param {Object} options - Configuration options
+ * @param {boolean} options.deleteOnClose - Whether to delete the key when closing (default: false)
+ * @param {boolean} options.supportExplicitControl - Whether to support explicit expand parameter (default: false)
+ * @returns {Function} - The toggle handler function
+ */
+function createToggleHandler(update, stateKey, options = {}) {
+  const { deleteOnClose = false, supportExplicitControl = false } = options;
+
+  return (key, expandOrData = null) => {
+    return update((state) => {
+      const newExpanded = { ...state[stateKey] };
+
+      if (supportExplicitControl && typeof expandOrData === "boolean") {
+        // Explicit control mode
+        if (expandOrData) {
+          newExpanded[key] = true;
+        } else {
+          delete newExpanded[key];
+        }
+      } else if (deleteOnClose) {
+        // Delete-on-close mode (for connections)
+        if (newExpanded[key] && expandOrData === null) {
+          // Only delete if explicitly closing (null means toggle to close)
+          delete newExpanded[key];
+        } else if (expandOrData !== null) {
+          // If data is provided, update/set it (even if already expanded)
+          newExpanded[key] = expandOrData;
+        }
+      } else {
+        // Simple toggle mode
+        newExpanded[key] = !newExpanded[key];
+      }
+
+      return { ...state, [stateKey]: newExpanded };
+    });
+  };
+}
+
 // Centralized sidebar state management
 function createSidebarStore() {
   const { subscribe, set, update } = writable({
@@ -44,65 +86,22 @@ function createSidebarStore() {
     setSearchQuery: (query) =>
       update((state) => ({ ...state, searchQuery: query })),
 
-    // Expanded states
-    toggleConnection: (connId, data = null) =>
-      update((state) => {
-        const newExpanded = { ...state.expandedConnections };
-        if (newExpanded[connId]) {
-          delete newExpanded[connId];
-        } else {
-          newExpanded[connId] = data;
-        }
-        return { ...state, expandedConnections: newExpanded };
-      }),
+    // Expanded states - using generic toggle handlers
+    toggleConnection: createToggleHandler(update, "expandedConnections", {
+      deleteOnClose: true,
+    }),
 
-    toggleDatabase: (key, expand = null) =>
-      update((state) => {
-        const newExpanded = { ...state.expandedDatabases };
-        if (expand === null) {
-          newExpanded[key] = !newExpanded[key];
-        } else {
-          if (expand) {
-            newExpanded[key] = true;
-          } else {
-            delete newExpanded[key];
-          }
-        }
-        return { ...state, expandedDatabases: newExpanded };
-      }),
+    toggleDatabase: createToggleHandler(update, "expandedDatabases", {
+      supportExplicitControl: true,
+    }),
 
-    toggleSchema: (key, expand = null) =>
-      update((state) => {
-        const newExpanded = { ...state.expandedSchemas };
-        if (expand === null) {
-          newExpanded[key] = !newExpanded[key];
-        } else {
-          if (expand) {
-            newExpanded[key] = true;
-          } else {
-            delete newExpanded[key];
-          }
-        }
-        return { ...state, expandedSchemas: newExpanded };
-      }),
+    toggleSchema: createToggleHandler(update, "expandedSchemas", {
+      supportExplicitControl: true,
+    }),
 
-    toggleSchemasParent: (key) =>
-      update((state) => ({
-        ...state,
-        expandedSchemasParent: {
-          ...state.expandedSchemasParent,
-          [key]: !state.expandedSchemasParent[key],
-        },
-      })),
+    toggleSchemasParent: createToggleHandler(update, "expandedSchemasParent"),
 
-    toggleGroup: (key) =>
-      update((state) => ({
-        ...state,
-        expandedGroups: {
-          ...state.expandedGroups,
-          [key]: !state.expandedGroups[key],
-        },
-      })),
+    toggleGroup: createToggleHandler(update, "expandedGroups"),
 
     // Loading states
     setConnectionLoading: (connId, loading) =>
@@ -241,17 +240,5 @@ function createSidebarStore() {
 export const sidebarStore = createSidebarStore();
 
 // Derived stores for convenience
-export const expandedConnections = derived(
-  sidebarStore,
-  ($s) => $s.expandedConnections
-);
-export const expandedDatabases = derived(
-  sidebarStore,
-  ($s) => $s.expandedDatabases
-);
-export const expandedSchemas = derived(
-  sidebarStore,
-  ($s) => $s.expandedSchemas
-);
 export const cachedData = derived(sidebarStore, ($s) => $s.cachedData);
 export const contextMenu = derived(sidebarStore, ($s) => $s.contextMenu);

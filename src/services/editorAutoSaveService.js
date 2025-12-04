@@ -1,12 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { saveAutoQuery } from "../utils/tauri";
+import { createDebounce } from "../utils/debounce";
 
 /**
  * Setup auto-save with debouncing
  */
 export function setupAutoSave(tabId, getContent, config, delay = 2000) {
-  let autoSaveTimeout;
-
   const saveFunction = async () => {
     const content = getContent();
     if (!content || !content.trim()) return;
@@ -42,25 +41,11 @@ export function setupAutoSave(tabId, getContent, config, delay = 2000) {
     }
   };
 
-  const trigger = () => {
-    // Clear previous timeout
-    if (autoSaveTimeout) {
-      clearTimeout(autoSaveTimeout);
-    }
-
-    // Debounce auto-save
-    autoSaveTimeout = setTimeout(saveFunction, delay);
-  };
-
-  const cleanup = () => {
-    if (autoSaveTimeout) {
-      clearTimeout(autoSaveTimeout);
-    }
-  };
+  const debounced = createDebounce(saveFunction, delay);
 
   return {
-    trigger,
-    cleanup,
-    saveNow: saveFunction,
+    trigger: debounced.trigger,
+    cleanup: debounced.cleanup,
+    saveNow: debounced.immediate,
   };
 }

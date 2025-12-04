@@ -64,7 +64,7 @@
 <style>
   .schema-icon {
     font-size: 11px;
-    color: var(--bs-warning, #ffc107);
+    color: var(--accent-yellow, #ffc107);
   }
 
   .schema-label {

@@ -107,6 +107,7 @@
     tabDataStore,
     activeConnection,
     setShowToolbar: (val) => (showToolbar = val),
+    setShowAboutModal: (val) => (showAboutModal = val),
     runningQueries,
   });
 

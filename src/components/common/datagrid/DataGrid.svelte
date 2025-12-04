@@ -31,10 +31,7 @@
     cancelAllEdits as cancelAllEditsService,
     generateUpdateSql,
   } from "../../../services/gridEditService";
-  import {
-    openFilterModal as openFilterModalService,
-    getDistinctValues,
-  } from "../../../services/gridFilterService";
+  import { openFilterModal as openFilterModalService } from "../../../services/gridFilterService";
   import { handleSort } from "../../../services/gridSortService";
 
   // Utils
@@ -44,6 +41,7 @@
     isScrollingDown,
     shouldLoadMore,
   } from "../../../utils/gridScrollSync";
+  import { getDistinctValues } from "../../../utils/dataHelpers";
 
   export let data = null;
   export let tabId = null;

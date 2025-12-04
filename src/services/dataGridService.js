@@ -7,6 +7,50 @@ import { getFilterValues, loadTableData } from "../utils/tauri";
 import { DatabaseType } from "../utils/databaseTypes";
 
 /**
+ * Convert column filters object to array format for backend
+ * @param {Object} columnFilters - Object with column names as keys and filter values
+ * @returns {Array} Array of filter objects with column, operator, and value
+ */
+function convertColumnFiltersToArray(columnFilters) {
+  const filters = [];
+  for (const [column, value] of Object.entries(columnFilters)) {
+    if (Array.isArray(value) && value.length > 0) {
+      // Array filter - use "in" operator
+      filters.push({
+        column,
+        operator: "in",
+        value: value,
+      });
+    } else if (typeof value === "string" && value.trim() !== "") {
+      // Text filter - use "like" operator
+      filters.push({
+        column,
+        operator: "like",
+        value: `%${value}%`,
+      });
+    }
+  }
+  return filters;
+}
+
+/**
+ * Convert sort column and direction to orderBy array format for backend
+ * @param {string} sortColumn - Column name to sort by
+ * @param {string} sortDirection - Sort direction (ASC/DESC)
+ * @returns {Array} Array with single orderBy object, or empty array if no sort
+ */
+function convertSortToOrderBy(sortColumn, sortDirection) {
+  return sortColumn
+    ? [
+        {
+          column: sortColumn,
+          direction: sortDirection.toLowerCase(),
+        },
+      ]
+    : [];
+}
+
+/**
  * Load table data with filters, sorting, and pagination
  */
 export async function loadTableDataWithFilters(
@@ -23,35 +67,8 @@ export async function loadTableDataWithFilters(
   }
 
   try {
-    // Convert columnFilters to new filter format
-    const filters = [];
-    for (const [column, value] of Object.entries(columnFilters)) {
-      if (Array.isArray(value) && value.length > 0) {
-        // Array filter - use "in" operator
-        filters.push({
-          column,
-          operator: "in",
-          value: value,
-        });
-      } else if (typeof value === "string" && value.trim() !== "") {
-        // Text filter - use "like" operator
-        filters.push({
-          column,
-          operator: "like",
-          value: `%${value}%`,
-        });
-      }
-    }
-
-    // Convert sorting to new format
-    const orderBy = sortColumn
-      ? [
-          {
-            column: sortColumn,
-            direction: sortDirection.toLowerCase(),
-          },
-        ]
-      : [];
+    const filters = convertColumnFiltersToArray(columnFilters);
+    const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
 
     const result = await loadTableData(
       connection.id,
@@ -217,18 +234,8 @@ export async function reloadDataWithFilters(
       }
     } else {
       // Convert columnFilters to new filter format
-      const filterArray = [];
-      for (const [column, value] of Object.entries(columnFilters)) {
-        if (Array.isArray(value) && value.length > 0) {
-          filterArray.push({ column, operator: "in", value });
-        } else if (typeof value === "string" && value.trim() !== "") {
-          filterArray.push({ column, operator: "like", value: `%${value}%` });
-        }
-      }
-
-      const orderBy = sortColumn
-        ? [{ column: sortColumn, direction: sortDirection.toLowerCase() }]
-        : [];
+      const filterArray = convertColumnFiltersToArray(columnFilters);
+      const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
 
       // Use loadTableData with subquery wrapper
       result = await loadTableData(
@@ -275,18 +282,8 @@ export async function loadMoreData(
   }
 
   try {
-    const filters = [];
-    for (const [column, value] of Object.entries(columnFilters)) {
-      if (Array.isArray(value) && value.length > 0) {
-        filters.push({ column, operator: "in", value });
-      } else if (typeof value === "string" && value.trim() !== "") {
-        filters.push({ column, operator: "like", value: `%${value}%` });
-      }
-    }
-
-    const orderBy = sortColumn
-      ? [{ column: sortColumn, direction: sortDirection.toLowerCase() }]
-      : [];
+    const filters = convertColumnFiltersToArray(columnFilters);
+    const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
 
     let result;
 
@@ -363,39 +360,4 @@ export async function loadFilterValuesFromServer(
     console.error("❌ Failed to load filter values:", error);
     return [];
   }
-}
-
-/**
- * Get distinct values from data (client-side)
- */
-export function getDistinctValues(data, column) {
-  if (!data || !data.rows || !data.columns || !column) {
-    return [];
-  }
-
-  // Find column index
-  let columnIndex = -1;
-  const columnName = typeof column === "object" ? column?.name : column;
-
-  for (let i = 0; i < data.columns.length; i++) {
-    const col = data.columns[i];
-    if (!col) continue;
-    const colName = typeof col === "object" ? col.name : col;
-    if (colName === columnName) {
-      columnIndex = i;
-      break;
-    }
-  }
-
-  if (columnIndex === -1) return [];
-
-  const values = new Set();
-  for (const row of data.rows) {
-    // Handle both array and object row formats
-    const value = Array.isArray(row) ? row[columnIndex] : row[columnName];
-    if (value !== null && value !== undefined) {
-      values.add(String(value));
-    }
-  }
-  return Array.from(values).sort();
 }

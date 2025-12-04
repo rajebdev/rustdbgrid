@@ -39,20 +39,3 @@ export function handleSort(
     sortDirection: newSortDirection,
   };
 }
-
-/**
- * Toggle sort direction
- */
-export function toggleSortDirection(sortDirection) {
-  return sortDirection === "asc" ? "desc" : "asc";
-}
-
-/**
- * Get sort icon class
- */
-export function getSortIcon(column, sortColumn, sortDirection) {
-  if (column !== sortColumn) {
-    return "fa-sort"; // Unsorted icon
-  }
-  return sortDirection === "asc" ? "fa-sort-up" : "fa-sort-down";
-}

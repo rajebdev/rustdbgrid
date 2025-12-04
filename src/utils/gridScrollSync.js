@@ -41,50 +41,6 @@ export async function syncColumnWidths(headerWrapper, tableWrapper) {
 }
 
 /**
- * Handle wheel scroll with custom step
- */
-export function handleWheel(
-  event,
-  tableWrapper,
-  rowNumbersWrapper,
-  scrollStep = 0
-) {
-  // If scroll step is 0 or not set, use browser default
-  if (!scrollStep || scrollStep <= 0) return;
-
-  event.preventDefault();
-
-  const direction = event.deltaY > 0 ? 1 : -1;
-  const scrollAmount = direction * scrollStep;
-
-  if (tableWrapper) {
-    tableWrapper.scrollTop += scrollAmount;
-    if (rowNumbersWrapper) {
-      rowNumbersWrapper.scrollTop = tableWrapper.scrollTop;
-    }
-  }
-}
-
-/**
- * Sync scroll positions between table sections
- */
-export function syncScrollPositions(
-  tableWrapper,
-  headerWrapper,
-  rowNumbersWrapper,
-  currentScrollLeft,
-  currentScrollTop
-) {
-  if (headerWrapper) {
-    headerWrapper.scrollLeft = currentScrollLeft;
-  }
-
-  if (rowNumbersWrapper) {
-    rowNumbersWrapper.scrollTop = currentScrollTop;
-  }
-}
-
-/**
  * Check if scrolled near bottom
  */
 export function isScrolledNearBottom(tableWrapper, threshold = 200) {
@@ -123,17 +79,4 @@ export function shouldLoadMore(
     isScrollingDown &&
     timeSinceLastLoad > throttleTime
   );
-}
-
-/**
- * Get scroll distance from bottom
- */
-export function getScrollDistanceFromBottom(tableWrapper) {
-  if (!tableWrapper) return 0;
-
-  const scrollHeight = tableWrapper.scrollHeight;
-  const clientHeight = tableWrapper.clientHeight;
-  const currentScrollTop = tableWrapper.scrollTop;
-
-  return scrollHeight - (currentScrollTop + clientHeight);
 }

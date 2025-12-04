@@ -54,16 +54,6 @@ export function formatDate(timestamp) {
 }
 
 /**
- * Format execution time in milliseconds
- * @param {number} ms - Time in milliseconds
- * @returns {string} Formatted time (e.g., "123ms" or "1.2s")
- */
-export function formatExecutionTime(ms) {
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
-/**
  * Truncate text with ellipsis
  * @param {string} text - Text to truncate
  * @param {number} maxLength - Maximum length

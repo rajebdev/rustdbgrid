@@ -107,11 +107,12 @@
   }
 
   .tree-node-content:hover {
-    background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+    background-color: var(--hover-bg, rgba(0, 0, 0, 0.05));
   }
 
   .tree-node-content.active {
-    background-color: var(--bs-primary-bg-subtle, rgba(13, 110, 253, 0.1));
+    background-color: var(--selected-bg, rgba(13, 110, 253, 0.1));
+    color: var(--text-primary);
   }
 
   .tree-toggle {
@@ -123,14 +124,15 @@
     padding: 0;
     border: none;
     background: transparent;
-    color: var(--bs-secondary-color, #6c757d);
+    color: var(--text-secondary, #6c757d);
     font-size: 10px;
     cursor: pointer;
     flex-shrink: 0;
+    transition: color 0.15s ease;
   }
 
   .tree-toggle:hover:not(:disabled) {
-    color: var(--bs-body-color, #212529);
+    color: var(--text-primary, #212529);
   }
 
   .tree-toggle:disabled {
@@ -159,7 +161,7 @@
 
   .tree-badge {
     font-size: 10px;
-    color: var(--bs-secondary-color, #6c757d);
+    color: var(--text-secondary, #6c757d);
     flex-shrink: 0;
   }
 

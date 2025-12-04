@@ -279,9 +279,10 @@ function createTabStore() {
     },
 
     /**
-     * Go to next tab
+     * Navigate to tab by direction (next or previous)
+     * @param {number} direction - 1 for next, -1 for previous
      */
-    nextTab: () => {
+    navigateTab: (direction) => {
       const currentTabs = get(tabs);
       const currentActive = get(activeTab);
 
@@ -289,26 +290,24 @@ function createTabStore() {
         const currentIndex = currentTabs.findIndex(
           (t) => t.id === currentActive.id
         );
-        const nextIndex = (currentIndex + 1) % currentTabs.length;
+        const nextIndex =
+          (currentIndex + direction + currentTabs.length) % currentTabs.length;
         activeTab.set(currentTabs[nextIndex]);
       }
     },
 
     /**
+     * Go to next tab
+     */
+    nextTab: function () {
+      this.navigateTab(1);
+    },
+
+    /**
      * Go to previous tab
      */
-    previousTab: () => {
-      const currentTabs = get(tabs);
-      const currentActive = get(activeTab);
-
-      if (currentTabs.length > 1 && currentActive) {
-        const currentIndex = currentTabs.findIndex(
-          (t) => t.id === currentActive.id
-        );
-        const prevIndex =
-          (currentIndex - 1 + currentTabs.length) % currentTabs.length;
-        activeTab.set(currentTabs[prevIndex]);
-      }
+    previousTab: function () {
+      this.navigateTab(-1);
     },
 
     /**

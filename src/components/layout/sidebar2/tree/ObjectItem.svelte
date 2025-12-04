@@ -100,11 +100,12 @@
   }
 
   .object-item:hover {
-    background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
+    background-color: var(--hover-bg, rgba(0, 0, 0, 0.05));
   }
 
   .object-item.active {
-    background-color: var(--bs-primary-bg-subtle, rgba(13, 110, 253, 0.1));
+    background-color: var(--selected-bg, rgba(13, 110, 253, 0.1));
+    color: var(--text-primary);
   }
 
   .item-toggle-placeholder {
@@ -114,7 +115,7 @@
 
   .item-icon {
     font-size: 11px;
-    color: var(--bs-secondary-color, #6c757d);
+    color: var(--text-secondary, #6c757d);
     flex-shrink: 0;
   }
 
@@ -129,8 +130,8 @@
 
   .item-size {
     font-size: 10px;
-    color: var(--bs-secondary-color, #6c757d);
-    background-color: var(--bs-tertiary-bg, #f8f9fa);
+    color: var(--text-secondary, #6c757d);
+    background-color: var(--bg-tertiary, #f8f9fa);
     padding: 0 4px;
     border-radius: 3px;
     flex-shrink: 0;

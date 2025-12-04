@@ -5,7 +5,13 @@ import {
   getDatabaseObject,
 } from "../utils/tauri";
 import { sidebarStore } from "../stores/sidebar";
-import { refreshDatabase, refreshSchema } from "./sidebarDataService";
+import {
+  refreshDatabase,
+  refreshSchema,
+  refreshDatabaseObject,
+} from "./sidebarDataService";
+import { copyToClipboard } from "../utils/clipboard";
+import { confirmDelete, showNotImplemented } from "../utils/confirmDialog";
 
 /**
  * Connection action handlers
@@ -21,7 +27,7 @@ export const connectionHandlers = {
   },
 
   async delete(conn, getConnectionsInfo, connections) {
-    if (confirm(`Are you sure you want to delete connection "${conn.name}"?`)) {
+    if (confirmDelete("connection", conn.name)) {
       try {
         await deleteConnection(conn.id);
         const conns = await getConnectionsInfo();
@@ -35,10 +41,7 @@ export const connectionHandlers = {
 
   copy(conn) {
     const connectionInfo = `Name: ${conn.name}\nType: ${conn.db_type}\nHost: ${conn.host}\nPort: ${conn.port}`;
-    navigator.clipboard.writeText(connectionInfo).then(
-      () => console.log("Connection info copied to clipboard"),
-      (err) => console.error("Failed to copy:", err)
-    );
+    copyToClipboard(connectionInfo, "Connection info copied to clipboard");
   },
 
   async rename(conn, getConnectionsInfo, connections) {
@@ -76,10 +79,7 @@ export const databaseHandlers = {
 
   copy(database, connection) {
     const databaseInfo = `Database: ${database.name}\nConnection: ${connection.name}\nType: ${connection.db_type}`;
-    navigator.clipboard.writeText(databaseInfo).then(
-      () => console.log("Database info copied to clipboard"),
-      (err) => console.error("Failed to copy:", err)
-    );
+    copyToClipboard(databaseInfo, "Database info copied to clipboard");
   },
 
   paste(database, connection) {
@@ -89,21 +89,14 @@ export const databaseHandlers = {
 
   copyAdvancedInfo(database, connection) {
     const advancedInfo = `Database Name: ${database.name}\nConnection: ${connection.name}\nConnection ID: ${connection.id}\nDB Type: ${connection.db_type}\nHost: ${connection.host}\nPort: ${connection.port}`;
-    navigator.clipboard.writeText(advancedInfo).then(
-      () => console.log("Advanced database info copied to clipboard"),
-      (err) => console.error("Failed to copy:", err)
-    );
+    copyToClipboard(advancedInfo, "Advanced database info copied to clipboard");
   },
 
   delete(database, connection) {
-    if (
-      confirm(
-        `Are you sure you want to delete database "${database.name}"?\n\nWARNING: This will permanently delete all data in this database!`
-      )
-    ) {
+    if (confirmDelete("database", database.name, { isDestructive: true })) {
       console.log("Delete database:", database.name);
       // TODO: Implement database deletion (requires backend command)
-      alert("Database deletion is not yet implemented.");
+      showNotImplemented("Database deletion");
     }
   },
 
@@ -114,7 +107,7 @@ export const databaseHandlers = {
       async (newName) => {
         console.log("Rename database from", database.name, "to", newName);
         // TODO: Implement database rename (requires backend command)
-        alert("Database rename is not yet implemented.");
+        showNotImplemented("Database rename");
       }
     );
   },
@@ -158,10 +151,7 @@ export const schemaHandlers = {
 
   copy(schema, database, connection) {
     const schemaInfo = `Schema: ${schema}\nDatabase: ${database.name}\nConnection: ${connection.name}`;
-    navigator.clipboard.writeText(schemaInfo).then(
-      () => console.log("Schema info copied to clipboard"),
-      (err) => console.error("Failed to copy:", err)
-    );
+    copyToClipboard(schemaInfo, "Schema info copied to clipboard");
   },
 
   paste(schema, database, connection) {
@@ -171,17 +161,14 @@ export const schemaHandlers = {
 
   copyAdvancedInfo(schema, database, connection) {
     const advancedInfo = `Schema: ${schema}\nDatabase: ${database.name}\nConnection: ${connection.name}\nConnection ID: ${connection.id}\nDB Type: ${connection.db_type}`;
-    navigator.clipboard.writeText(advancedInfo).then(
-      () => console.log("Advanced schema info copied to clipboard"),
-      (err) => console.error("Failed to copy:", err)
-    );
+    copyToClipboard(advancedInfo, "Advanced schema info copied to clipboard");
   },
 
   delete(schema, database, connection) {
-    if (confirm(`Are you sure you want to delete schema "${schema}"?`)) {
+    if (confirmDelete("schema", schema)) {
       console.log("Delete schema:", schema);
       // TODO: Implement schema deletion
-      alert("Schema deletion is not yet implemented.");
+      showNotImplemented("Schema deletion");
     }
   },
 
@@ -189,7 +176,7 @@ export const schemaHandlers = {
     sidebarStore.openRenameModal("Rename Schema", schema, async (newName) => {
       console.log("Rename schema from", schema, "to", newName);
       // TODO: Implement schema rename
-      alert("Schema rename is not yet implemented.");
+      showNotImplemented("Schema rename");
     });
   },
 
@@ -234,10 +221,7 @@ export const tableHandlers = {
 
   copy(table, database, connection) {
     const tableInfo = `Table: ${table.name}\nDatabase: ${database.name}\nConnection: ${connection.name}`;
-    navigator.clipboard.writeText(tableInfo).then(
-      () => console.log("Table info copied to clipboard"),
-      (err) => console.error("Failed to copy:", err)
-    );
+    copyToClipboard(tableInfo, "Table info copied to clipboard");
   },
 
   paste(table, database, connection) {
@@ -251,21 +235,14 @@ export const tableHandlers = {
     }\nDatabase: ${database.name}\nConnection: ${
       connection.name
     }\nConnection ID: ${connection.id}\nDB Type: ${connection.db_type}`;
-    navigator.clipboard.writeText(advancedInfo).then(
-      () => console.log("Advanced table info copied to clipboard"),
-      (err) => console.error("Failed to copy:", err)
-    );
+    copyToClipboard(advancedInfo, "Advanced table info copied to clipboard");
   },
 
   delete(table, database, connection) {
-    if (
-      confirm(
-        `Are you sure you want to delete table "${table.name}"?\n\nWARNING: This will permanently delete all data in this table!`
-      )
-    ) {
+    if (confirmDelete("table", table.name, { isDestructive: true })) {
       console.log("Delete table:", table.name);
       // TODO: Implement table deletion
-      alert("Table deletion is not yet implemented.");
+      showNotImplemented("Table deletion");
     }
   },
 
@@ -276,25 +253,14 @@ export const tableHandlers = {
       async (newName) => {
         console.log("Rename table from", table.name, "to", newName);
         // TODO: Implement table rename
-        alert("Table rename is not yet implemented.");
+        showNotImplemented("Table rename");
       }
     );
   },
 
   async refresh(table, database, connection) {
-    const dbKey = `${connection.id}-${database.name}`;
     try {
-      const response = await getDatabaseObject(
-        connection.id,
-        "database_info",
-        database.name
-      );
-      if (response && response.tables) {
-        sidebarStore.updateCachedData(dbKey, (data) => ({
-          ...data,
-          tables: response.tables,
-        }));
-      }
+      await refreshDatabaseObject(connection.id, database.name, "tables");
     } catch (error) {
       console.error("Failed to refresh table:", error);
     }
@@ -333,10 +299,7 @@ export const viewHandlers = {
 
   copy(view, database, connection) {
     const viewInfo = `View: ${view.name}\nDatabase: ${database.name}\nConnection: ${connection.name}`;
-    navigator.clipboard.writeText(viewInfo).then(
-      () => console.log("View info copied to clipboard"),
-      (err) => console.error("Failed to copy:", err)
-    );
+    copyToClipboard(viewInfo, "View info copied to clipboard");
   },
 
   copyAdvancedInfo(view, database, connection) {
@@ -345,42 +308,28 @@ export const viewHandlers = {
     }\nDatabase: ${database.name}\nConnection: ${
       connection.name
     }\nConnection ID: ${connection.id}\nDB Type: ${connection.db_type}`;
-    navigator.clipboard.writeText(advancedInfo).then(
-      () => console.log("Advanced view info copied to clipboard"),
-      (err) => console.error("Failed to copy:", err)
-    );
+    copyToClipboard(advancedInfo, "Advanced view info copied to clipboard");
   },
 
   rename(view, database, connection) {
     sidebarStore.openRenameModal("Rename View", view.name, async (newName) => {
       console.log("Rename view from", view.name, "to", newName);
       // TODO: Implement view rename
-      alert("View rename is not yet implemented.");
+      showNotImplemented("View rename");
     });
   },
 
   delete(view, database, connection) {
-    if (confirm(`Are you sure you want to delete view "${view.name}"?`)) {
+    if (confirmDelete("view", view.name)) {
       console.log("Delete view:", view.name);
       // TODO: Implement view deletion
-      alert("View deletion is not yet implemented.");
+      showNotImplemented("View deletion");
     }
   },
 
   async refresh(view, database, connection) {
-    const dbKey = `${connection.id}-${database.name}`;
     try {
-      const response = await getDatabaseObject(
-        connection.id,
-        "database_info",
-        database.name
-      );
-      if (response && response.views) {
-        sidebarStore.updateCachedData(dbKey, (data) => ({
-          ...data,
-          views: response.views,
-        }));
-      }
+      await refreshDatabaseObject(connection.id, database.name, "views");
     } catch (error) {
       console.error("Failed to refresh view:", error);
     }
