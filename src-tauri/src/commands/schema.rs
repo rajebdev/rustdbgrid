@@ -390,9 +390,9 @@ pub async fn get_properties_object(
                     let db = database.clone();
                     let tbl = table.clone();
                     async move {
-                        if let Some(pg_conn) = conn
-                            .as_any_mut()
-                            .downcast_mut::<crate::db::postgres::PostgresConnection>()
+                        if let Some(pg_conn) =
+                            conn.as_any_mut()
+                                .downcast_mut::<crate::db::postgres::PostgresConnection>()
                         {
                             pg_conn.get_pg_constraints(&db, &tbl).await
                         } else {
@@ -419,9 +419,9 @@ pub async fn get_properties_object(
                     let db = database.clone();
                     let tbl = table.clone();
                     async move {
-                        if let Some(pg_conn) = conn
-                            .as_any_mut()
-                            .downcast_mut::<crate::db::postgres::PostgresConnection>()
+                        if let Some(pg_conn) =
+                            conn.as_any_mut()
+                                .downcast_mut::<crate::db::postgres::PostgresConnection>()
                         {
                             pg_conn.get_pg_foreign_keys(&db, &tbl).await
                         } else {
@@ -448,9 +448,9 @@ pub async fn get_properties_object(
                     let db = database.clone();
                     let tbl = table.clone();
                     async move {
-                        if let Some(pg_conn) = conn
-                            .as_any_mut()
-                            .downcast_mut::<crate::db::postgres::PostgresConnection>()
+                        if let Some(pg_conn) =
+                            conn.as_any_mut()
+                                .downcast_mut::<crate::db::postgres::PostgresConnection>()
                         {
                             pg_conn.get_pg_indexes(&db, &tbl).await
                         } else {
@@ -477,9 +477,9 @@ pub async fn get_properties_object(
                     let db = database.clone();
                     let tbl = table.clone();
                     async move {
-                        if let Some(pg_conn) = conn
-                            .as_any_mut()
-                            .downcast_mut::<crate::db::postgres::PostgresConnection>()
+                        if let Some(pg_conn) =
+                            conn.as_any_mut()
+                                .downcast_mut::<crate::db::postgres::PostgresConnection>()
                         {
                             pg_conn.get_pg_references(&db, &tbl).await
                         } else {
@@ -506,9 +506,9 @@ pub async fn get_properties_object(
                     let db = database.clone();
                     let tbl = table.clone();
                     async move {
-                        if let Some(pg_conn) = conn
-                            .as_any_mut()
-                            .downcast_mut::<crate::db::postgres::PostgresConnection>()
+                        if let Some(pg_conn) =
+                            conn.as_any_mut()
+                                .downcast_mut::<crate::db::postgres::PostgresConnection>()
                         {
                             pg_conn.get_pg_partitions(&db, &tbl).await
                         } else {

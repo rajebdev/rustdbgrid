@@ -50,14 +50,14 @@ impl QueryBuilder for MSSQLQueryBuilder {
 
     fn format_table_name(&self, request: &QueryRequest) -> String {
         let table = &request.table;
-        
+
         // If table is wrapped with RustDBGridQuery(), extract and return the inner query
         let trimmed = table.trim();
         if trimmed.starts_with("RustDBGridQuery(") && trimmed.ends_with(')') {
-            let query = &trimmed[16..trimmed.len()-1]; // Extract between RustDBGridQuery( and )
+            let query = &trimmed[16..trimmed.len() - 1]; // Extract between RustDBGridQuery( and )
             return format!("({}) AS __query", query);
         }
-        
+
         // Normal table - quote it
         let quoted_table = self.quote_identifier(table);
 
