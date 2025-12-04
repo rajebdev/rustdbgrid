@@ -1,15 +1,22 @@
-import { fileService, showMessage, showError } from "../services/fileService";
+import {
+  fileService,
+  showMessage,
+  showError,
+} from "../../features/settings/services/fileService";
 import { get } from "svelte/store";
 import {
   getNextQueryNumber,
   loadTableData,
   disconnectFromDatabase,
-} from "../utils/tauri";
-import { recentFilesStore } from "../stores/recentFiles";
+} from "../../core/integrations/tauri";
+import { recentFilesStore } from "../../features/settings/stores/recentFiles";
 import { invoke } from "@tauri-apps/api/core";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
-import { isSaving, saveStatus } from "../stores/connections";
+import {
+  isSaving,
+  saveStatus,
+} from "../../features/connection/stores/connections";
 
 /**
  * Handle opening table tab

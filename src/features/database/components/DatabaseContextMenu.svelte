@@ -1,5 +1,5 @@
 <script>
-  import BaseContextMenu from "./base/BaseContextMenu.svelte";
+  import BaseContextMenu from "../../../shared/components/base/BaseContextMenu.svelte";
   import { createEventDispatcher } from "svelte";
 
   export let x = 0;

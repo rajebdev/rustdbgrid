@@ -1,6 +1,6 @@
 import { writable, get } from "svelte/store";
 import { tabDataStore } from "./tabData";
-import { DatabaseType } from "../utils/databaseTypes";
+import { DatabaseType } from "../../core/config/databaseTypes";
 
 /**
  * Generate unique ID for tabs

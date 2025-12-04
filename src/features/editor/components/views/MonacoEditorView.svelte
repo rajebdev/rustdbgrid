@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import * as monaco from "monaco-editor";
-  import { getMonacoTheme } from "../../../../services/themeService";
+  import { getMonacoTheme } from "../../../settings/services/themeService";
 
   export let value = "";
   export let theme = "vs-dark";

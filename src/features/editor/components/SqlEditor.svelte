@@ -3,27 +3,27 @@
   import {
     activeConnection,
     selectedDatabase,
-  } from "../../../stores/connections";
-  import { tabDataStore } from "../../../stores/tabData";
-  import { tabStore } from "../../../stores/tabs";
-  import { activeTheme } from "../../../stores/theme";
-  import { getDefaultQuery } from "../../../utils/defaultQueries";
-  import { DatabaseType } from "../../../utils/databaseTypes";
-  import { formatSql } from "../../../utils/sqlFormatter";
+  } from "../../connection/stores/connections";
+  import { tabDataStore } from "../../../shared/stores/tabData";
+  import { tabStore } from "../../../shared/stores/tabs";
+  import { activeTheme } from "../../settings/stores/theme";
+  import { getDefaultQuery } from "../../../core/constants/defaultQueries";
+  import { DatabaseType } from "../../../core/config/databaseTypes";
+  import { formatSql } from "../../../shared/utils/sql/sqlFormatter";
 
   // Services
-  import { loadDatabasesForEditor } from "../../../services/sqlEditorService";
-  import { createCompletionProvider } from "../../../services/editorAutoCompleteService";
+  import { loadDatabasesForEditor } from "../services/sqlEditorService";
+  import { createCompletionProvider } from "../services/editorAutoCompleteService";
   import {
     executeQuery,
     validateQuery,
     cleanQuery,
-  } from "../../../services/queryExecutionService";
+  } from "../../query/services/queryExecutionService";
 
   // Components
   import EditorToolbar from "./partials/EditorToolbar.svelte";
   import MonacoEditorView from "./views/MonacoEditorView.svelte";
-  import EditorContextMenu from "../../context-menus/EditorContextMenu.svelte";
+  import EditorContextMenu from "./EditorContextMenu.svelte";
 
   export let tabId;
   export let tab;

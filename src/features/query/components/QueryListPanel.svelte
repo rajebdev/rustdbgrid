@@ -1,15 +1,15 @@
 <script>
-  import { queryListStore } from "../../stores/queryList";
-  import BasePanel from "./base/BasePanel.svelte";
-  import PanelSearchBar from "./base/PanelSearchBar.svelte";
-  import PanelEmptyState from "./base/PanelEmptyState.svelte";
+  import { queryListStore } from "../stores/queryList";
+  import BasePanel from "../../../shared/components/base/BasePanel.svelte";
+  import PanelSearchBar from "../../../shared/components/base/PanelSearchBar.svelte";
+  import PanelEmptyState from "../../../shared/components/base/PanelEmptyState.svelte";
   import { useSearch } from "../../composables/useSearch";
   import {
     formatDate,
     truncateText,
     showConfirmation,
     dispatchLoadQuery,
-  } from "../../utils/panelHelpers";
+  } from "../../shared/utils/ui/panelHelpers";
 
   const { searchTerm, filteredItems: filteredQueries } = useSearch(
     queryListStore,

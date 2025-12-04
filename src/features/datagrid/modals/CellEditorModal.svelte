@@ -1,6 +1,6 @@
 <script>
-  import BaseModal from "./base/BaseModal.svelte";
-  import { autoFocus } from "../../composables/useModalFocus";
+  import BaseModal from "../../../shared/components/base/BaseModal.svelte";
+  import { autoFocus } from "../../../shared/composables/useModalFocus";
 
   export let show = false;
   export let value = "";

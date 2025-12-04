@@ -1,4 +1,4 @@
-import { DatabaseType } from "./databaseTypes";
+import { DatabaseType } from "../../../core/config/databaseTypes";
 
 /**
  * Get default query template based on database type

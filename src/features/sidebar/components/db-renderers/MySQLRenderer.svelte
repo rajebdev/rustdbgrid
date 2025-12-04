@@ -2,9 +2,9 @@
   import { createEventDispatcher } from "svelte";
   import ObjectGroup from "../tree/ObjectGroup.svelte";
   import ObjectItem from "../tree/ObjectItem.svelte";
-  import { sidebarStore } from "../../../../stores/sidebar";
-  import { getGroupKey } from "../../../../services/sidebarDataService";
-  import { DatabaseType } from "../../../../utils/databaseTypes";
+  import { sidebarStore } from "../../stores/sidebar";
+  import { getGroupKey } from "../../services/sidebarDataService";
+  import { DatabaseType } from "../../../../core/config/databaseTypes";
 
   export let connection;
   export let database;

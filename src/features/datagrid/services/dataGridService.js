@@ -3,8 +3,11 @@
  * Handles all data loading, pagination, and filtering operations
  */
 
-import { getFilterValues, loadTableData } from "../utils/tauri";
-import { DatabaseType } from "../utils/databaseTypes";
+import {
+  getFilterValues,
+  loadTableData,
+} from "../../../core/integrations/tauri";
+import { DatabaseType } from "../../../core/config/databaseTypes";
 
 /**
  * Convert column filters object to array format for backend

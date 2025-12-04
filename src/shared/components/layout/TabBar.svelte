@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher, onMount, afterUpdate } from "svelte";
-  import TabContextMenu from "../../context-menus/TabContextMenu.svelte";
+  import TabContextMenu from "../../../features/sidebar/components/context-menu/TabContextMenu.svelte";
   import { invoke } from "@tauri-apps/api/core";
 
   const dispatch = createEventDispatcher();

@@ -6,7 +6,7 @@ import "./app.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 import App from "./App.svelte";
-import { overrideConsole } from "./utils/logger.js";
+import { overrideConsole } from "./shared/utils/common/logger.js";
 
 // Override console BEFORE app loads
 try {

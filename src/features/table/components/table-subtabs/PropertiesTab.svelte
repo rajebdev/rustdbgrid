@@ -1,9 +1,9 @@
 <script>
-  import { activeConnection } from "../../../stores/connections";
-  import { tabDataStore } from "../../../stores/tabData";
-  import { DatabaseType } from "../../../utils/databaseTypes";
-  import { getTabsForDatabase } from "../../../utils/propertiesTabConfig";
-  import { loadAllTableData } from "../../../services/propertiesDataService";
+  import { activeConnection } from "../../../connection/stores/connections";
+  import { tabDataStore } from "../../../../shared/stores/tabData";
+  import { DatabaseType } from "../../../../core/config/databaseTypes";
+  import { getTabsForDatabase } from "../../../../shared/utils/config/propertiesTabConfig";
+  import { loadAllTableData } from "../../services/propertiesDataService";
 
   // Tab content components
   import ColumnsTabContent from "./properties/ColumnsTabContent.svelte";

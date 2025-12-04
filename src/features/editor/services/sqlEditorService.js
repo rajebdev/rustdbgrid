@@ -3,7 +3,7 @@ import {
   getPropertiesObject,
   saveAutoQuery,
   loadAutoQuery,
-} from "../utils/tauri";
+} from "../../../core/integrations/tauri";
 
 /**
  * Load databases for SQL editor

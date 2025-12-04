@@ -1,7 +1,10 @@
 <script>
   import { createEventDispatcher } from "svelte";
-  import { themePreference, activeTheme } from "../../stores/theme";
-  import { recentFilesStore } from "../../stores/recentFiles";
+  import {
+    themePreference,
+    activeTheme,
+  } from "../../../features/settings/stores/theme";
+  import { recentFilesStore } from "../../../features/settings/stores/recentFiles";
 
   const dispatch = createEventDispatcher();
 

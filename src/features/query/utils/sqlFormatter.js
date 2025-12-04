@@ -1,5 +1,5 @@
 import { format } from "sql-formatter";
-import { DatabaseType } from "./databaseTypes";
+import { DatabaseType } from "../../../core/config/databaseTypes";
 
 /**
  * Simple SQL Formatter

@@ -6,11 +6,11 @@
     selectedTable,
     isSaving,
     saveStatus,
-  } from "../../stores/connections";
+  } from "../../../features/connection/stores/connections";
   import { tabDataStore } from "../../stores/tabData";
-  import { themePreference } from "../../stores/theme";
-  import { toggleTheme } from "../../services/themeService";
-  import { getStorageInfo } from "../../utils/tauri";
+  import { themePreference } from "../../../features/settings/stores/theme";
+  import { toggleTheme } from "../../../features/settings/services/themeService";
+  import { getStorageInfo } from "../../../core/integrations/tauri";
 
   export let activeTabId = null;
 

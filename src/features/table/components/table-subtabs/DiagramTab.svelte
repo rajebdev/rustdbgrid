@@ -1,7 +1,7 @@
 <script>
-  import { getPropertiesObject } from "../../../utils/tauri";
-  import { activeConnection } from "../../../stores/connections";
-  import { DatabaseType } from "../../../utils/databaseTypes";
+  import { getPropertiesObject } from "../../../../core/integrations/tauri";
+  import { activeConnection } from "../../../connection/stores/connections";
+  import { DatabaseType } from "../../../../core/config/databaseTypes";
 
   export let tableInfo;
   export let connection;

@@ -1,12 +1,12 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { sidebarStore } from "../../../../stores/sidebar";
+  import { sidebarStore } from "../../stores/sidebar";
 
-  import ConnectionContextMenu from "../../../context-menus/ConnectionContextMenu.svelte";
-  import DatabaseContextMenu from "../../../context-menus/DatabaseContextMenu.svelte";
-  import SchemaContextMenu from "../../../context-menus/SchemaContextMenu.svelte";
-  import TableContextMenu from "../../../context-menus/TableContextMenu.svelte";
-  import ViewContextMenu from "../../../context-menus/ViewContextMenu.svelte";
+  import ConnectionContextMenu from "../../../connection/components/ConnectionContextMenu.svelte";
+  import DatabaseContextMenu from "../../../database/components/DatabaseContextMenu.svelte";
+  import SchemaContextMenu from "../../../database/components/SchemaContextMenu.svelte";
+  import TableContextMenu from "../../../table/components/TableContextMenu.svelte";
+  import ViewContextMenu from "../../../database/components/ViewContextMenu.svelte";
 
   export let connectedConnections = {};
   export let onConnectionEdit = null;

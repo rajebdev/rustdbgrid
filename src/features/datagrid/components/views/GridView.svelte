@@ -5,8 +5,8 @@
     isScrolledNearBottom,
     isScrollingDown,
     shouldLoadMore,
-  } from "../../../../utils/gridScrollSync";
-  import { formatValue } from "../../../../utils/dataFormatters";
+  } from "../../../../shared/utils/grid/gridScrollSync";
+  import { formatValue } from "../../../../shared/utils/data/dataFormatters";
   import ArrayCell from "../partials/ArrayCell.svelte";
 
   export let displayData = null;

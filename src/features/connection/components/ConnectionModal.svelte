@@ -1,13 +1,16 @@
 <script>
-  import BaseModal from "./base/BaseModal.svelte";
-  import { testConnection, saveConnection } from "../../utils/tauri";
-  import { isSaving } from "../../stores/connections";
+  import BaseModal from "../../../shared/components/base/BaseModal.svelte";
+  import {
+    testConnection,
+    saveConnection,
+  } from "../../../core/integrations/tauri";
+  import { isSaving } from "../stores/connections";
   import {
     parseConnectionString as parseConnStr,
     getDefaultPort,
     getConnectionStringFormats,
-  } from "../../utils/connectionStringParser";
-  import { DatabaseType } from "../../utils/databaseTypes";
+  } from "../utils/connectionStringParser";
+  import { DatabaseType } from "../../../core/config/databaseTypes";
 
   export let connection = null;
   export let show = true;

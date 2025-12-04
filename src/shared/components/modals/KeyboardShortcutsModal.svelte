@@ -1,5 +1,5 @@
 <script>
-  import BaseModal from "./base/BaseModal.svelte";
+  import BaseModal from "../base/BaseModal.svelte";
 
   export let show = false;
 </script>

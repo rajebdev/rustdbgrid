@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { saveAutoQuery } from "../utils/tauri";
-import { createDebounce } from "../utils/debounce";
+import { saveAutoQuery } from "../../../core/integrations/tauri";
+import { createDebounce } from "../../../shared/utils/common/debounce";
 
 /**
  * Setup auto-save with debouncing

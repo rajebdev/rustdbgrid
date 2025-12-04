@@ -1,14 +1,14 @@
 <script>
   import { onMount } from "svelte";
-  import { loadQueries, deleteQuery } from "../../utils/tauri";
-  import BasePanel from "./base/BasePanel.svelte";
-  import PanelEmptyState from "./base/PanelEmptyState.svelte";
+  import { loadQueries, deleteQuery } from "../../core/integrations/tauri";
+  import BasePanel from "../base/BasePanel.svelte";
+  import PanelEmptyState from "../base/PanelEmptyState.svelte";
   import {
     formatTimestamp,
     showConfirmation,
     exportToJSON,
     filterItems,
-  } from "../../utils/panelHelpers";
+  } from "../../shared/utils/ui/panelHelpers";
 
   export let onLoadQuery = () => {};
 

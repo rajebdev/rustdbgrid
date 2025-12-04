@@ -1,5 +1,5 @@
 <script>
-  import { formatNumber } from "../../../../utils/propertiesFormatters";
+  import { formatNumber } from "../../../../../shared/utils/data/propertiesFormatters";
 
   export let pgPartitions;
   export let tableSchema;

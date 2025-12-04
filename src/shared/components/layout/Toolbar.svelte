@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import { tabStore } from "../../stores/tabs";
-  import { DatabaseType } from "../../utils/databaseTypes";
+  import { DatabaseType } from "../../../core/config/databaseTypes";
 
   const dispatch = createEventDispatcher();
   const { activeTab } = tabStore;

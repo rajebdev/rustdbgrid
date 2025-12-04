@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import { createPersistedStore } from "../utils/persistedStore";
+import { createPersistedStore } from "../../../shared/utils/config/persistedStore";
 
 export const connections = writable([]);
 export const activeConnection = createPersistedStore("activeConnection", null);

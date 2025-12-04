@@ -3,11 +3,11 @@
   import SchemaItem from "../tree/SchemaItem.svelte";
   import ObjectGroup from "../tree/ObjectGroup.svelte";
   import ObjectItem from "../tree/ObjectItem.svelte";
-  import { sidebarStore } from "../../../../stores/sidebar";
+  import { sidebarStore } from "../../stores/sidebar";
   import {
     loadSchemaInfo,
     getGroupKey,
-  } from "../../../../services/sidebarDataService";
+  } from "../../services/sidebarDataService";
 
   export let connection;
   export let database;

@@ -1,9 +1,9 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import * as monaco from "monaco-editor";
-  import { activeTheme } from "../../stores/theme";
-  import { getMonacoTheme } from "../../services/themeService";
-  import { getDatabaseObject } from "../../utils/tauri";
+  import { activeTheme } from "../../settings/stores/theme";
+  import { getMonacoTheme } from "../../settings/services/themeService";
+  import { getDatabaseObject } from "../../../core/integrations/tauri";
 
   export let procedure;
   export let database;

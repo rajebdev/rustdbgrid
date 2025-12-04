@@ -3,15 +3,18 @@ import {
   saveConnection,
   deleteConnection,
   getDatabaseObject,
-} from "../utils/tauri";
+} from "../../../core/integrations/tauri";
 import { sidebarStore } from "../stores/sidebar";
 import {
   refreshDatabase,
   refreshSchema,
   refreshDatabaseObject,
-} from "./sidebarDataService";
-import { copyToClipboard } from "../utils/clipboard";
-import { confirmDelete, showNotImplemented } from "../utils/confirmDialog";
+} from "../services/sidebarDataService";
+import { copyToClipboard } from "../../../shared/utils/ui/clipboard";
+import {
+  confirmDelete,
+  showNotImplemented,
+} from "../../../shared/utils/ui/confirmDialog";
 
 /**
  * Connection action handlers

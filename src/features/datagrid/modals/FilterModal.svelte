@@ -1,5 +1,5 @@
 <script>
-  import BaseModal from "./base/BaseModal.svelte";
+  import BaseModal from "../../../shared/components/base/BaseModal.svelte";
 
   export let show = false;
   export let column = null;

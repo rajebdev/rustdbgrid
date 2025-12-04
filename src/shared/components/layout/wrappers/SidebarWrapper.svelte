@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from "svelte";
-  import Sidebar2 from "../sidebar2/Sidebar2.svelte";
+  import Sidebar2 from "../../../../features/sidebar/components/Sidebar2.svelte";
 
   const dispatch = createEventDispatcher();
 

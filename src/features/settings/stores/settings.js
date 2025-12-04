@@ -3,7 +3,7 @@ import {
   getSettings,
   saveSettings as saveSettingsApi,
   updateSetting as updateSettingApi,
-} from "../utils/tauri";
+} from "../../../core/integrations/tauri";
 
 // Default settings
 const defaultSettings = {

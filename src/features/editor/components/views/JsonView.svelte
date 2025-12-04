@@ -1,5 +1,5 @@
 <script>
-  import { stringifyRowWithOrder } from "../../../../utils/dataFormatters";
+  import { stringifyRowWithOrder } from "../../../../shared/utils/data/dataFormatters";
 
   export let displayRows = [];
   export let displayData = null;

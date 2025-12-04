@@ -1,12 +1,12 @@
 <script>
   import { onMount } from "svelte";
-  import BaseModal from "./base/BaseModal.svelte";
-  import { focusElement } from "../../composables/useModalFocus";
-  import { queryListStore } from "../../stores/queryList";
+  import BaseModal from "../../../shared/components/base/BaseModal.svelte";
+  import { focusElement } from "../../../shared/composables/useModalFocus";
+  import { queryListStore } from "../stores/queryList";
   import {
     loadQueriesFromFolder,
     deleteQueryFile,
-  } from "../../services/queryFileService";
+  } from "../services/queryFileService";
 
   export let show = false;
 

@@ -1,6 +1,5 @@
-import { loadTableData } from "../utils/tauri";
+import { loadTableData } from "../../../core/integrations/tauri";
 import { stripSqlComments } from "../utils/sqlFormatter";
-import { queryHistoryStore } from "../stores/queryHistory";
 
 /**
  * Execute SQL query
@@ -31,9 +30,6 @@ export async function executeQuery(config) {
   );
 
   const executionTime = Date.now() - startTime;
-
-  // Add to history
-  queryHistoryStore.addToHistory(cleanedQuery, connId, dbName, executionTime);
 
   return {
     result,

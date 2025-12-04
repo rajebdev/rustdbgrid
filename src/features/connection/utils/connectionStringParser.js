@@ -1,4 +1,4 @@
-import { DatabaseType } from "./databaseTypes";
+import { DatabaseType } from "../../../core/config/databaseTypes";
 
 /**
  * Parse connection string and extract connection parameters

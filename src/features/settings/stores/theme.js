@@ -1,5 +1,8 @@
 import { writable, derived, get } from "svelte/store";
-import { getTheme, setTheme as setThemeApi } from "../utils/tauri";
+import {
+  getTheme,
+  setTheme as setThemeApi,
+} from "../../../core/integrations/tauri";
 
 // Theme modes: 'light', 'dark', 'auto'
 

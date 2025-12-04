@@ -3,9 +3,9 @@ import {
   getConnectedDatabases,
   connectToDatabase,
   disconnectFromDatabase,
-} from "../utils/tauri";
+} from "../../../core/integrations/tauri";
 import { sidebarStore } from "../stores/sidebar";
-import { DatabaseType } from "../utils/databaseTypes";
+import { DatabaseType } from "../../../core/config/databaseTypes";
 
 // Active abort controllers for cancellable operations
 const abortControllers = new Map();

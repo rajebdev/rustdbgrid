@@ -2,7 +2,7 @@
   import {
     getDataTypeDisplay,
     getColumnKey,
-  } from "../../../../utils/propertiesFormatters";
+  } from "../../../../../shared/utils/data/propertiesFormatters";
 
   export let tableSchema;
 </script>

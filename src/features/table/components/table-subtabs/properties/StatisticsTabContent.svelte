@@ -2,7 +2,7 @@
   import {
     formatBytes,
     formatNumber,
-  } from "../../../../utils/propertiesFormatters";
+  } from "../../../../../shared/utils/data/propertiesFormatters";
 
   export let tableStatistics;
   export let tableSchema;

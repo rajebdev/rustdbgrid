@@ -1,9 +1,9 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import SqlEditor from "../common/sql-editor/SqlEditor.svelte";
-  import DataGrid from "../common/datagrid/DataGrid.svelte";
-  import { activeConnection } from "../../stores/connections";
-  import { tabDataStore } from "../../stores/tabData";
+  import SqlEditor from "../../editor/components/SqlEditor.svelte";
+  import DataGrid from "../../datagrid/components/DataGrid.svelte";
+  import { activeConnection } from "../../connection/stores/connections";
+  import { tabDataStore } from "../../../shared/stores/tabData";
 
   export let tabId;
   export let tab;

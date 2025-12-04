@@ -17,8 +17,8 @@
   import ContextMenuManager from "./context-menu/ContextMenuManager.svelte";
 
   // Modals
-  import InputModal from "../../modals/InputModal.svelte";
-  import ConnectionModal from "../../modals/ConnectionModal.svelte";
+  import InputModal from "../../../shared/components/modals/InputModal.svelte";
+  import ConnectionModal from "../../connection/components/ConnectionModal.svelte";
 
   // Stores
   import {
@@ -26,12 +26,12 @@
     activeConnection,
     selectedDatabase,
     selectedTable,
-  } from "../../../stores/connections";
-  import { sidebarStore } from "../../../stores/sidebar";
+  } from "../../connection/stores/connections";
+  import { sidebarStore } from "../stores/sidebar";
 
   // Utils
-  import { getConnectionsInfo } from "../../../utils/tauri";
-  import { DatabaseType } from "../../../utils/databaseTypes";
+  import { getConnectionsInfo } from "../../../core/integrations/tauri";
+  import { DatabaseType } from "../../../core/config/databaseTypes";
 
   // Services
   import {
@@ -42,7 +42,7 @@
     disconnectDatabase,
     refreshConnection,
     cancelAllOperations,
-  } from "../../../services/sidebarDataService";
+  } from "../services/sidebarDataService";
 
   import {
     connectionHandlers,
@@ -50,7 +50,7 @@
     schemaHandlers,
     tableHandlers,
     viewHandlers,
-  } from "../../../services/sidebarActionHandlers";
+  } from "../handlers/sidebarActionHandlers";
 
   const dispatch = createEventDispatcher();
 

@@ -3,8 +3,8 @@
   import PropertiesTab from "./table-subtabs/PropertiesTab.svelte";
   import DataTab from "./table-subtabs/DataTab.svelte";
   import DiagramTab from "./table-subtabs/DiagramTab.svelte";
-  import { activeConnection } from "../../stores/connections";
-  import { tabDataStore } from "../../stores/tabData";
+  import { activeConnection } from "../../connection/stores/connections";
+  import { tabDataStore } from "../../../shared/stores/tabData";
 
   export let tabId;
   export let currentTabData;

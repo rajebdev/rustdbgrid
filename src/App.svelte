@@ -1,36 +1,39 @@
 <script>
   import { onMount } from "svelte";
   import { get } from "svelte/store";
-  import MainLayout from "./components/layout/MainLayout.svelte";
-  import SidebarWrapper from "./components/layout/wrappers/SidebarWrapper.svelte";
-  import ContentArea from "./components/layout/wrappers/ContentArea.svelte";
-  import ConnectionModal from "./components/modals/ConnectionModal.svelte";
-  import AboutModal from "./components/modals/AboutModal.svelte";
-  import KeyboardShortcutsModal from "./components/modals/KeyboardShortcutsModal.svelte";
-  import InputModal from "./components/modals/InputModal.svelte";
-  import QueryListModal from "./components/modals/QueryListModal.svelte";
-  import UnsavedChangesModal from "./components/modals/UnsavedChangesModal.svelte";
-  import { activeConnection } from "./stores/connections";
-  import { tabDataStore } from "./stores/tabData";
-  import { tabStore } from "./stores/tabs";
-  import { queryListStore } from "./stores/queryList";
-  import { useKeyboardShortcuts } from "./composables/useKeyboardShortcuts";
+  import MainLayout from "./shared/components/layout/MainLayout.svelte";
+  import SidebarWrapper from "./shared/components/layout/wrappers/SidebarWrapper.svelte";
+  import ContentArea from "./shared/components/layout/wrappers/ContentArea.svelte";
+  import ConnectionModal from "./features/connection/components/ConnectionModal.svelte";
+  import AboutModal from "./features/settings/components/AboutModal.svelte";
+  import KeyboardShortcutsModal from "./shared/components/modals/KeyboardShortcutsModal.svelte";
+  import InputModal from "./shared/components/modals/InputModal.svelte";
+  import QueryListModal from "./features/query/components/QueryListModal.svelte";
+  import UnsavedChangesModal from "./shared/components/modals/UnsavedChangesModal.svelte";
+  import { activeConnection } from "./features/connection/stores/connections";
+  import { tabDataStore } from "./shared/stores/tabData";
+  import { tabStore } from "./shared/stores/tabs";
+  import { queryListStore } from "./features/query/stores/queryList";
+  import { useKeyboardShortcuts } from "./shared/composables/useKeyboardShortcuts";
   import {
     useWindowResize,
     useEditorResize,
     useSidebarResize,
-  } from "./composables/useResize";
+  } from "./shared/composables/useResize";
   import {
     createMenuHandlers,
     handleOpenTableTab,
     handleOpenProcedureTab,
-  } from "./handlers/menuHandlers";
-  import { initializeApplication } from "./services/appService";
-  import { initializeTheme, toggleTheme } from "./services/themeService";
-  import { loadTableData } from "./utils/tauri";
+  } from "./shared/handlers/menuHandlers";
+  import { initializeApplication } from "./shared/services/appService";
+  import {
+    initializeTheme,
+    toggleTheme,
+  } from "./features/settings/services/themeService";
+  import { loadTableData } from "./core/integrations/tauri";
   import { invoke } from "@tauri-apps/api/core";
   import { message, ask } from "@tauri-apps/plugin-dialog";
-  import { saveStatus } from "./stores/connections";
+  import { saveStatus } from "./features/connection/stores/connections";
 
   // UI State
   let showSidebar = true;

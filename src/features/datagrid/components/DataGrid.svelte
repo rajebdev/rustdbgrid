@@ -1,8 +1,8 @@
 <script>
   import { onMount, afterUpdate } from "svelte";
-  import { tabDataStore } from "../../../stores/tabData";
-  import { loadTableData } from "../../../utils/tauri";
-  import { DatabaseType } from "../../../utils/databaseTypes";
+  import { tabDataStore } from "../../../shared/stores/tabData";
+  import { loadTableData } from "../../../core/integrations/tauri";
+  import { DatabaseType } from "../../../core/config/databaseTypes";
 
   // Views
   import GridView from "./views/GridView.svelte";
@@ -14,9 +14,9 @@
   import EditFooter from "./partials/EditFooter.svelte";
 
   // Modals
-  import SqlPreviewModal from "../../modals/SqlPreviewModal.svelte";
-  import FilterModal from "../../modals/FilterModal.svelte";
-  import CellEditorModal from "../../modals/CellEditorModal.svelte";
+  import SqlPreviewModal from "../../../shared/components/modals/SqlPreviewModal.svelte";
+  import FilterModal from "../modals/FilterModal.svelte";
+  import CellEditorModal from "../modals/CellEditorModal.svelte";
 
   // Services
   import {
@@ -24,15 +24,15 @@
     reloadDataWithFilters,
     loadMoreData,
     loadFilterValuesFromServer,
-  } from "../../../services/dataGridService";
+  } from "../services/dataGridService";
   import {
     startEdit,
     trackEditedRow,
     cancelAllEdits as cancelAllEditsService,
     generateUpdateSql,
-  } from "../../../services/gridEditService";
-  import { openFilterModal as openFilterModalService } from "../../../services/gridFilterService";
-  import { handleSort } from "../../../services/gridSortService";
+  } from "../services/gridEditService";
+  import { openFilterModal as openFilterModalService } from "../services/gridFilterService";
+  import { handleSort } from "../services/gridSortService";
 
   // Utils
   import {
@@ -40,8 +40,8 @@
     isScrolledNearBottom,
     isScrollingDown,
     shouldLoadMore,
-  } from "../../../utils/gridScrollSync";
-  import { getDistinctValues } from "../../../utils/dataHelpers";
+  } from "../../../shared/utils/grid/gridScrollSync";
+  import { getDistinctValues } from "../../../shared/utils/data/dataHelpers";
 
   export let data = null;
   export let tabId = null;

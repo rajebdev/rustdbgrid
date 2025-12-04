@@ -1,5 +1,5 @@
-import { getPropertiesObject } from "../utils/tauri";
-import { DatabaseType } from "../utils/databaseTypes";
+import { getPropertiesObject } from "../../../core/integrations/tauri";
+import { DatabaseType } from "../../../core/config/databaseTypes";
 
 // Active abort controllers for cancellable operations
 const abortControllers = new Map();

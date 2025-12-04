@@ -1,9 +1,9 @@
 <script>
   import { createEventDispatcher } from "svelte";
-  import TabBar from "../navigation/TabBar.svelte";
-  import QueryTabContent from "../../tab-content/QueryTabContent.svelte";
-  import TableTabContent from "../../tab-content/TableTabContent.svelte";
-  import ProcedureTabContent from "../../tab-content/ProcedureTabContent.svelte";
+  import TabBar from "../TabBar.svelte";
+  import QueryTabContent from "../../../../features/query/components/QueryTabContent.svelte";
+  import TableTabContent from "../../../../features/table/components/TableTabContent.svelte";
+  import ProcedureTabContent from "../../../../features/procedure/components/ProcedureTabContent.svelte";
   import WelcomeScreen from "../../screens/WelcomeScreen.svelte";
 
   const dispatch = createEventDispatcher();

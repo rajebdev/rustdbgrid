@@ -1,7 +1,7 @@
 <script>
-  import DataGrid from "../../common/datagrid/DataGrid.svelte";
-  import { loadTableData } from "../../../utils/tauri";
-  import { tabDataStore } from "../../../stores/tabData";
+  import DataGrid from "../../../datagrid/components/DataGrid.svelte";
+  import { loadTableData } from "../../../../core/integrations/tauri";
+  import { tabDataStore } from "../../../../shared/stores/tabData";
 
   export let tabId;
   export let currentTabData;
