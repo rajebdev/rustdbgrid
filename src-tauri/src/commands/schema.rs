@@ -1,5 +1,4 @@
 use crate::commands::connection::ConnectionStore;
-use crate::models::schema::*;
 use futures::FutureExt;
 use serde_json::json;
 use tauri::State;
