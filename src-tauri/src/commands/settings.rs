@@ -69,7 +69,7 @@ pub async fn open_path_in_explorer(path: String) -> Result<(), String> {
         if path_obj.is_file() {
             // For files, open with /select flag to highlight the file
             Command::new("explorer")
-                .args(&["/select,", path.as_str()])
+                .args(["/select,", path.as_str()])
                 .spawn()
                 .map_err(|e| format!("Failed to open explorer: {}", e))?;
         } else {

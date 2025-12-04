@@ -573,13 +573,11 @@ pub async fn list_query_files_with_content(
                                     let created = metadata
                                         .created()
                                         .ok()
-                                        .and_then(|t| {
+                                        .map(|t| {
                                             let datetime: chrono::DateTime<chrono::Utc> = t.into();
-                                            Some(
-                                                datetime.to_rfc3339_opts(
-                                                    chrono::SecondsFormat::Secs,
-                                                    true,
-                                                ),
+                                            datetime.to_rfc3339_opts(
+                                                chrono::SecondsFormat::Secs,
+                                                true,
                                             )
                                         })
                                         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
@@ -587,13 +585,11 @@ pub async fn list_query_files_with_content(
                                     let modified = metadata
                                         .modified()
                                         .ok()
-                                        .and_then(|t| {
+                                        .map(|t| {
                                             let datetime: chrono::DateTime<chrono::Utc> = t.into();
-                                            Some(
-                                                datetime.to_rfc3339_opts(
-                                                    chrono::SecondsFormat::Secs,
-                                                    true,
-                                                ),
+                                            datetime.to_rfc3339_opts(
+                                                chrono::SecondsFormat::Secs,
+                                                true,
                                             )
                                         })
                                         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
