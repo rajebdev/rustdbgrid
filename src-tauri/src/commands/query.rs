@@ -575,10 +575,8 @@ pub async fn list_query_files_with_content(
                                         .ok()
                                         .map(|t| {
                                             let datetime: chrono::DateTime<chrono::Utc> = t.into();
-                                            datetime.to_rfc3339_opts(
-                                                chrono::SecondsFormat::Secs,
-                                                true,
-                                            )
+                                            datetime
+                                                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
                                         })
                                         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
@@ -587,10 +585,8 @@ pub async fn list_query_files_with_content(
                                         .ok()
                                         .map(|t| {
                                             let datetime: chrono::DateTime<chrono::Utc> = t.into();
-                                            datetime.to_rfc3339_opts(
-                                                chrono::SecondsFormat::Secs,
-                                                true,
-                                            )
+                                            datetime
+                                                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
                                         })
                                         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
