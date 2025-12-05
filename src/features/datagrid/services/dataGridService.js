@@ -38,20 +38,22 @@ function convertColumnFiltersToArray(columnFilters) {
 }
 
 /**
- * Convert sort column and direction to orderBy array format for backend
- * @param {string} sortColumn - Column name to sort by
- * @param {string} sortDirection - Sort direction (ASC/DESC)
- * @returns {Array} Array with single orderBy object, or empty array if no sort
+ * Convert sort stack to orderBy array format for backend
+ * @param {Array} sortStack - Array of sort objects [{ column, direction, priority }]
+ * @returns {Array} Array of orderBy objects sorted by priority
  */
-function convertSortToOrderBy(sortColumn, sortDirection) {
-  return sortColumn
-    ? [
-        {
-          column: sortColumn,
-          direction: sortDirection.toLowerCase(),
-        },
-      ]
-    : [];
+function convertSortStackToOrderBy(sortStack) {
+  if (!sortStack || sortStack.length === 0) {
+    return [];
+  }
+
+  // Sort by priority and map to orderBy format
+  return sortStack
+    .sort((a, b) => a.priority - b.priority)
+    .map((sort) => ({
+      column: sort.column,
+      direction: sort.direction.toLowerCase(),
+    }));
 }
 
 /**
@@ -64,8 +66,7 @@ export async function loadTableInitial(
   databaseName,
   schemaName,
   columnFilters,
-  sortColumn,
-  sortDirection
+  sortStack
 ) {
   if (!connection || !tableName) {
     return null;
@@ -73,7 +74,12 @@ export async function loadTableInitial(
 
   try {
     const filters = convertColumnFiltersToArray(columnFilters);
-    const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
+    const orderBy = convertSortStackToOrderBy(sortStack);
+
+    console.log(
+      `[loadTableInitial] Loading ${tableName} with orderBy:`,
+      orderBy
+    );
 
     const result = await loadTableDataRaw(
       connection.id,
@@ -88,6 +94,14 @@ export async function loadTableInitial(
         orderBy,
       }
     );
+
+    console.log(`[loadTableInitial] Result received:`, {
+      columns: result?.columns?.length || 0,
+      rows: result?.rows?.length || 0,
+      final_query: result?.final_query,
+      first_row: result?.rows?.[0],
+      last_row: result?.rows?.[result?.rows?.length - 1],
+    });
 
     return result;
   } catch (error) {
@@ -107,8 +121,7 @@ export async function loadQueryInitial(
   tableName,
   databaseName,
   columnFilters,
-  sortColumn,
-  sortDirection
+  sortStack
 ) {
   if (!executedQuery || executedQuery.trim() === "") {
     return null;
@@ -221,17 +234,49 @@ export async function loadQueryInitial(
             }
           }
 
-          const direction = sortDirection.toUpperCase() === "DESC" ? -1 : 1;
+          // Apply client-side sorting for Ignite using sortStack
           result.rows.sort((a, b) => {
-            // Handle both array and object row formats
-            const aVal = Array.isArray(a) ? a[sortColumnIndex] : a[sortColumn];
-            const bVal = Array.isArray(b) ? b[sortColumnIndex] : b[sortColumn];
-            if (aVal === null || aVal === undefined) return direction;
-            if (bVal === null || bVal === undefined) return -direction;
-            if (typeof aVal === "number" && typeof bVal === "number") {
-              return (aVal - bVal) * direction;
+            for (const sort of sortStack) {
+              const sortColumnName = sort.column;
+              let sortColumnIndex = -1;
+              for (let i = 0; i < result.columns.length; i++) {
+                const col = result.columns[i];
+                if (!col) continue;
+                const colName = typeof col === "object" ? col.name : col;
+                if (colName === sortColumnName) {
+                  sortColumnIndex = i;
+                  break;
+                }
+              }
+
+              if (sortColumnIndex < 0) continue;
+
+              const direction =
+                sort.direction.toUpperCase() === "DESC" ? -1 : 1;
+              const aVal = Array.isArray(a)
+                ? a[sortColumnIndex]
+                : a[sortColumnName];
+              const bVal = Array.isArray(b)
+                ? b[sortColumnIndex]
+                : b[sortColumnName];
+
+              if (aVal === null || aVal === undefined) {
+                if (bVal === null || bVal === undefined) continue;
+                return direction;
+              }
+              if (bVal === null || bVal === undefined) return -direction;
+
+              let comparison = 0;
+              if (typeof aVal === "number" && typeof bVal === "number") {
+                comparison = (aVal - bVal) * direction;
+              } else {
+                comparison =
+                  String(aVal).localeCompare(String(bVal)) * direction;
+              }
+
+              if (comparison !== 0) return comparison;
             }
-            return String(aVal).localeCompare(String(bVal)) * direction;
+            return 0;
           });
         }
       } else {
@@ -242,7 +287,7 @@ export async function loadQueryInitial(
     } else {
       // Convert columnFilters to new filter format
       const filterArray = convertColumnFiltersToArray(columnFilters);
-      const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
+      const orderBy = convertSortStackToOrderBy(sortStack);
 
       // Use loadTableDataRaw with subquery wrapper
       result = await loadTableDataRaw(
@@ -275,8 +320,7 @@ export async function appendTableData(
   databaseName,
   schemaName,
   columnFilters,
-  sortColumn,
-  sortDirection,
+  sortStack,
   currentOffset
 ) {
   if (!connection || !tableName) {
@@ -285,7 +329,12 @@ export async function appendTableData(
 
   try {
     const filters = convertColumnFiltersToArray(columnFilters);
-    const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
+    const orderBy = convertSortStackToOrderBy(sortStack);
+
+    console.log(
+      `[appendTableData] Appending ${tableName} at offset ${currentOffset} with orderBy:`,
+      orderBy
+    );
 
     const result = await loadTableDataRaw(
       connection.id,
@@ -300,6 +349,11 @@ export async function appendTableData(
         orderBy,
       }
     );
+
+    console.log(`[appendTableData] Result:`, {
+      rows: result?.rows?.length || 0,
+      first_row: result?.rows?.[0],
+    });
 
     return result;
   } catch (error) {
@@ -318,8 +372,7 @@ export async function appendQueryData(
   tableName,
   databaseName,
   columnFilters,
-  sortColumn,
-  sortDirection,
+  sortStack,
   currentOffset
 ) {
   if (!connection || !executedQuery || executedQuery.trim() === "") {
@@ -328,7 +381,12 @@ export async function appendQueryData(
 
   try {
     const filters = convertColumnFiltersToArray(columnFilters);
-    const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
+    const orderBy = convertSortStackToOrderBy(sortStack);
+
+    console.log(
+      `[appendQueryData] Appending query at offset ${currentOffset} with orderBy:`,
+      orderBy
+    );
 
     const result = await loadTableDataRaw(
       connection.id,
@@ -341,6 +399,11 @@ export async function appendQueryData(
         orderBy,
       }
     );
+
+    console.log(`[appendQueryData] Result:`, {
+      rows: result?.rows?.length || 0,
+      first_row: result?.rows?.[0],
+    });
 
     return result;
   } catch (error) {

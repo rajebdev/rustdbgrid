@@ -7,6 +7,7 @@
     shouldLoadMore,
   } from "../../../../shared/utils/grid/gridScrollSync";
   import { formatValue } from "../../../../shared/utils/data/dataFormatters";
+  import { getColumnSortInfo } from "../../services/gridSortService.js";
   import ArrayCell from "../partials/ArrayCell.svelte";
 
   export let displayData = null;
@@ -19,8 +20,7 @@
   export let editingCell = null;
   export let editingValue = "";
   export let originalRowData = new Map();
-  export let sortColumn = null;
-  export let sortDirection = "asc";
+  export let sortStack = [];
   export let columnFilters = {};
   export let selectedFilterValues = {};
 
@@ -39,6 +39,15 @@
   let lastLoadTriggeredAt = 0;
   let isRestoringScroll = false;
   let filterInputValues = {}; // Local state for input values before Enter
+
+  // Debug: Log displayRows changes
+  $: if (displayRows && displayRows.length > 0) {
+    console.log(`[GridView] displayRows updated:`, {
+      length: displayRows.length,
+      first_row: displayRows[0],
+      last_row: displayRows[displayRows.length - 1],
+    });
+  }
 
   // Track if filters are active (used for accessibility)
   $: hasActiveFilters = Object.keys(selectedFilterValues).some(
@@ -128,9 +137,9 @@
     }
   }
 
-  function handleSortClick(column) {
+  function handleSortClick(column, event) {
     if (onSort) {
-      onSort(column);
+      onSort(column, event);
     }
   }
 
@@ -234,19 +243,26 @@
             {#each columnNames as column, idx}
               {@const displayName = displayNames[idx] || column}
               {@const isNumeric = isNumericColumn(column, idx)}
+              {@const sortInfo = getColumnSortInfo(column, sortStack)}
               <th>
                 <div class="column-header">
                   <button
                     class="sort-button"
-                    on:click={() => handleSortClick(column)}
+                    on:click={(e) => handleSortClick(column, e)}
+                    title={sortInfo
+                      ? `Sort by ${column} (${sortInfo.direction.toUpperCase()}) - Priority: ${sortInfo.priority}`
+                      : `Click to sort by ${column}`}
                   >
                     <span class="column-name">{displayName}</span>
-                    {#if sortColumn === column}
+                    {#if sortInfo}
                       <i
-                        class="fas {sortDirection === 'asc'
+                        class="fas {sortInfo.direction?.toLowerCase() === 'asc'
                           ? 'fa-sort-up'
                           : 'fa-sort-down'} sort-icon"
                       ></i>
+                      <span class="sort-priority-badge"
+                        >{sortInfo.priority}</span
+                      >
                     {:else}
                       <i class="fas fa-sort sort-icon inactive"></i>
                     {/if}
@@ -612,6 +628,22 @@
 
   .sort-icon.inactive {
     opacity: 0.3;
+  }
+
+  .sort-priority-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1rem;
+    height: 1rem;
+    padding: 0 0 0.05rem 0;
+    margin-left: 0.25rem;
+    font-size: 0.65rem;
+    font-weight: bold;
+    color: white;
+    background-color: var(--accent-blue);
+    border-radius: 50%;
+    line-height: 1;
   }
 
   .filter-icon-button {

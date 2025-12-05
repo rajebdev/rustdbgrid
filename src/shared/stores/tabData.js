@@ -88,13 +88,12 @@ const createTabDataStore = () => {
     },
 
     // Set sort state untuk tab tertentu
-    setSortState: (tabId, sortColumn, sortDirection) => {
+    setSortStack: (tabId, sortStack) => {
       update((store) => ({
         ...store,
         [tabId]: {
           ...store[tabId],
-          sortColumn,
-          sortDirection,
+          sortStack,
         },
       }));
     },

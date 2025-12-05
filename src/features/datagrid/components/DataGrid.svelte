@@ -62,8 +62,7 @@
   let hasMoreData = true;
   let lastLoadedQueryId = null;
   let columnFilters = {};
-  let sortColumn = null;
-  let sortDirection = "asc";
+  let sortStack = [];
   let showFilterModal = false;
   let filterModalColumn = null;
   let filterModalPosition = { top: 0, left: 0 };
@@ -76,6 +75,7 @@
   let currentTabId = null;
   let isRestoringScroll = false;
   let viewMode = "grid";
+  let lastDisplayDataSource = null; // Track whether data came from sort/filter or parent prop
 
   // Editing state
   let editingCell = null;
@@ -104,20 +104,23 @@
       typeof col === "string" ? col : col.name
     ) || [];
 
-  $: columnTypes =
-    displayData?.columns?.reduce((acc, col) => {
-      if (typeof col === "object" && col.name && col.data_type) {
-        acc[col.name] = col.data_type;
-      }
-      return acc;
-    }, {}) || {};
-
   $: columnNames =
     displayData?.columns?.map((col) =>
       typeof col === "string" ? col : col.name
     ) || [];
 
   $: displayRows = displayData?.rows || [];
+  $: {
+    if (displayRows && displayRows.length > 0) {
+      console.log(`[displayRows reactive] Updated displayRows:`, {
+        length: displayRows.length,
+        first_row: displayRows[0],
+        last_row: displayRows[displayRows.length - 1],
+        sortStack: sortStack,
+      });
+    }
+  }
+
   $: hasUnsavedEdits = editedRows.size > 0;
 
   // Set default view mode
@@ -132,8 +135,7 @@
     if ($tabDataStore[tabId]) {
       const savedState = $tabDataStore[tabId];
       columnFilters = savedState.filters || {};
-      sortColumn = savedState.sortColumn || null;
-      sortDirection = savedState.sortDirection || "asc";
+      sortStack = savedState.sortStack || [];
       viewMode =
         savedState.viewMode ||
         (connection?.db_type === DatabaseType.MONGODB ? "json" : "grid");
@@ -151,19 +153,36 @@
     }
   }
 
-  // Update display data
-  $: if (data && !isFiltered && !isLoadingMore) {
+  // Update display data from parent prop - but only if we haven't done any sorting/filtering
+  $: if (data && !isLoadingMore && !isLoadingData) {
     const queryId =
-      executedQuery +
-      JSON.stringify(columnFilters) +
-      sortColumn +
-      sortDirection;
-    if (queryId !== lastLoadedQueryId) {
+      executedQuery + JSON.stringify(columnFilters) + JSON.stringify(sortStack);
+
+    // Only update from parent prop if this is the initial data load (no filters, no sorts)
+    const isInitialLoad =
+      sortStack.length === 0 && Object.keys(columnFilters).length === 0;
+
+    console.log(
+      `[Reactive] Parent prop updated. isInitialLoad: ${isInitialLoad}, queryId matches: ${
+        queryId === lastLoadedQueryId
+      }, isFiltered: ${isFiltered}`
+    );
+
+    if (isInitialLoad && queryId !== lastLoadedQueryId) {
+      console.log(
+        `[Reactive] Updating displayData from parent prop (initial load). New queryId: ${queryId}`
+      );
       displayData = data;
       totalRows = data?.total_count || data?.rows?.length || 0;
       currentOffset = data?.rows?.length || 0;
       hasMoreData = data?.rows?.length === 200;
       lastLoadedQueryId = queryId;
+      lastDisplayDataSource = "parent";
+    } else if (lastDisplayDataSource === "sort-filter") {
+      console.log(
+        `[Reactive] Ignoring parent prop update because data came from sort/filter`
+      );
+      // Don't override displayData when it came from our sort/filter operations
     }
   }
 
@@ -171,8 +190,7 @@
   $: if (executedQuery) {
     filterValuesCache = {};
     columnFilters = {};
-    sortColumn = null;
-    sortDirection = "asc";
+    sortStack = [];
     currentOffset = 0;
     hasMoreData = true;
     lastLoadedQueryId = null;
@@ -207,7 +225,7 @@
     const previousData = displayData;
     displayData = null;
     isLoadingData = true;
-    isFiltered = Object.keys(columnFilters).length > 0 || sortColumn !== null;
+    isFiltered = Object.keys(columnFilters).length > 0 || sortStack.length > 0;
     currentOffset = 0;
     hasMoreData = true;
 
@@ -224,14 +242,10 @@
           databaseName,
           schemaName,
           columnFilters,
-          sortColumn,
-          sortDirection
+          sortStack
         );
         lastLoadedQueryId =
-          tableName +
-          JSON.stringify(columnFilters) +
-          sortColumn +
-          sortDirection;
+          tableName + JSON.stringify(columnFilters) + JSON.stringify(sortStack);
       }
       // If this is a custom query (from SQL editor), use loadQueryInitial
       else if (!isTableMode && executedQuery && executedQuery.trim() !== "") {
@@ -241,14 +255,12 @@
           tableName,
           databaseName,
           columnFilters,
-          sortColumn,
-          sortDirection
+          sortStack
         );
         lastLoadedQueryId =
           executedQuery +
           JSON.stringify(columnFilters) +
-          sortColumn +
-          sortDirection;
+          JSON.stringify(sortStack);
       } else {
         // No valid query or table
         displayData = previousData;
@@ -264,6 +276,24 @@
       if (result.final_query) {
         finalQuery = result.final_query;
       }
+
+      // Mark that this data came from our sort/filter operation, not from parent prop
+      lastDisplayDataSource = "sort-filter";
+
+      // Update tabDataStore so parent component has the latest sorted data
+      if (tabId) {
+        tabDataStore.setQueryResult(tabId, result);
+      }
+
+      // Debug: Log the data received
+      console.log(`[DataGrid] Data loaded and set to displayData:`, {
+        sortStack,
+        final_query: result?.final_query,
+        total_rows: totalRows,
+        first_row: result?.rows?.[0],
+        last_row: result?.rows?.[result?.rows?.length - 1],
+        displayRows_length: result?.rows?.length,
+      });
     } catch (error) {
       console.error("❌ Failed to reload data:", error);
       displayData = previousData;
@@ -296,8 +326,7 @@
           databaseName,
           schemaName,
           columnFilters,
-          sortColumn,
-          sortDirection,
+          sortStack,
           currentOffset
         );
       } else if (!isTableMode && executedQuery && executedQuery.trim() !== "") {
@@ -307,8 +336,7 @@
           tableName,
           databaseName,
           columnFilters,
-          sortColumn,
-          sortDirection,
+          sortStack,
           currentOffset
         );
       } else {
@@ -377,17 +405,26 @@
   }
 
   // Sorting
-  function handleSortClick(column) {
+  function handleSortClick(column, event) {
+    const isCtrlPressed = event?.ctrlKey || event?.metaKey || false;
+    const isShiftPressed = event?.shiftKey || false;
+
+    console.log(
+      `🔤 Sort click on "${column}" - Ctrl: ${isCtrlPressed}, Shift: ${isShiftPressed}, Current stack:`,
+      sortStack
+    );
+
     const result = handleSort(
       column,
-      sortColumn,
-      sortDirection,
+      sortStack,
       tabId,
       tabDataStore,
-      handleReloadData
+      handleReloadData,
+      isCtrlPressed,
+      isShiftPressed
     );
-    sortColumn = result.sortColumn;
-    sortDirection = result.sortDirection;
+    console.log(`📊 New sort stack:`, result.sortStack);
+    sortStack = result.sortStack;
   }
 
   // Filtering
@@ -541,36 +578,6 @@
     }
   }
 
-  function handleFinishEdit() {
-    if (!editingCell) return;
-
-    const { rowIndex, column } = editingCell;
-
-    if (
-      editingValue === originalValue ||
-      (editingValue === "" &&
-        (originalValue === null || originalValue === undefined))
-    ) {
-      cancelEdit();
-      return;
-    }
-
-    const { displayData: newDisplayData, editedRows: newEditedRows } =
-      trackEditedRow(
-        rowIndex,
-        column,
-        editingValue,
-        displayData,
-        editedRows,
-        originalRowData
-      );
-
-    displayData = newDisplayData;
-    editedRows = newEditedRows;
-
-    cancelEdit();
-  }
-
   function cancelEdit() {
     editingCell = null;
     editingValue = "";
@@ -716,8 +723,7 @@
         {editingCell}
         {editingValue}
         {originalRowData}
-        {sortColumn}
-        {sortDirection}
+        {sortStack}
         {columnFilters}
         {selectedFilterValues}
         onLoadMore={handleLoadMore}
