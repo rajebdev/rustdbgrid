@@ -96,22 +96,18 @@ impl DatabaseConnection for MSSQLConnection {
         let rows = stream.into_first_result().await?;
         let execution_time = start.elapsed().as_millis();
 
-        if rows.is_empty() {
-            return Ok(QueryResult {
-                columns: vec![],
-                column_display_names: None,
-                column_types: None,
-                rows: vec![],
-                rows_affected: None,
-                execution_time,
-                final_query: None,
-            });
-        }
+        // Extract columns from first row if available, or create empty vec
+        let stmt_columns: Vec<_> = if !rows.is_empty() {
+            rows[0].columns().to_vec()
+        } else {
+            // For empty results, we need to query the metadata another way
+            // For now, return empty columns (this will be improved)
+            Vec::new()
+        };
 
         let mut column_name_counts: HashMap<String, usize> = HashMap::new();
         let mut display_names = Vec::new();
-        let columns: Vec<String> = rows[0]
-            .columns()
+        let columns: Vec<String> = stmt_columns
             .iter()
             .map(|c| {
                 let base_name = c.name().to_string();
@@ -128,8 +124,7 @@ impl DatabaseConnection for MSSQLConnection {
 
         let mut column_types = HashMap::new();
         let mut column_name_counts_reset: HashMap<String, usize> = HashMap::new();
-        let col_type_map: Vec<MssqlColType> = rows[0]
-            .columns()
+        let col_type_map: Vec<MssqlColType> = stmt_columns
             .iter()
             .map(|col| {
                 let base_name = col.name().to_string();
@@ -191,13 +186,16 @@ impl DatabaseConnection for MSSQLConnection {
 
         let mut result_rows = Vec::with_capacity(rows.len());
 
-        for row in rows {
-            let mut row_map = HashMap::with_capacity(columns.len());
-            for (i, col_name) in columns.iter().enumerate() {
-                let value = row_value_to_json_typed(&row, i, col_type_map[i]);
-                row_map.insert(col_name.clone(), value);
+        // Process rows only if there are any (col_type_map will be empty for empty result set)
+        if !rows.is_empty() && !col_type_map.is_empty() {
+            for row in rows {
+                let mut row_map = HashMap::with_capacity(columns.len());
+                for (i, col_name) in columns.iter().enumerate() {
+                    let value = row_value_to_json_typed(&row, i, col_type_map[i]);
+                    row_map.insert(col_name.clone(), value);
+                }
+                result_rows.push(row_map);
             }
-            result_rows.push(row_map);
         }
 
         Ok(QueryResult {

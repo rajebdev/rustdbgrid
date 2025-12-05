@@ -211,11 +211,13 @@
           {index + 1}
         </div>
       {/each}
-      <div
-        class="row-number-cell"
-        class:row-even={true}
-        style="height: 100px;"
-      ></div>
+      {#if displayRows.length > 0}
+        <div
+          class="row-number-cell"
+          class:row-even={true}
+          style="height: 100px;"
+        ></div>
+      {/if}
     </div>
   </div>
 
@@ -285,6 +287,16 @@
         </thead>
       </table>
     </div>
+
+    {#if displayRows.length === 0}
+      <!-- No rows result message -->
+      <div
+        class="d-flex flex-column align-items-center justify-content-center py-5 text-muted"
+      >
+        <i class="fas fa-inbox fa-3x mb-3 opacity-25"></i>
+        <p class="fs-6">No row result</p>
+      </div>
+    {/if}
 
     <!-- Scrollable Body Table -->
     <div

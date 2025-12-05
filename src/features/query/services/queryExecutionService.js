@@ -1,4 +1,4 @@
-import { loadTableData } from "../../../core/integrations/tauri";
+import { loadTableDataRaw } from "../../../core/integrations/tauri";
 import { stripSqlComments } from "../utils/sqlFormatter";
 
 /**
@@ -18,8 +18,8 @@ export async function executeQuery(config) {
   const cleanedQuery = query.replace(/;+\s*$/, ""); // Remove trailing semicolons
   const startTime = Date.now();
 
-  // Use loadTableData with subquery wrapper
-  const result = await loadTableData(
+  // Use loadTableDataRaw with subquery wrapper
+  const result = await loadTableDataRaw(
     connId,
     dbType,
     `RustDBGridQuery(${cleanedQuery})`,

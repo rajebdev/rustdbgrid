@@ -106,10 +106,28 @@ impl PostgreSQLQueryBuilder {
                         .join(", ");
                     format!("{} IN ({})", column, values_str)
                 }
+                FilterValue::Single(serde_json::Value::Array(values)) => {
+                    // Handle case where array is parsed as Single (due to serde(untagged))
+                    let values_str = values
+                        .iter()
+                        .map(|v| self.format_value(v))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{} IN ({})", column, values_str)
+                }
                 _ => anyhow::bail!("In operator requires multiple values"),
             },
             FilterOperator::NotIn => match &filter.value {
                 FilterValue::Multiple(values) => {
+                    let values_str = values
+                        .iter()
+                        .map(|v| self.format_value(v))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{} NOT IN ({})", column, values_str)
+                }
+                FilterValue::Single(serde_json::Value::Array(values)) => {
+                    // Handle case where array is parsed as Single (due to serde(untagged))
                     let values_str = values
                         .iter()
                         .map(|v| self.format_value(v))

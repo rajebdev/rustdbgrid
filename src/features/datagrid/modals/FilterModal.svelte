@@ -1,5 +1,8 @@
 <script>
   import BaseModal from "../../../shared/components/base/BaseModal.svelte";
+  import { createEventDispatcher } from "svelte";
+
+  const dispatch = createEventDispatcher();
 
   export let show = false;
   export let column = null;
@@ -10,10 +13,17 @@
   export let position = { top: 0, left: 0 };
 
   function apply() {
+    dispatch("apply", {
+      column,
+      selectedValues,
+    });
     show = false;
   }
 
   function clear() {
+    dispatch("clear", {
+      column,
+    });
     show = false;
   }
 
@@ -24,6 +34,12 @@
       selectedValues.add(value);
     }
     selectedValues = new Set(selectedValues);
+
+    // Emit selection change event
+    dispatch("selectionChange", {
+      column,
+      selectedValues,
+    });
   }
 
   function selectAll() {
@@ -36,6 +52,9 @@
 
   function handleSearchInput(event) {
     searchQuery = event.target.value;
+    dispatch("search", {
+      query: searchQuery,
+    });
   }
 </script>
 

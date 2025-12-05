@@ -1,4 +1,5 @@
 pub mod connection;
+pub mod distinct_values_request;
 pub mod query_result;
 pub mod saved_query;
 pub mod schema;

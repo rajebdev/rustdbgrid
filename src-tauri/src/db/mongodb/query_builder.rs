@@ -71,10 +71,18 @@ impl MongoDBQueryBuilder {
                 },
                 FilterOperator::In => match &filter.value {
                     FilterValue::Multiple(v) => serde_json::json!({ "$in": v }),
+                    FilterValue::Single(serde_json::Value::Array(v)) => {
+                        // Handle case where array is parsed as Single (due to serde(untagged))
+                        serde_json::json!({ "$in": v })
+                    }
                     _ => continue,
                 },
                 FilterOperator::NotIn => match &filter.value {
                     FilterValue::Multiple(v) => serde_json::json!({ "$nin": v }),
+                    FilterValue::Single(serde_json::Value::Array(v)) => {
+                        // Handle case where array is parsed as Single (due to serde(untagged))
+                        serde_json::json!({ "$nin": v })
+                    }
                     _ => continue,
                 },
                 FilterOperator::Like => match &filter.value {

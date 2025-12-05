@@ -30,7 +30,7 @@
     initializeTheme,
     toggleTheme,
   } from "./features/settings/services/themeService";
-  import { loadTableData } from "./core/integrations/tauri";
+  import { loadTableDataRaw } from "./core/integrations/tauri";
   import { invoke } from "@tauri-apps/api/core";
   import { message, ask } from "@tauri-apps/plugin-dialog";
   import { saveStatus } from "./features/connection/stores/connections";
@@ -211,7 +211,7 @@
         // Only load if queryResult is missing but tab has tableInfo
         if (!tabData?.queryResult && tab.tableInfo?.connection) {
           try {
-            const tableData = await loadTableData(
+            const tableData = await loadTableDataRaw(
               tab.tableInfo.connection.id,
               tab.tableInfo.connection.db_type,
               tab.tableInfo.name,

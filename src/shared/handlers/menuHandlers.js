@@ -6,7 +6,7 @@ import {
 import { get } from "svelte/store";
 import {
   getNextQueryNumber,
-  loadTableData,
+  loadTableDataRaw,
   disconnectFromDatabase,
 } from "../../core/integrations/tauri";
 import { recentFilesStore } from "../../features/settings/stores/recentFiles";
@@ -32,8 +32,8 @@ export async function handleOpenTableTab(event, tabStore, tabDataStore) {
   }
 
   try {
-    // Use new loadTableData API
-    const tableData = await loadTableData(
+    // Use new loadTableDataRaw API
+    const tableData = await loadTableDataRaw(
       connection.id,
       connection.db_type,
       table.name,
@@ -563,7 +563,7 @@ export function createMenuHandlers(context) {
         try {
           const tableInfo = currentTab.tableInfo;
 
-          const tableData = await loadTableData({
+          const tableData = await loadTableDataRaw({
             connection_id: tableInfo.connection.id,
             query: {
               db_type: tableInfo.connection.db_type,

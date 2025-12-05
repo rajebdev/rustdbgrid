@@ -40,6 +40,7 @@ fn main() {
             connection_info::get_connections_info,
             connection_info::get_connection_for_edit,
             query::get_filter_values,
+            query::get_distinct_values,
             query::save_query,
             query::load_queries,
             query::delete_query,

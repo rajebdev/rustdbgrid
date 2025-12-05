@@ -1,6 +1,6 @@
 <script>
   import DataGrid from "../../../datagrid/components/DataGrid.svelte";
-  import { loadTableData } from "../../../../core/integrations/tauri";
+  import { loadTableDataRaw } from "../../../../core/integrations/tauri";
   import { tabDataStore } from "../../../../shared/stores/tabData";
 
   export let tabId;
@@ -29,7 +29,7 @@
     isAutoLoading = true;
 
     try {
-      const tableData = await loadTableData(
+      const tableData = await loadTableDataRaw(
         connection.id,
         connection.db_type,
         tableInfo.name,
@@ -65,7 +65,7 @@
     tabDataStore.clearError(tabId);
 
     try {
-      const tableData = await loadTableData(
+      const tableData = await loadTableDataRaw(
         connection.id,
         connection.db_type,
         tableInfo.name,
@@ -106,6 +106,7 @@
       tableName={tableInfo?.name || ""}
       databaseName={tableInfo?.database || ""}
       schemaName={tableInfo?.schema || ""}
+      isTableMode={true}
     />
   {:else if connectionError}
     <div class="error-container">

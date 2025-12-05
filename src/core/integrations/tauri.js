@@ -66,7 +66,7 @@ export async function getConnectedDatabases() {
  * @param {Array} options.orderBy - Array of order by objects
  * @returns {Promise<object>} Response with columns (name, data_type), rows, final_query, has_more_data, execution_time
  */
-export async function loadTableData(
+export async function loadTableDataRaw(
   connectionId,
   dbType,
   table,
@@ -93,7 +93,7 @@ export async function loadTableData(
     },
   };
 
-  console.log("📤 loadTableData called with:", request);
+  console.log("📤 loadTableDataRaw called with:", request);
 
   return await invoke("load_table_data", { request });
 }
@@ -112,6 +112,46 @@ export async function getFilterValues(
     search_query: searchQuery,
     limit,
   });
+}
+
+/**
+ * Get distinct values for a column with structured request (recommended)
+ * Similar to loadTableDataRaw approach
+ * @param {string} connectionId - Connection ID
+ * @param {string} dbType - Database type
+ * @param {string} table - Table name
+ * @param {string} column - Column name
+ * @param {object} options - Optional parameters
+ * @param {string} options.database - Database name
+ * @param {string} options.schema - Schema name
+ * @param {string} options.searchTerm - Search filter for values
+ * @param {number} options.limit - Max number of distinct values to return
+ * @returns {Promise<object>} Response with values, total_count, execution_time, query_used
+ */
+export async function getDistinctValues(
+  connectionId,
+  dbType,
+  table,
+  column,
+  { database = null, schema = null, searchTerm = null, limit = 1000 } = {}
+) {
+  const request = {
+    connection_id: connectionId,
+    query: {
+      db_type: dbType,
+      database,
+      schema,
+      table,
+      column,
+      search_term: searchTerm,
+      limit,
+      filters: [],
+    },
+  };
+
+  console.log("📤 getDistinctValues called with:", request);
+
+  return await invoke("get_distinct_values", { request });
 }
 
 /**

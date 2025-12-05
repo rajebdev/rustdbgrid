@@ -1,7 +1,7 @@
 <script>
   import { onMount, afterUpdate } from "svelte";
   import { tabDataStore } from "../../../shared/stores/tabData";
-  import { loadTableData } from "../../../core/integrations/tauri";
+  import { loadTableDataRaw } from "../../../core/integrations/tauri";
   import { DatabaseType } from "../../../core/config/databaseTypes";
 
   // Views
@@ -20,9 +20,10 @@
 
   // Services
   import {
-    loadTableDataWithFilters,
-    reloadDataWithFilters,
-    loadMoreData,
+    loadTableInitial,
+    loadQueryInitial,
+    appendTableData,
+    appendQueryData,
     loadFilterValuesFromServer,
   } from "../services/dataGridService";
   import {
@@ -50,6 +51,7 @@
   export let tableName = "";
   export let databaseName = "";
   export let schemaName = "";
+  export let isTableMode = true; // true = load by tableName, false = load by query
 
   // State
   let displayData = null;
@@ -62,7 +64,6 @@
   let columnFilters = {};
   let sortColumn = null;
   let sortDirection = "asc";
-  let isCustomQuery = false; // Flag to distinguish custom SQL vs table query
   let showFilterModal = false;
   let filterModalColumn = null;
   let filterModalPosition = { top: 0, left: 0 };
@@ -163,9 +164,6 @@
       currentOffset = data?.rows?.length || 0;
       hasMoreData = data?.rows?.length === 200;
       lastLoadedQueryId = queryId;
-      // Determine if this is a custom query (from SQL editor) or table query (from sidebar)
-      isCustomQuery =
-        !tableName && executedQuery && executedQuery.trim() !== "";
     }
   }
 
@@ -178,7 +176,6 @@
     currentOffset = 0;
     hasMoreData = true;
     lastLoadedQueryId = null;
-    isCustomQuery = !tableName && executedQuery.trim() !== "";
   }
 
   afterUpdate(() => {
@@ -219,9 +216,9 @@
     try {
       let result;
 
-      // If this is a table query (from sidebar), use loadTableDataWithFilters
-      if (tableName && !isCustomQuery) {
-        result = await loadTableDataWithFilters(
+      // If this is a table query (from sidebar), use loadTableInitial
+      if (isTableMode && tableName) {
+        result = await loadTableInitial(
           connection,
           tableName,
           databaseName,
@@ -236,9 +233,9 @@
           sortColumn +
           sortDirection;
       }
-      // If this is a custom query (from SQL editor), use reloadDataWithFilters
-      else if (executedQuery && executedQuery.trim() !== "") {
-        result = await reloadDataWithFilters(
+      // If this is a custom query (from SQL editor), use loadQueryInitial
+      else if (!isTableMode && executedQuery && executedQuery.trim() !== "") {
+        result = await loadQueryInitial(
           connection,
           executedQuery,
           tableName,
@@ -289,17 +286,35 @@
     isLoadingMore = true;
 
     try {
-      const result = await loadMoreData(
-        connection,
-        tableName,
-        databaseName,
-        schemaName,
-        columnFilters,
-        sortColumn,
-        sortDirection,
-        currentOffset,
-        executedQuery // Pass executedQuery for custom queries
-      );
+      let result;
+
+      // Use appropriate append function based on data source
+      if (isTableMode && tableName) {
+        result = await appendTableData(
+          connection,
+          tableName,
+          databaseName,
+          schemaName,
+          columnFilters,
+          sortColumn,
+          sortDirection,
+          currentOffset
+        );
+      } else if (!isTableMode && executedQuery && executedQuery.trim() !== "") {
+        result = await appendQueryData(
+          connection,
+          executedQuery,
+          tableName,
+          databaseName,
+          columnFilters,
+          sortColumn,
+          sortDirection,
+          currentOffset
+        );
+      } else {
+        isLoadingMore = false;
+        return;
+      }
 
       if (result?.rows && displayData) {
         displayData.rows = [...displayData.rows, ...result.rows];
@@ -632,8 +647,8 @@
 
     try {
       for (const update of pendingUpdates) {
-        // Execute UPDATE/DELETE/INSERT statements using loadTableData with subquery
-        await loadTableData(
+        // Execute UPDATE/DELETE/INSERT statements using loadTableDataRaw with subquery
+        await loadTableDataRaw(
           connection.id,
           connection.db_type,
           `RustDBGridQuery(${update.sql})`,
@@ -671,7 +686,8 @@
       <i class="fas fa-spinner fa-spin fa-3x mb-3"></i>
       <p class="fs-5">Loading filtered data...</p>
     </div>
-  {:else if displayData && displayData.rows.length > 0}
+  {:else if displayData && displayData.columns && displayData.columns.length > 0}
+    <!-- Show table (with or without rows) -->
     <DataGridHeader
       {finalQuery}
       {executedQuery}
@@ -736,19 +752,19 @@
       executionTime={displayData.execution_time || "0"}
       {displayData}
     />
-  {:else if displayData}
+  {:else if displayData && displayData.rows_affected !== null && displayData.rows_affected !== undefined}
+    <!-- Show INSERT/UPDATE/DELETE result -->
     <div
       class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary"
     >
       <i class="fas fa-info-circle fa-3x mb-3 opacity-50"></i>
       <p class="fs-5">Query executed successfully</p>
-      {#if displayData.rows_affected !== null}
-        <span class="badge bg-success"
-          >{displayData.rows_affected} rows affected</span
-        >
-      {/if}
+      <span class="badge bg-success"
+        >{displayData.rows_affected} rows affected</span
+      >
     </div>
   {:else}
+    <!-- No data to display -->
     <div
       class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary"
     >

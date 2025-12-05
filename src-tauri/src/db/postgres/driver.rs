@@ -4,7 +4,7 @@ use crate::db::traits::DatabaseConnection;
 use crate::models::{connection::*, query_result::*, schema::*};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use sqlx::{Column as SqlxColumn, PgPool, Row, TypeInfo};
+use sqlx::{Column as SqlxColumn, Executor, PgPool, Row, Statement, TypeInfo};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -61,25 +61,22 @@ impl DatabaseConnection for PostgresConnection {
         let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
         let start = Instant::now();
 
+        // Execute query first
         let rows = sqlx::query(query).fetch_all(pool).await?;
         let execution_time = start.elapsed().as_millis();
 
-        if rows.is_empty() {
-            return Ok(QueryResult {
-                columns: vec![],
-                column_display_names: None,
-                column_types: None,
-                rows: vec![],
-                rows_affected: None,
-                execution_time,
-                final_query: None,
-            });
-        }
+        // Extract columns from first row if available, otherwise prepare to get metadata
+        let stmt_columns_vec: Vec<_> = if !rows.is_empty() {
+            rows[0].columns().to_vec()
+        } else {
+            // For empty results, prepare statement to get column metadata
+            let prepared = pool.prepare(query).await?;
+            prepared.columns().to_vec()
+        };
 
         let mut column_name_counts: HashMap<String, usize> = HashMap::new();
         let mut display_names = Vec::new();
-        let columns: Vec<String> = rows[0]
-            .columns()
+        let columns: Vec<String> = stmt_columns_vec
             .iter()
             .map(|c| {
                 let base_name = SqlxColumn::name(c).to_string();
@@ -94,8 +91,7 @@ impl DatabaseConnection for PostgresConnection {
             })
             .collect();
 
-        let col_type_info: Vec<(String, bool, PgColType)> = rows[0]
-            .columns()
+        let col_type_info: Vec<(String, bool, PgColType)> = stmt_columns_vec
             .iter()
             .map(|col| {
                 let type_name = col.type_info().name();
@@ -113,14 +109,17 @@ impl DatabaseConnection for PostgresConnection {
 
         let mut result_rows = Vec::with_capacity(rows.len());
 
-        for row in rows {
-            let mut row_map = HashMap::with_capacity(columns.len());
-            for (i, col) in columns.iter().enumerate() {
-                let (base_type, is_array, col_type) = &col_type_info[i];
-                let value = extract_pg_value_typed(&row, i, *col_type, *is_array, base_type);
-                row_map.insert(col.clone(), value);
+        // Process rows only if there are any (col_type_info will be empty for empty result set)
+        if !rows.is_empty() && !col_type_info.is_empty() {
+            for row in rows {
+                let mut row_map = HashMap::with_capacity(columns.len());
+                for (i, col) in columns.iter().enumerate() {
+                    let (base_type, is_array, col_type) = &col_type_info[i];
+                    let value = extract_pg_value_typed(&row, i, *col_type, *is_array, base_type);
+                    row_map.insert(col.clone(), value);
+                }
+                result_rows.push(row_map);
             }
-            result_rows.push(row_map);
         }
 
         Ok(QueryResult {

@@ -239,6 +239,7 @@
             tabId={`${tabId}-${activeResultTabId}`}
             executedQuery={activeResultTab.query || ""}
             connection={$activeConnection}
+            isTableMode={false}
           />
         {/key}
       {/if}

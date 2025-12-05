@@ -5,7 +5,8 @@
 
 import {
   getFilterValues,
-  loadTableData,
+  getDistinctValues,
+  loadTableDataRaw,
 } from "../../../core/integrations/tauri";
 import { DatabaseType } from "../../../core/config/databaseTypes";
 
@@ -54,9 +55,10 @@ function convertSortToOrderBy(sortColumn, sortDirection) {
 }
 
 /**
- * Load table data with filters, sorting, and pagination
+ * Load table data with filters and sorting (offset always 0)
+ * Used for initial load from sidebar table selection
  */
-export async function loadTableDataWithFilters(
+export async function loadTableInitial(
   connection,
   tableName,
   databaseName,
@@ -73,7 +75,7 @@ export async function loadTableDataWithFilters(
     const filters = convertColumnFiltersToArray(columnFilters);
     const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
 
-    const result = await loadTableData(
+    const result = await loadTableDataRaw(
       connection.id,
       connection.db_type,
       tableName,
@@ -95,9 +97,11 @@ export async function loadTableDataWithFilters(
 }
 
 /**
- * Reload data with filters and sorting (for SQL query results)
+ * Load custom query data with filters and sorting (offset always 0)
+ * Used for initial load from SQL editor query execution
+ * Handles Apache Ignite special case with client-side filtering/sorting
  */
-export async function reloadDataWithFilters(
+export async function loadQueryInitial(
   connection,
   executedQuery,
   tableName,
@@ -140,7 +144,7 @@ export async function reloadDataWithFilters(
       }
 
       if (cacheName) {
-        result = await loadTableData({
+        result = await loadTableDataRaw({
           connection_id: connection.id,
           query: {
             db_type: DatabaseType.IGNITE,
@@ -240,8 +244,8 @@ export async function reloadDataWithFilters(
       const filterArray = convertColumnFiltersToArray(columnFilters);
       const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
 
-      // Use loadTableData with subquery wrapper
-      result = await loadTableData(
+      // Use loadTableDataRaw with subquery wrapper
+      result = await loadTableDataRaw(
         connection.id,
         connection.db_type,
         `RustDBGridQuery(${executedQuery})`,
@@ -262,9 +266,10 @@ export async function reloadDataWithFilters(
 }
 
 /**
- * Load more data for pagination
+ * Append more table data for pagination (offset incremental)
+ * Continues loading from existing table with filter/sort applied
  */
-export async function loadMoreData(
+export async function appendTableData(
   connection,
   tableName,
   databaseName,
@@ -272,15 +277,9 @@ export async function loadMoreData(
   columnFilters,
   sortColumn,
   sortDirection,
-  currentOffset,
-  executedQuery = null
+  currentOffset
 ) {
-  if (!connection) {
-    return null;
-  }
-
-  // Must have either table name or executed query
-  if (!tableName && (!executedQuery || executedQuery.trim() === "")) {
+  if (!connection || !tableName) {
     return null;
   }
 
@@ -288,41 +287,64 @@ export async function loadMoreData(
     const filters = convertColumnFiltersToArray(columnFilters);
     const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
 
-    let result;
-
-    // If executedQuery exists, wrap it with RustDBGridQuery for custom queries
-    if (executedQuery && executedQuery.trim() !== "") {
-      result = await loadTableData(
-        connection.id,
-        connection.db_type,
-        `RustDBGridQuery(${executedQuery})`,
-        {
-          limit: 200,
-          offset: currentOffset,
-          filters,
-          orderBy,
-        }
-      );
-    } else {
-      // Normal table query
-      result = await loadTableData(
-        connection.id,
-        connection.db_type,
-        tableName,
-        {
-          database: databaseName || null,
-          schema: schemaName || null,
-          limit: 200,
-          offset: currentOffset,
-          filters,
-          orderBy,
-        }
-      );
-    }
+    const result = await loadTableDataRaw(
+      connection.id,
+      connection.db_type,
+      tableName,
+      {
+        database: databaseName || null,
+        schema: schemaName || null,
+        limit: 200,
+        offset: currentOffset,
+        filters,
+        orderBy,
+      }
+    );
 
     return result;
   } catch (error) {
-    console.error("❌ Failed to load more data:", error);
+    console.error("❌ Failed to append table data:", error);
+    throw error;
+  }
+}
+
+/**
+ * Append more query data for pagination (offset incremental)
+ * Continues loading from existing custom query with filter/sort applied
+ */
+export async function appendQueryData(
+  connection,
+  executedQuery,
+  tableName,
+  databaseName,
+  columnFilters,
+  sortColumn,
+  sortDirection,
+  currentOffset
+) {
+  if (!connection || !executedQuery || executedQuery.trim() === "") {
+    return null;
+  }
+
+  try {
+    const filters = convertColumnFiltersToArray(columnFilters);
+    const orderBy = convertSortToOrderBy(sortColumn, sortDirection);
+
+    const result = await loadTableDataRaw(
+      connection.id,
+      connection.db_type,
+      `RustDBGridQuery(${executedQuery})`,
+      {
+        limit: 200,
+        offset: currentOffset,
+        filters,
+        orderBy,
+      }
+    );
+
+    return result;
+  } catch (error) {
+    console.error("❌ Failed to append query data:", error);
     throw error;
   }
 }
@@ -343,20 +365,25 @@ export async function loadFilterValuesFromServer(
   }
 
   try {
-    // Build a simple SELECT DISTINCT query for the table
-    const query = schemaName
-      ? `SELECT DISTINCT ${column} FROM ${schemaName}.${tableName}`
-      : databaseName
-      ? `SELECT DISTINCT ${column} FROM ${databaseName}.${tableName}`
-      : `SELECT DISTINCT ${column} FROM ${tableName}`;
-
-    const result = await getFilterValues(
+    // Use structured request approach (similar to loadTableDataRaw)
+    const result = await getDistinctValues(
       connection.id,
-      query,
+      connection.db_type,
+      tableName,
       column,
-      searchTerm,
-      1000
+      {
+        database: databaseName,
+        schema: schemaName,
+        searchTerm: searchTerm,
+        limit: 1000,
+      }
     );
+
+    console.log("📥 Loaded distinct values:", {
+      column,
+      count: result?.total_count,
+      executionTime: result?.execution_time,
+    });
 
     return result?.values || [];
   } catch (error) {

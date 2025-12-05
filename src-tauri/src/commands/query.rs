@@ -623,3 +623,149 @@ pub async fn list_query_files_with_content(
 
     Ok(queries)
 }
+
+/// Get distinct values for a column with optional filtering and search
+#[tauri::command]
+pub async fn get_distinct_values(
+    request: crate::models::distinct_values_request::DistinctValuesRequest,
+    state: State<'_, ConnectionStore>,
+) -> Result<crate::models::distinct_values_request::DistinctValuesResponse, String> {
+    use std::time::Instant;
+
+    let connection_id = request.connection_id.clone();
+    let query_req = &request.query;
+
+    tracing::debug!(
+        "🔍 [DISTINCT_VALUES] Loading distinct values for connection: {}, table: {}, column: {}",
+        connection_id,
+        query_req.table,
+        query_req.column
+    );
+
+    // Check if already connected, if not connect first
+    if !state.pool.is_connected(&connection_id).await {
+        let config = {
+            let connections = state.connections.lock().unwrap();
+            connections
+                .iter()
+                .find(|c| c.id == connection_id)
+                .ok_or_else(|| format!("Connection '{}' not found", connection_id))?
+                .clone()
+        };
+        state.pool.connect(config).await?;
+    }
+
+    // Build base SELECT DISTINCT query
+    let mut base_query = match &query_req.db_type {
+        crate::models::connection::DatabaseType::MSSQL => {
+            let col_escaped = format!("[{}]", query_req.column.replace("]", "]]"));
+            let table_part = if let Some(schema) = &query_req.schema {
+                format!("[{}].[{}]", schema, query_req.table)
+            } else if let Some(db) = &query_req.database {
+                format!("[{}]..[{}]", db, query_req.table)
+            } else {
+                format!("[{}]", query_req.table)
+            };
+            format!("SELECT DISTINCT {} FROM {}", col_escaped, table_part)
+        }
+        _ => {
+            let table_part = if let Some(schema) = &query_req.schema {
+                format!("{}.{}", schema, query_req.table)
+            } else if let Some(db) = &query_req.database {
+                format!("{}.{}", db, query_req.table)
+            } else {
+                query_req.table.clone()
+            };
+            format!("SELECT DISTINCT {} FROM {}", query_req.column, table_part)
+        }
+    };
+
+    // Apply search filter if provided
+    if let Some(search) = &query_req.search_term {
+        match &query_req.db_type {
+            crate::models::connection::DatabaseType::MSSQL => {
+                let col_escaped = format!("[{}]", query_req.column.replace("]", "]]"));
+                let escaped_search = search.replace("'", "''");
+                base_query.push_str(&format!(
+                    " WHERE {} LIKE '%{}%' COLLATE Latin1_General_CI_AI",
+                    col_escaped, escaped_search
+                ));
+            }
+            _ => {
+                let escaped_search = search.replace("'", "''").to_lowercase();
+                base_query.push_str(&format!(
+                    " WHERE LOWER({}) LIKE '%{}%'",
+                    query_req.column, escaped_search
+                ));
+            }
+        }
+    }
+
+    // Add ORDER BY
+    match &query_req.db_type {
+        crate::models::connection::DatabaseType::MSSQL => {
+            let col_escaped = format!("[{}]", query_req.column.replace("]", "]]"));
+            base_query.push_str(&format!(" ORDER BY {}", col_escaped));
+        }
+        _ => {
+            base_query.push_str(&format!(" ORDER BY {}", query_req.column));
+        }
+    }
+
+    // Add LIMIT if needed
+    if query_req.limit > 0 {
+        match &query_req.db_type {
+            crate::models::connection::DatabaseType::MSSQL => {
+                base_query.push_str(&format!(
+                    " OFFSET 0 ROWS FETCH NEXT {} ROWS ONLY",
+                    query_req.limit
+                ));
+            }
+            _ => {
+                base_query.push_str(&format!(" LIMIT {}", query_req.limit));
+            }
+        }
+    }
+
+    let query_clone = base_query.clone();
+    let start = Instant::now();
+    let result = state
+        .pool
+        .with_connection(&connection_id, |conn| {
+            async move { conn.execute_query(&query_clone).await }.boxed()
+        })
+        .await?;
+    let execution_time = start.elapsed();
+
+    // Extract distinct values
+    let mut values = Vec::new();
+    for row in result.rows {
+        if let Some(value) = row.get(&query_req.column) {
+            let value_str = match value {
+                serde_json::Value::Null => "NULL".to_string(),
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                _ => serde_json::to_string(value).unwrap_or_default(),
+            };
+            values.push(value_str);
+        }
+    }
+
+    let total_count = values.len();
+
+    tracing::info!(
+        "✅ [DISTINCT_VALUES] Loaded {} distinct values. Time: {:?}",
+        total_count,
+        execution_time
+    );
+
+    Ok(
+        crate::models::distinct_values_request::DistinctValuesResponse {
+            values,
+            total_count,
+            execution_time: execution_time.as_millis(),
+            query_used: base_query,
+        },
+    )
+}

@@ -4,7 +4,7 @@ use crate::models::{connection::*, query_result::*, schema::*};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use sqlx::{Column as SqlxColumn, MySqlPool, Row, TypeInfo};
+use sqlx::{Column as SqlxColumn, Executor, MySqlPool, Row, Statement, TypeInfo};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -75,26 +75,23 @@ impl DatabaseConnection for MySQLConnection {
         let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
         let start = Instant::now();
 
+        // Execute query first
         let rows = sqlx::query(query).fetch_all(pool).await?;
         let execution_time = start.elapsed().as_millis();
 
-        if rows.is_empty() {
-            return Ok(QueryResult {
-                columns: vec![],
-                column_display_names: None,
-                column_types: None,
-                rows: vec![],
-                rows_affected: None,
-                execution_time,
-                final_query: None,
-            });
-        }
+        // Extract columns from first row if available, otherwise prepare to get metadata
+        let stmt_columns_vec: Vec<_> = if !rows.is_empty() {
+            rows[0].columns().to_vec()
+        } else {
+            // For empty results, prepare statement to get column metadata
+            let prepared = pool.prepare(query).await?;
+            prepared.columns().to_vec()
+        };
 
         // Handle duplicate column names by adding numeric suffix
         let mut column_name_counts: HashMap<String, usize> = HashMap::new();
         let mut display_names = Vec::new();
-        let columns: Vec<String> = rows[0]
-            .columns()
+        let columns: Vec<String> = stmt_columns_vec
             .iter()
             .map(|c| {
                 let base_name = SqlxColumn::name(c).to_string();
@@ -114,10 +111,9 @@ impl DatabaseConnection for MySQLConnection {
 
         // Pre-compute column types once
         let mut column_name_counts_reset: HashMap<String, usize> = HashMap::new();
-        let col_type_map: Vec<ColType> = rows[0]
-            .columns()
+        let col_type_map: Vec<ColType> = stmt_columns_vec
             .iter()
-            .map(|col| {
+            .map(|col: &sqlx::mysql::MySqlColumn| {
                 let base_name = SqlxColumn::name(col).to_string();
                 let type_name = col.type_info().name().to_uppercase();
 
@@ -151,54 +147,58 @@ impl DatabaseConnection for MySQLConnection {
 
         let mut result_rows = Vec::with_capacity(rows.len());
 
-        for row in rows {
-            let mut row_map = HashMap::with_capacity(columns.len());
-            for (i, col) in columns.iter().enumerate() {
-                let value = match col_type_map[i] {
-                    ColType::DateTime => row
-                        .try_get::<NaiveDateTime, _>(i)
-                        .map(|v| serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string()))
-                        .unwrap_or(serde_json::Value::Null),
-                    ColType::Date => row
-                        .try_get::<NaiveDate, _>(i)
-                        .map(|v| serde_json::json!(v.format("%Y-%m-%d").to_string()))
-                        .unwrap_or(serde_json::Value::Null),
-                    ColType::Time => row
-                        .try_get::<NaiveTime, _>(i)
-                        .map(|v| serde_json::json!(v.format("%H:%M:%S").to_string()))
-                        .unwrap_or(serde_json::Value::Null),
-                    ColType::Integer => row
-                        .try_get::<i64, _>(i)
-                        .map(|v| serde_json::json!(v))
-                        .unwrap_or(serde_json::Value::Null),
-                    ColType::Float => row
-                        .try_get::<f64, _>(i)
-                        .map(|v| serde_json::json!(v))
-                        .unwrap_or(serde_json::Value::Null),
-                    ColType::Boolean => row
-                        .try_get::<bool, _>(i)
-                        .map(|v| serde_json::json!(v))
-                        .unwrap_or(serde_json::Value::Null),
-                    ColType::String => row
-                        .try_get::<String, _>(i)
-                        .map(|v| serde_json::json!(v))
-                        .unwrap_or(serde_json::Value::Null),
-                    ColType::Blob => row
-                        .try_get::<Vec<u8>, _>(i)
-                        .map(|v| serde_json::json!(format!("[BLOB {} bytes]", v.len())))
-                        .unwrap_or(serde_json::Value::Null),
-                    ColType::Unknown => row
-                        .try_get::<String, _>(i)
-                        .map(|v| serde_json::json!(v))
-                        .or_else(|_| {
-                            row.try_get::<Vec<u8>, _>(i)
-                                .map(|v| serde_json::json!(format!("[BINARY {} bytes]", v.len())))
-                        })
-                        .unwrap_or(serde_json::Value::Null),
-                };
-                row_map.insert(col.clone(), value);
+        // Process rows only if there are any (col_type_map will be empty for empty result set)
+        if !rows.is_empty() && !col_type_map.is_empty() {
+            for row in rows {
+                let mut row_map = HashMap::with_capacity(columns.len());
+                for (i, col) in columns.iter().enumerate() {
+                    let value = match col_type_map[i] {
+                        ColType::DateTime => row
+                            .try_get::<NaiveDateTime, _>(i)
+                            .map(|v| serde_json::json!(v.format("%Y-%m-%d %H:%M:%S").to_string()))
+                            .unwrap_or(serde_json::Value::Null),
+                        ColType::Date => row
+                            .try_get::<NaiveDate, _>(i)
+                            .map(|v| serde_json::json!(v.format("%Y-%m-%d").to_string()))
+                            .unwrap_or(serde_json::Value::Null),
+                        ColType::Time => row
+                            .try_get::<NaiveTime, _>(i)
+                            .map(|v| serde_json::json!(v.format("%H:%M:%S").to_string()))
+                            .unwrap_or(serde_json::Value::Null),
+                        ColType::Integer => row
+                            .try_get::<i64, _>(i)
+                            .map(|v| serde_json::json!(v))
+                            .unwrap_or(serde_json::Value::Null),
+                        ColType::Float => row
+                            .try_get::<f64, _>(i)
+                            .map(|v| serde_json::json!(v))
+                            .unwrap_or(serde_json::Value::Null),
+                        ColType::Boolean => row
+                            .try_get::<bool, _>(i)
+                            .map(|v| serde_json::json!(v))
+                            .unwrap_or(serde_json::Value::Null),
+                        ColType::String => row
+                            .try_get::<String, _>(i)
+                            .map(|v| serde_json::json!(v))
+                            .unwrap_or(serde_json::Value::Null),
+                        ColType::Blob => row
+                            .try_get::<Vec<u8>, _>(i)
+                            .map(|v| serde_json::json!(format!("[BLOB {} bytes]", v.len())))
+                            .unwrap_or(serde_json::Value::Null),
+                        ColType::Unknown => row
+                            .try_get::<String, _>(i)
+                            .map(|v| serde_json::json!(v))
+                            .or_else(|_| {
+                                row.try_get::<Vec<u8>, _>(i).map(|v| {
+                                    serde_json::json!(format!("[BINARY {} bytes]", v.len()))
+                                })
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                    };
+                    row_map.insert(col.clone(), value);
+                }
+                result_rows.push(row_map);
             }
-            result_rows.push(row_map);
         }
 
         Ok(QueryResult {
