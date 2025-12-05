@@ -397,11 +397,11 @@
   /* Table container */
   .table-container {
     --scrollbar-size: 8px;
-    position: relative;
+    position: static;
     overflow: hidden;
     height: 100%;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
   }
 
   .table-header-wrapper {
@@ -470,13 +470,12 @@
   }
 
   .row-numbers-column {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
+    position: sticky;
     width: 36px;
+    height: 100%;
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
     z-index: 20;
     background-color: var(--grid-header-bg);
     border-right: 1px solid var(--grid-border);
@@ -533,13 +532,10 @@
   }
 
   .data-area {
-    position: absolute;
-    left: 36px;
-    top: 0;
-    right: 0;
-    bottom: 0;
+    flex: 1;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   .data-table tbody tr {
