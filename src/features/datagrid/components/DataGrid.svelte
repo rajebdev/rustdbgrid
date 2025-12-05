@@ -10,10 +10,7 @@
 
   // Partials
   import DataGridHeader from "./partials/DataGridHeader.svelte";
-  import DataGridFooter from "./partials/DataGridFooter.svelte";
-  import EditFooter from "./partials/EditFooter.svelte";
-
-  // Modals
+  import DataGridFooter from "./partials/DataGridFooter.svelte"; // Modals
   import SqlPreviewModal from "../../../shared/components/modals/SqlPreviewModal.svelte";
   import FilterModal from "../modals/FilterModal.svelte";
   import CellEditorModal from "../modals/CellEditorModal.svelte";
@@ -89,6 +86,7 @@
   let showPopupEditor = false;
   let popupEditorValue = "";
   let popupEditingCell = null;
+  let selectedCell = null;
 
   // Scroll state
   let tableWrapper;
@@ -563,6 +561,10 @@
   }
 
   // Editing
+  function handleCellClick(rowIndex, column) {
+    selectedCell = { rowIndex, column };
+  }
+
   function handleCellDoubleClick(rowIndex, column, currentValue) {
     const result = startEdit(rowIndex, column, currentValue);
 
@@ -576,6 +578,42 @@
       editingValue = result.valueStr;
       originalValue = result.originalValue;
     }
+  }
+
+  function handleCellKeydown(rowIndex, column, event) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelEdit();
+    } else if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleCellBlur(rowIndex, column, event);
+    }
+  }
+
+  function handleCellBlur(rowIndex, column, event) {
+    if (!editingCell) return;
+
+    // Check if value has changed
+    const hasChanged = editingValue !== String(originalValue || "");
+
+    if (hasChanged) {
+      // Save the changes
+      const { displayData: newDisplayData, editedRows: newEditedRows } =
+        trackEditedRow(
+          rowIndex,
+          column,
+          editingValue,
+          displayData,
+          editedRows,
+          originalRowData
+        );
+
+      displayData = newDisplayData;
+      editedRows = newEditedRows;
+    }
+
+    // Always clear editing state
+    cancelEdit();
   }
 
   function cancelEdit() {
@@ -723,6 +761,7 @@
         {editingCell}
         {editingValue}
         {originalRowData}
+        {selectedCell}
         {sortStack}
         {columnFilters}
         {selectedFilterValues}
@@ -730,7 +769,10 @@
         onSort={handleSortClick}
         onFilter={handleFilterClick}
         onFilterInput={handleFilterInput}
+        onCellClick={handleCellClick}
         onCellDoubleClick={handleCellDoubleClick}
+        onCellBlur={handleCellBlur}
+        onCellKeydown={handleCellKeydown}
         onScroll={handleGridScroll}
       />
     {:else}
@@ -744,19 +786,13 @@
       />
     {/if}
 
-    <EditFooter
-      {hasUnsavedEdits}
-      editedRowsSize={editedRows.size}
-      onSaveChanges={handleShowPreview}
-      onCancelChanges={cancelAllEdits}
-    />
-
     <DataGridFooter
       {totalRows}
       displayRowsLength={displayRows.length}
       columnCount={displayData.columns.length}
       executionTime={displayData.execution_time || "0"}
       {displayData}
+      onCancelChanges={cancelAllEdits}
     />
   {:else if displayData && displayData.rows_affected !== null && displayData.rows_affected !== undefined}
     <!-- Show INSERT/UPDATE/DELETE result -->

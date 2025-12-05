@@ -20,6 +20,7 @@
   export let editingCell = null;
   export let editingValue = "";
   export let originalRowData = new Map();
+  export let selectedCell = null;
   export let sortStack = [];
   export let columnFilters = {};
   export let selectedFilterValues = {};
@@ -30,6 +31,8 @@
   export let onFilterInput = null;
   export let onCellClick = null;
   export let onCellDoubleClick = null;
+  export let onCellBlur = null;
+  export let onCellKeydown = null;
   export let onScroll = null;
 
   let tableWrapper;
@@ -159,6 +162,29 @@
     if (onCellDoubleClick) {
       onCellDoubleClick(rowIndex, column, currentValue, event);
     }
+  }
+
+  function handleCellBlur(rowIndex, column, event) {
+    if (onCellBlur) {
+      onCellBlur(rowIndex, column, event);
+    }
+  }
+
+  function handleCellKeydown(rowIndex, column, event) {
+    if (onCellKeydown) {
+      onCellKeydown(rowIndex, column, event);
+    }
+  }
+
+  // Auto focus directive for input
+  function autoFocusInput(node) {
+    setTimeout(() => {
+      node.focus();
+      node.select();
+    }, 0);
+    return {
+      destroy() {},
+    };
   }
 
   function handleFilterKeydown(column, event) {
@@ -342,11 +368,15 @@
                   editingCell?.rowIndex === rowIndex &&
                   editingCell?.column === column}
                 {@const isEdited = editedRows.get(rowIndex)?.has(column)}
+                {@const isSelected =
+                  selectedCell?.rowIndex === rowIndex &&
+                  selectedCell?.column === column}
                 {@const isNumeric = isNumericColumn(column, colIndex)}
                 {@const isArrayValue = Array.isArray(cellValue)}
                 <td
                   class:editing={isEditing}
                   class:edited-cell={isEdited}
+                  class:selected-cell={isSelected && !isEditing && !isEdited}
                   class:numeric-cell={isNumeric && !isArrayValue}
                   on:click={(e) => handleCellClick(rowIndex, column, e)}
                   on:dblclick={(e) =>
@@ -356,7 +386,10 @@
                     <input
                       type="text"
                       bind:value={editingValue}
-                      on:blur={() => {}}
+                      on:blur={(e) => handleCellBlur(rowIndex, column, e)}
+                      on:keydown={(e) => handleCellKeydown(rowIndex, column, e)}
+                      on:focus={(e) => e.target.select()}
+                      use:autoFocusInput
                     />
                   {:else if cellValue === null || cellValue === undefined}
                     <span class="null-value">{formatValue(cellValue)}</span>
@@ -568,24 +601,32 @@
   }
 
   .data-table tbody td.editing {
-    padding: 2px;
     background-color: var(--accent-yellow-light);
+    padding: 0;
   }
 
   .data-table tbody td.editing input {
     width: 100%;
     height: 100%;
-    border: 2px solid var(--accent-yellow);
-    padding: 0.25rem;
+    border: none;
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--accent-yellow);
+    padding: 0 0.5rem;
     background: var(--bg-input);
     color: var(--text-primary);
+    box-sizing: border-box;
   }
 
   .data-table tbody td.edited-cell {
-    background-color: var(--accent-red-light);
-    color: var(--accent-red);
-    border: 2px solid var(--accent-red);
+    background-color: rgba(13, 110, 253, 0.1);
+    color: var(--accent-blue);
+    box-shadow: inset 0 0 0 2px var(--accent-blue);
     font-weight: 500;
+  }
+
+  .data-table tbody td.selected-cell {
+    background-color: rgba(13, 110, 253, 0.05);
+    box-shadow: inset 0 0 0 2px var(--accent-blue);
   }
 
   /* Numeric column styling - right-align and monospace font */

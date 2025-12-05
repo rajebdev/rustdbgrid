@@ -22,9 +22,9 @@
 </script>
 
 <BaseModal {show} size="lg" backdrop={true} on:close>
-  <div slot="header" class="bg-primary text-white">
+  <div slot="header">
     <h5 class="modal-title">
-      <i class="fas fa-edit"></i> Edit Cell Value
+      <i class="fas fa-edit text-primary"></i> Edit Cell Value
     </h5>
   </div>
 
