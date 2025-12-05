@@ -87,6 +87,7 @@
   let popupEditorValue = "";
   let popupEditingCell = null;
   let selectedCell = null;
+  let selectedRows = new Set();
 
   // Scroll state
   let tableWrapper;
@@ -565,6 +566,17 @@
     selectedCell = { rowIndex, column };
   }
 
+  function handleRowNumberClick(rowIndex) {
+    // Toggle row selection
+    if (selectedRows.has(rowIndex)) {
+      selectedRows.delete(rowIndex);
+    } else {
+      selectedRows.clear(); // Clear previous selection for single select
+      selectedRows.add(rowIndex);
+    }
+    selectedRows = new Set(selectedRows); // Trigger reactivity
+  }
+
   function handleCellDoubleClick(rowIndex, column, currentValue) {
     const result = startEdit(rowIndex, column, currentValue);
 
@@ -762,6 +774,7 @@
         {editingValue}
         {originalRowData}
         {selectedCell}
+        {selectedRows}
         {sortStack}
         {columnFilters}
         {selectedFilterValues}
@@ -774,6 +787,7 @@
         onCellBlur={handleCellBlur}
         onCellKeydown={handleCellKeydown}
         onScroll={handleGridScroll}
+        onRowNumberClick={handleRowNumberClick}
       />
     {:else}
       <JsonView

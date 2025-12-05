@@ -21,6 +21,7 @@
   export let editingValue = "";
   export let originalRowData = new Map();
   export let selectedCell = null;
+  export let selectedRows = new Set();
   export let sortStack = [];
   export let columnFilters = {};
   export let selectedFilterValues = {};
@@ -34,6 +35,7 @@
   export let onCellBlur = null;
   export let onCellKeydown = null;
   export let onScroll = null;
+  export let onRowNumberClick = null;
 
   let tableWrapper;
   let headerWrapper;
@@ -242,6 +244,11 @@
           class:row-even={index % 2 === 0}
           class:row-odd={index % 2 !== 0}
           class:edited={originalRowData.has(index)}
+          class:selected-row={selectedRows.has(index)}
+          on:click={() => onRowNumberClick && onRowNumberClick(index)}
+          role="button"
+          tabindex="0"
+          title="Click to select row {index + 1}"
         >
           {index + 1}
         </div>
@@ -357,6 +364,7 @@
           {#each displayRows as row, rowIndex}
             <tr
               class:edited-row={originalRowData.has(rowIndex)}
+              class:selected-row={selectedRows.has(rowIndex)}
               class:row-even={rowIndex % 2 === 0}
               class:row-odd={rowIndex % 2 !== 0}
             >
@@ -564,6 +572,22 @@
     font-weight: 600;
   }
 
+  .row-number-cell {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease;
+  }
+
+  .row-number-cell:hover:not(.selected-row) {
+    background-color: var(--grid-row-hover);
+  }
+
+  .row-number-cell.selected-row {
+    background-color: var(--accent-blue) !important;
+    color: white !important;
+    font-weight: 700;
+  }
+
   .data-area {
     flex: 1;
     display: flex;
@@ -586,6 +610,12 @@
   .data-table tbody tr.edited-row td {
     background-color: var(--accent-red-light);
     color: var(--accent-red);
+  }
+
+  .data-table tbody tr.selected-row td {
+    background-color: rgba(13, 110, 253, 0.08) !important;
+    border-top: 1px solid var(--accent-blue);
+    border-bottom: 1px solid var(--accent-blue);
   }
 
   .data-table tbody td {
