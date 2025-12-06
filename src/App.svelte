@@ -30,7 +30,6 @@
     initializeTheme,
     toggleTheme,
   } from "./features/settings/services/themeService";
-  import { loadTableDataRaw } from "./core/integrations/tauri";
   import { invoke } from "@tauri-apps/api/core";
   import { message, ask } from "@tauri-apps/plugin-dialog";
   import { saveStatus } from "./features/connection/stores/connections";
@@ -203,42 +202,8 @@
     tabStore.validateTabs();
 
     // Auto-load table data for restored table tabs
+    // DataGrid will auto-load when it mounts, no pre-fetching needed
     const restoredTabs = get(tabStore);
-
-    for (const tab of restoredTabs) {
-      if (tab.type === "table" && tab.tableInfo) {
-        const tabData = $tabDataStore[tab.id];
-        // Only load if queryResult is missing but tab has tableInfo
-        if (!tabData?.queryResult && tab.tableInfo?.connection) {
-          try {
-            const tableData = await loadTableDataRaw(
-              tab.tableInfo.connection.id,
-              tab.tableInfo.connection.db_type,
-              tab.tableInfo.name,
-              {
-                database: tab.tableInfo.database,
-                schema: tab.tableInfo.schema || null,
-                limit: 200,
-                offset: 0,
-                filters: [],
-                orderBy: [],
-              }
-            );
-
-            tabDataStore.setQueryResult(tab.id, tableData);
-
-            if (tableData.final_query) {
-              tabDataStore.setExecutedQuery(tab.id, tableData.final_query);
-            }
-
-            tabDataStore.clearError(tab.id);
-          } catch (error) {
-            const errorMessage = error.message || "Failed to load table data";
-            tabDataStore.setError(tab.id, errorMessage);
-          }
-        }
-      }
-    }
 
     // Handle execute query in new tab
     const handleExecuteQueryNewTab = (event) => {

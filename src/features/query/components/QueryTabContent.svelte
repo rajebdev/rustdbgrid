@@ -235,7 +235,6 @@
       {#if activeResultTab}
         {#key activeResultTabId}
           <DataGrid
-            data={activeResultTab.result}
             tabId={`${tabId}-${activeResultTabId}`}
             executedQuery={activeResultTab.query || ""}
             connection={$activeConnection}

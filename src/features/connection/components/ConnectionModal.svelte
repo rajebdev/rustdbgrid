@@ -3,8 +3,9 @@
   import {
     testConnection,
     saveConnection,
+    getConnectionsInfo,
   } from "../../../core/integrations/tauri";
-  import { isSaving } from "../stores/connections";
+  import { isSaving, connections } from "../stores/connections";
   import {
     parseConnectionString as parseConnStr,
     getDefaultPort,
@@ -86,6 +87,9 @@
     isSaving.set(true);
     try {
       await saveConnection(formData);
+      // Reload connections after save
+      const updatedConnections = await getConnectionsInfo();
+      connections.set(updatedConnections);
       show = false;
     } catch (error) {
       alert("Failed to save connection: " + error);
@@ -254,13 +258,13 @@
         </div>
       {/if}
     </form>
-  </div>
-
-  <div slot="footer">
     <div class="auto-save-notice">
       <i class="fas fa-shield-alt"></i>
       <small>Connection auto-saved to encrypted file</small>
     </div>
+  </div>
+
+  <div slot="footer">
     <button
       type="button"
       class="btn btn-secondary"

@@ -287,3 +287,67 @@ export async function loadAutoQuery() {
 export async function getNextQueryNumber() {
   return await invoke("get_next_query_number");
 }
+
+/**
+ * Generate SQL query from changes (new, edited, deleted rows)
+ * @param {Object} params
+ * @param {string} params.connectionId - Connection ID
+ * @param {string} params.database - Database name
+ * @param {string} params.table - Table name
+ * @param {string} [params.schema] - Schema name (optional)
+ * @param {Object} params.saveRequest - Save request object
+ * @returns {Promise<string>} Generated SQL query
+ */
+export async function generateSql({
+  connectionId,
+  database,
+  table,
+  schema,
+  saveRequest,
+}) {
+  try {
+    const query = await invoke("generate_sql", {
+      connectionId: connectionId,
+      database,
+      table,
+      schema,
+      saveRequest: saveRequest,
+    });
+    return query;
+  } catch (error) {
+    console.error("❌ Error generating SQL:", error);
+    throw error;
+  }
+}
+
+/**
+ * Execute save operation (INSERT, UPDATE, DELETE)
+ * @param {Object} params
+ * @param {string} params.connectionId - Connection ID
+ * @param {string} params.database - Database name
+ * @param {string} params.table - Table name
+ * @param {string} [params.schema] - Schema name (optional)
+ * @param {Object} params.saveRequest - Save request object
+ * @returns {Promise<Object>} Save response with status, message, and affected rows
+ */
+export async function saveData({
+  connectionId,
+  database,
+  table,
+  schema,
+  saveRequest,
+}) {
+  try {
+    const response = await invoke("save_data", {
+      connectionId: connectionId,
+      database,
+      table,
+      schema,
+      saveRequest: saveRequest,
+    });
+    return response;
+  } catch (error) {
+    console.error("❌ Error saving data:", error);
+    throw error;
+  }
+}

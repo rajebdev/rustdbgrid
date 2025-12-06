@@ -1,6 +1,8 @@
-use crate::db::traits::QueryBuilder;
+use crate::db::traits::{CRUDQueryBuilder, QueryBuilder};
+use crate::models::save_request::EditedRow;
 use crate::models::table_request::*;
 use anyhow::Result;
+use std::collections::HashMap;
 
 /// MySQL Query Builder
 pub struct MySQLQueryBuilder;
@@ -185,5 +187,213 @@ impl MySQLQueryBuilder {
             serde_json::Value::Bool(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
             _ => format!("'{}'", value.to_string().replace("'", "''")),
         }
+    }
+}
+
+impl CRUDQueryBuilder for MySQLQueryBuilder {
+    fn build_insert_query(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+        row: &HashMap<String, serde_json::Value>,
+        table_schema: &crate::models::schema::TableSchema,
+    ) -> Result<String> {
+        if row.is_empty() {
+            anyhow::bail!("Cannot insert empty row");
+        }
+
+        // Get column order from table_schema to ensure consistent column order
+        let columns: Vec<String> = table_schema
+            .columns
+            .iter()
+            .filter_map(|col| {
+                if row.contains_key(&col.name) {
+                    Some(col.name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let columns_str = columns
+            .iter()
+            .map(|c| self.quote_identifier(c))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let values_str = columns
+            .iter()
+            .map(|col| self.format_value(&row[col]))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        Ok(format!(
+            "INSERT INTO {} ({}) VALUES ({});",
+            self.quote_identifier(table),
+            columns_str,
+            values_str
+        ))
+    }
+
+    fn build_update_query(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+        edited_row: &EditedRow,
+        primary_keys: &[&String],
+        table_schema: &crate::models::schema::TableSchema,
+    ) -> Result<String> {
+        let updated_data = &edited_row.updated_data;
+        let original_data = &edited_row.original_data;
+
+        if updated_data.is_empty() {
+            anyhow::bail!("Cannot update with no columns");
+        }
+
+        // Build SET clause using table_schema column order (exclude primary keys)
+        let set_parts: Result<Vec<String>> = table_schema
+            .columns
+            .iter()
+            .filter(|col| {
+                updated_data.contains_key(&col.name)
+                    && !primary_keys
+                        .iter()
+                        .any(|pk| pk.as_str() == col.name.as_str())
+            })
+            .map(|col| {
+                let val = &updated_data[&col.name];
+                Ok(format!(
+                    "{} = {}",
+                    self.quote_identifier(&col.name),
+                    self.format_value(val)
+                ))
+            })
+            .collect();
+
+        let set_clause = set_parts?.join(", ");
+
+        if set_clause.is_empty() {
+            anyhow::bail!("No columns to update (all are primary keys)");
+        }
+
+        // Build WHERE clause
+        let where_clause = if !primary_keys.is_empty() {
+            // Use primary keys
+            primary_keys
+                .iter()
+                .map(|pk| {
+                    let val = original_data.get(pk.as_str()).ok_or_else(|| {
+                        anyhow::anyhow!("Primary key {} not found in original data", pk)
+                    })?;
+                    Ok(format!(
+                        "{} {}",
+                        self.quote_identifier(pk),
+                        self.format_where_condition(val)
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?
+                .join(" AND ")
+        } else {
+            // Fallback: use all original columns
+            original_data
+                .iter()
+                .map(|(col, val)| {
+                    Ok(format!(
+                        "{} {}",
+                        self.quote_identifier(col),
+                        self.format_where_condition(val)
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?
+                .join(" AND ")
+        };
+
+        if where_clause.is_empty() {
+            anyhow::bail!("Cannot generate WHERE clause");
+        }
+
+        Ok(format!(
+            "UPDATE {} SET {} WHERE {};",
+            self.quote_identifier(table),
+            set_clause,
+            where_clause
+        ))
+    }
+
+    fn build_delete_query(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+        row: &HashMap<String, serde_json::Value>,
+        primary_keys: &[&String],
+    ) -> Result<String> {
+        // Build WHERE clause
+        let where_clause = if !primary_keys.is_empty() {
+            // Use primary keys
+            primary_keys
+                .iter()
+                .map(|pk| {
+                    let val = row
+                        .get(pk.as_str())
+                        .ok_or_else(|| anyhow::anyhow!("Primary key {} not found in row", pk))?;
+                    Ok(format!(
+                        "{} {}",
+                        self.quote_identifier(pk),
+                        self.format_where_condition(val)
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?
+                .join(" AND ")
+        } else {
+            // Fallback: use all columns from row
+            row.iter()
+                .map(|(col, val)| {
+                    Ok(format!(
+                        "{} {}",
+                        self.quote_identifier(col),
+                        self.format_where_condition(val)
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?
+                .join(" AND ")
+        };
+
+        if where_clause.is_empty() {
+            anyhow::bail!("Cannot generate WHERE clause for DELETE");
+        }
+
+        Ok(format!(
+            "DELETE FROM {} WHERE {};",
+            self.quote_identifier(table),
+            where_clause
+        ))
+    }
+
+    fn format_value(&self, val: &serde_json::Value) -> String {
+        match val {
+            serde_json::Value::Null => "NULL".to_string(),
+            serde_json::Value::Bool(b) => if *b { "1" } else { "0" }.to_string(),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::String(s) => format!("'{}'", self.escape_sql_string(s)),
+            serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                format!("'{}'", self.escape_sql_string(&val.to_string()))
+            }
+        }
+    }
+
+    fn format_where_condition(&self, val: &serde_json::Value) -> String {
+        match val {
+            serde_json::Value::Null => "IS NULL".to_string(),
+            serde_json::Value::Bool(b) => if *b { "= 1" } else { "= 0" }.to_string(),
+            serde_json::Value::Number(n) => format!("= {}", n),
+            serde_json::Value::String(s) => format!("= '{}'", self.escape_sql_string(s)),
+            serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                format!("= '{}'", self.escape_sql_string(&val.to_string()))
+            }
+        }
+    }
+
+    fn escape_sql_string(&self, s: &str) -> String {
+        s.replace("'", "''").replace("\\", "\\\\")
     }
 }

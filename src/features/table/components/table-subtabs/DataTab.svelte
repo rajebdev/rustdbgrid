@@ -1,6 +1,5 @@
 <script>
   import DataGrid from "../../../datagrid/components/DataGrid.svelte";
-  import { loadTableDataRaw } from "../../../../core/integrations/tauri";
   import { tabDataStore } from "../../../../shared/stores/tabData";
 
   export let tabId;
@@ -9,97 +8,21 @@
   export let connection;
 
   let isReconnecting = false;
-  let isAutoLoading = false;
+  let dataGridComponent;
 
   $: connectionError = currentTabData?.error;
-
-  // Auto-load data if missing
-  $: if (
-    currentTabData &&
-    !currentTabData?.queryResult &&
-    !connectionError &&
-    !isAutoLoading &&
-    connection &&
-    tableInfo
-  ) {
-    autoLoadData();
-  }
-
-  async function autoLoadData() {
-    isAutoLoading = true;
-
-    try {
-      const tableData = await loadTableDataRaw(
-        connection.id,
-        connection.db_type,
-        tableInfo.name,
-        {
-          database: tableInfo.database,
-          schema: tableInfo.schema || null,
-          limit: 200,
-          offset: 0,
-          filters: [],
-          orderBy: [],
-        }
-      );
-
-      tabDataStore.setQueryResult(tabId, tableData);
-
-      if (tableData.final_query) {
-        tabDataStore.setExecutedQuery(tabId, tableData.final_query);
-      }
-
-      tabDataStore.clearError(tabId);
-    } catch (error) {
-      tabDataStore.setError(
-        tabId,
-        error.message || "Failed to load table data"
-      );
-    } finally {
-      isAutoLoading = false;
-    }
-  }
 
   async function handleReconnect() {
     isReconnecting = true;
     tabDataStore.clearError(tabId);
-
-    try {
-      const tableData = await loadTableDataRaw(
-        connection.id,
-        connection.db_type,
-        tableInfo.name,
-        {
-          database: tableInfo.database,
-          schema: tableInfo.schema || null,
-          limit: 200,
-          offset: 0,
-          filters: [],
-          orderBy: [],
-        }
-      );
-
-      // Update the tab data with new results
-      tabDataStore.setQueryResult(tabId, tableData);
-
-      if (tableData.final_query) {
-        tabDataStore.setExecutedQuery(tabId, tableData.final_query);
-      }
-    } catch (error) {
-      tabDataStore.setError(
-        tabId,
-        error.message || "Failed to reconnect to database"
-      );
-    } finally {
-      isReconnecting = false;
-    }
+    isReconnecting = false;
   }
 </script>
 
 <div class="data-tab-container">
-  {#if currentTabData?.queryResult}
+  {#if connection && tableInfo}
     <DataGrid
-      data={currentTabData.queryResult}
+      bind:this={dataGridComponent}
       {tabId}
       executedQuery={currentTabData?.executedQuery || ""}
       {connection}
@@ -130,7 +53,7 @@
   {:else}
     <div class="loading-container">
       <i class="fas fa-spinner fa-spin"></i>
-      <p>{isAutoLoading ? "Loading table data..." : "Loading..."}</p>
+      <p>Loading...</p>
     </div>
   {/if}
 </div>

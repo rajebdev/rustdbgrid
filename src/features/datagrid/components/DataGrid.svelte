@@ -1,6 +1,7 @@
 <script>
   import { onMount, afterUpdate } from "svelte";
   import { tabDataStore } from "../../../shared/stores/tabData";
+  import { defaultPaginateLimit } from "../../../shared/stores/appSettings";
   import { loadTableDataRaw } from "../../../core/integrations/tauri";
   import { DatabaseType } from "../../../core/config/databaseTypes";
 
@@ -27,7 +28,6 @@
     startEdit,
     trackEditedRow,
     cancelAllEdits as cancelAllEditsService,
-    generateUpdateSql,
   } from "../services/gridEditService";
   import { openFilterModal as openFilterModalService } from "../services/gridFilterService";
   import { handleSort } from "../services/gridSortService";
@@ -41,7 +41,6 @@
   } from "../../../shared/utils/grid/gridScrollSync";
   import { getDistinctValues } from "../../../shared/utils/data/dataHelpers";
 
-  export let data = null;
   export let tabId = null;
   export let executedQuery = "";
   export let connection = null;
@@ -54,6 +53,7 @@
   let displayData = null;
   let isFiltered = false;
   let totalRows = 0;
+  let paginateLimit; // Will be set from store or default to 200
   let currentOffset = 0;
   let isLoadingMore = false;
   let hasMoreData = true;
@@ -79,6 +79,8 @@
   let editingValue = "";
   let originalValue = "";
   let editedRows = new Map();
+  let newRows = new Map();
+  let deletedRows = new Set();
   let originalRowData = new Map();
   let showSqlPreview = false;
   let previewSql = "";
@@ -88,6 +90,11 @@
   let popupEditingCell = null;
   let selectedCell = null;
   let selectedRows = new Set();
+  let displayRows = [];
+
+  // Performance timing
+  let executionTime = 0; // Total time from request start to data render (ms)
+  let fetchTime = 0; // Only BE fetch time (ms)
 
   // Scroll state
   let tableWrapper;
@@ -108,15 +115,18 @@
       typeof col === "string" ? col : col.name
     ) || [];
 
-  $: displayRows = displayData?.rows || [];
-  $: {
-    if (displayRows && displayRows.length > 0) {
-      console.log(`[displayRows reactive] Updated displayRows:`, {
-        length: displayRows.length,
-        first_row: displayRows[0],
-        last_row: displayRows[displayRows.length - 1],
-        sortStack: sortStack,
-      });
+  $: if (displayData?.rows && displayData.rows.length > 0) {
+    // Only update displayRows if it comes from displayData (initial load or refresh)
+    // Don't update if we're in the middle of editing
+    if (!editingCell && !showPopupEditor) {
+      console.log(
+        "[DataGrid] Reactive: Updating displayRows from displayData",
+        {
+          displayDataLength: displayData.rows.length,
+          previousDisplayRowsLength: displayRows.length,
+        }
+      );
+      displayRows = displayData.rows;
     }
   }
 
@@ -130,6 +140,17 @@
   // Load saved state when tab changes
   $: if (tabId && tabId !== currentTabId) {
     currentTabId = tabId;
+    console.log(
+      `[DataGrid] Tab changed to ${tabId}, resetting paginateLimit to 200`
+    );
+
+    // Reset paginateLimit to default when switching tabs
+    // Force a new reactive update by creating a new object reference
+    paginateLimit = 200;
+    // Trigger a manual re-render to ensure DataGridFooter gets updated value
+    Promise.resolve().then(() => {
+      // Force parent to update bindings
+    });
 
     if ($tabDataStore[tabId]) {
       const savedState = $tabDataStore[tabId];
@@ -152,36 +173,30 @@
     }
   }
 
-  // Update display data from parent prop - but only if we haven't done any sorting/filtering
-  $: if (data && !isLoadingMore && !isLoadingData) {
-    const queryId =
-      executedQuery + JSON.stringify(columnFilters) + JSON.stringify(sortStack);
+  // Initialize paginateLimit from store
+  $: if (!paginateLimit) {
+    paginateLimit = $defaultPaginateLimit || 200;
+  }
 
-    // Only update from parent prop if this is the initial data load (no filters, no sorts)
+  // Auto-load data when table or query changes
+  $: if (
+    (tableName || executedQuery) &&
+    connection &&
+    !isLoadingData &&
+    !isLoadingMore
+  ) {
+    const queryId = tableName
+      ? tableName + JSON.stringify(columnFilters) + JSON.stringify(sortStack)
+      : executedQuery +
+        JSON.stringify(columnFilters) +
+        JSON.stringify(sortStack);
+
+    // Only load if this is a new table/query or if filters/sorts changed
     const isInitialLoad =
       sortStack.length === 0 && Object.keys(columnFilters).length === 0;
 
-    console.log(
-      `[Reactive] Parent prop updated. isInitialLoad: ${isInitialLoad}, queryId matches: ${
-        queryId === lastLoadedQueryId
-      }, isFiltered: ${isFiltered}`
-    );
-
     if (isInitialLoad && queryId !== lastLoadedQueryId) {
-      console.log(
-        `[Reactive] Updating displayData from parent prop (initial load). New queryId: ${queryId}`
-      );
-      displayData = data;
-      totalRows = data?.total_count || data?.rows?.length || 0;
-      currentOffset = data?.rows?.length || 0;
-      hasMoreData = data?.rows?.length === 200;
-      lastLoadedQueryId = queryId;
-      lastDisplayDataSource = "parent";
-    } else if (lastDisplayDataSource === "sort-filter") {
-      console.log(
-        `[Reactive] Ignoring parent prop update because data came from sort/filter`
-      );
-      // Don't override displayData when it came from our sort/filter operations
+      handleReloadData();
     }
   }
 
@@ -209,10 +224,19 @@
       }
     });
 
+    // Listen for reload-datagrid event from menuHandlers
+    const handleReloadEvent = (e) => {
+      if (e.detail?.tabId === tabId) {
+        handleReloadData();
+      }
+    };
+    document.addEventListener("reload-datagrid", handleReloadEvent);
+
     return () => {
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
+      document.removeEventListener("reload-datagrid", handleReloadEvent);
     };
   });
 
@@ -228,6 +252,11 @@
     currentOffset = 0;
     hasMoreData = true;
 
+    // Start timing from request start
+    const totalStartTime = performance.now();
+    let fetchStartTime = 0;
+    let fetchEndTime = 0;
+
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     try {
@@ -235,27 +264,33 @@
 
       // If this is a table query (from sidebar), use loadTableInitial
       if (isTableMode && tableName) {
+        fetchStartTime = performance.now();
         result = await loadTableInitial(
           connection,
           tableName,
           databaseName,
           schemaName,
           columnFilters,
-          sortStack
+          sortStack,
+          paginateLimit
         );
+        fetchEndTime = performance.now();
         lastLoadedQueryId =
           tableName + JSON.stringify(columnFilters) + JSON.stringify(sortStack);
       }
       // If this is a custom query (from SQL editor), use loadQueryInitial
       else if (!isTableMode && executedQuery && executedQuery.trim() !== "") {
+        fetchStartTime = performance.now();
         result = await loadQueryInitial(
           connection,
           executedQuery,
           tableName,
           databaseName,
           columnFilters,
-          sortStack
+          sortStack,
+          paginateLimit
         );
+        fetchEndTime = performance.now();
         lastLoadedQueryId =
           executedQuery +
           JSON.stringify(columnFilters) +
@@ -267,10 +302,21 @@
         return;
       }
 
+      // Calculate fetch time (BE request time only)
+      fetchTime = Math.round(fetchEndTime - fetchStartTime);
+
       displayData = result;
       totalRows = result?.total_count || result?.rows?.length || 0;
       currentOffset = result?.rows?.length || 0;
-      hasMoreData = result?.rows?.length === 200;
+      // Check if there's more data by comparing with paginateLimit
+      hasMoreData = result?.rows?.length === paginateLimit;
+
+      // Explicitly update displayRows with new data
+      console.log(`[DataGrid] Setting displayRows explicitly:`, {
+        newLength: result?.rows?.length || 0,
+        paginateLimit,
+      });
+      displayRows = result?.rows || [];
 
       if (result.final_query) {
         finalQuery = result.final_query;
@@ -299,6 +345,12 @@
       isFiltered = false;
     } finally {
       isLoadingData = false;
+      // Calculate total execution time (from request start to render complete)
+      const totalEndTime = performance.now();
+      executionTime = Math.round(totalEndTime - totalStartTime);
+      console.log(
+        `[DataGrid] Execution time: ${executionTime}ms, Fetch time: ${fetchTime}ms`
+      );
     }
   }
 
@@ -313,12 +365,16 @@
     }
 
     isLoadingMore = true;
+    const totalStartTime = performance.now();
+    let fetchStartTime = 0;
+    let fetchEndTime = 0;
 
     try {
       let result;
 
       // Use appropriate append function based on data source
       if (isTableMode && tableName) {
+        fetchStartTime = performance.now();
         result = await appendTableData(
           connection,
           tableName,
@@ -326,9 +382,12 @@
           schemaName,
           columnFilters,
           sortStack,
-          currentOffset
+          currentOffset,
+          paginateLimit
         );
+        fetchEndTime = performance.now();
       } else if (!isTableMode && executedQuery && executedQuery.trim() !== "") {
+        fetchStartTime = performance.now();
         result = await appendQueryData(
           connection,
           executedQuery,
@@ -336,23 +395,35 @@
           databaseName,
           columnFilters,
           sortStack,
-          currentOffset
+          currentOffset,
+          paginateLimit
         );
+        fetchEndTime = performance.now();
       } else {
         isLoadingMore = false;
         return;
       }
 
+      // Calculate fetch time
+      fetchTime = Math.round(fetchEndTime - fetchStartTime);
+
       if (result?.rows && displayData) {
         displayData.rows = [...displayData.rows, ...result.rows];
         currentOffset += result.rows.length;
-        hasMoreData = result.has_more_data;
+        // Check if more data is available based on paginateLimit
+        hasMoreData = result?.rows?.length === paginateLimit;
       }
     } catch (error) {
       console.error("❌ Failed to load more data:", error);
       hasMoreData = false;
     } finally {
       isLoadingMore = false;
+      // Calculate total execution time
+      const totalEndTime = performance.now();
+      executionTime = Math.round(totalEndTime - totalStartTime);
+      console.log(
+        `[DataGrid] Load more - Execution time: ${executionTime}ms, Fetch time: ${fetchTime}ms`
+      );
     }
   }
 
@@ -562,8 +633,20 @@
   }
 
   // Editing
-  function handleCellClick(rowIndex, column) {
-    selectedCell = { rowIndex, column };
+  function handleCellClick(rowIndex, column, currentValue) {
+    // Toggle: if same cell is clicked again, unselect it
+    if (
+      selectedCell?.rowIndex === rowIndex &&
+      selectedCell?.column === column
+    ) {
+      selectedCell = null;
+    } else {
+      selectedCell = { rowIndex, column, currentValue };
+    }
+
+    // Clear row selection when cell is selected (mutually exclusive)
+    selectedRows.clear();
+    selectedRows = new Set(selectedRows); // Trigger reactivity
   }
 
   function handleRowNumberClick(rowIndex) {
@@ -575,6 +658,21 @@
       selectedRows.add(rowIndex);
     }
     selectedRows = new Set(selectedRows); // Trigger reactivity
+
+    // Clear cell selection when row is selected (mutually exclusive)
+    selectedCell = null;
+  }
+
+  function handleEditCellButton() {
+    // Trigger edit on selected cell from toolbar button
+    if (!selectedCell) {
+      console.warn("⚠️ Please select a cell to edit");
+      return;
+    }
+
+    const { rowIndex, column, currentValue } = selectedCell;
+
+    handleCellDoubleClick(rowIndex, column, currentValue);
   }
 
   function handleCellDoubleClick(rowIndex, column, currentValue) {
@@ -602,26 +700,178 @@
     }
   }
 
+  function isValidForColumnType(value, column) {
+    // Find column metadata
+    if (!displayData.columns) return true;
+
+    const columnMeta = displayData.columns.find((col) => col.name === column);
+    if (!columnMeta) return true;
+
+    const dataType = (columnMeta.data_type || "").toUpperCase();
+
+    // Handle null/empty - always valid
+    if (value === "" || value === null) {
+      return true;
+    }
+
+    // Validate based on data type
+    if (
+      dataType.includes("INT") ||
+      dataType.includes("DECIMAL") ||
+      dataType.includes("NUMERIC") ||
+      dataType.includes("FLOAT") ||
+      dataType.includes("DOUBLE") ||
+      dataType.includes("NUMBER") ||
+      dataType.includes("REAL")
+    ) {
+      // Numeric type - must be valid number
+      const num = Number(value);
+      return !isNaN(num) && value.trim() !== "";
+    } else if (dataType.includes("BOOL")) {
+      // Boolean type - allow true/false/0/1
+      return ["true", "false", "0", "1", "yes", "no"].includes(
+        value.toLowerCase()
+      );
+    } else {
+      // String type - always valid
+      return true;
+    }
+  }
+
+  function convertValueToColumnType(value, column) {
+    // Find column metadata
+    if (!displayData.columns) return value;
+
+    const columnMeta = displayData.columns.find((col) => col.name === column);
+    if (!columnMeta) return value;
+
+    const dataType = (columnMeta.data_type || "").toUpperCase();
+
+    // Handle null/empty
+    if (value === "" || value === null) {
+      return null;
+    }
+
+    // Convert based on data type
+    if (
+      dataType.includes("INT") ||
+      dataType.includes("DECIMAL") ||
+      dataType.includes("NUMERIC") ||
+      dataType.includes("FLOAT") ||
+      dataType.includes("DOUBLE") ||
+      dataType.includes("NUMBER") ||
+      dataType.includes("REAL")
+    ) {
+      // Numeric type
+      const num = Number(value);
+      return isNaN(num) ? value : num;
+    } else if (dataType.includes("BOOL")) {
+      // Boolean type
+      return value === "true" || value === "1" || value === true;
+    } else if (dataType.includes("DATE") || dataType.includes("TIME")) {
+      // Keep as string for dates
+      return value;
+    } else {
+      // String type
+      return value;
+    }
+  }
+
   function handleCellBlur(rowIndex, column, event) {
     if (!editingCell) return;
 
-    // Check if value has changed
-    const hasChanged = editingValue !== String(originalValue || "");
+    // Check if value has changed - handle null/undefined properly
+    const originalStr =
+      originalValue === null || originalValue === undefined
+        ? ""
+        : String(originalValue);
+    const hasChanged = editingValue !== originalStr;
 
     if (hasChanged) {
-      // Save the changes
-      const { displayData: newDisplayData, editedRows: newEditedRows } =
-        trackEditedRow(
-          rowIndex,
-          column,
-          editingValue,
-          displayData,
-          editedRows,
-          originalRowData
+      // VALIDATE: Check if new value is valid for column type
+      if (!isValidForColumnType(editingValue, column)) {
+        console.warn(
+          `[handleCellBlur] ❌ Invalid value for column ${column}: "${editingValue}"`
         );
+        // Reset to original value
+        displayRows[rowIndex] = Array.isArray(displayRows[rowIndex])
+          ? [...displayRows[rowIndex]]
+          : { ...displayRows[rowIndex] };
+        displayRows = displayRows;
+        editingValue = originalStr;
+        cancelEdit();
+        alert(
+          `❌ Invalid value for ${column}. Please enter a valid ${displayData.columns?.find((c) => c.name === column)?.data_type || "value"}.`
+        );
+        return;
+      }
+      // IMPORTANT: Backup original data BEFORE updating displayData
+      // (first time edit on this row)
+      if (!originalRowData.has(rowIndex)) {
+        const rowToBackup = displayData.rows[rowIndex];
+        let colNames = displayData.column_names || [];
+        if (colNames.length === 0 && displayData.columns) {
+          colNames = displayData.columns.map((col) => col.name);
+        }
 
-      displayData = newDisplayData;
-      editedRows = newEditedRows;
+        // Convert array to object if needed
+        const backupData = Array.isArray(rowToBackup)
+          ? Object.fromEntries(
+              colNames.map((name, idx) => [name, rowToBackup[idx]])
+            )
+          : { ...rowToBackup };
+
+        originalRowData.set(rowIndex, backupData);
+        console.log(
+          `[handleCellBlur] Backed up original row ${rowIndex}:`,
+          backupData
+        );
+      }
+
+      // Update displayRows with the new value
+      // column is a string (column name), not an object
+      const columnIndex = columnNames.indexOf(column);
+
+      const newRow = Array.isArray(displayRows[rowIndex])
+        ? [...displayRows[rowIndex]]
+        : { ...displayRows[rowIndex] };
+
+      if (Array.isArray(newRow)) {
+        newRow[columnIndex] = editingValue;
+      } else {
+        newRow[column] = editingValue;
+      }
+
+      // Create new array reference to trigger Svelte reactivity
+      displayRows = [
+        ...displayRows.slice(0, rowIndex),
+        newRow,
+        ...displayRows.slice(rowIndex + 1),
+      ];
+
+      // IMPORTANT: Also update displayData.rows to keep it in sync
+      const newDisplayDataRows = [...displayData.rows];
+      newDisplayDataRows[rowIndex] = newRow;
+      displayData = { ...displayData, rows: newDisplayDataRows };
+
+      // Track the edit (update editedRows only)
+      // Convert value to proper type before storing
+      const convertedValue = convertValueToColumnType(editingValue, column);
+
+      if (!editedRows.has(rowIndex)) {
+        editedRows.set(rowIndex, new Map());
+      }
+      editedRows.get(rowIndex).set(column, convertedValue);
+      editedRows = new Map(editedRows);
+
+      console.log(
+        `[handleCellBlur] Cell edited - Row ${rowIndex}, Column ${column}:`,
+        {
+          original: editingValue,
+          converted: convertedValue,
+          type: typeof convertedValue,
+        }
+      );
     }
 
     // Always clear editing state
@@ -646,51 +896,166 @@
 
     const { rowIndex, column } = popupEditingCell;
 
-    if (
-      popupEditorValue === originalValue ||
-      (popupEditorValue === "" &&
-        (originalValue === null || originalValue === undefined))
-    ) {
+    // Check if value has actually changed - handle null/undefined properly
+    const originalStr =
+      originalValue === null || originalValue === undefined
+        ? ""
+        : String(originalValue);
+    const hasChanged = popupEditorValue !== originalStr;
+
+    if (!hasChanged) {
+      // No changes, just close
       closePopupEditor();
       return;
     }
 
-    const { displayData: newDisplayData, editedRows: newEditedRows } =
-      trackEditedRow(
-        rowIndex,
-        column,
-        popupEditorValue,
-        displayData,
-        editedRows,
-        originalRowData
+    // VALIDATE: Check if new value is valid for column type
+    if (!isValidForColumnType(popupEditorValue, column)) {
+      console.warn(
+        `[savePopupEdit] ❌ Invalid value for column ${column}: "${popupEditorValue}"`
       );
+      closePopupEditor();
+      alert(
+        `❌ Invalid value for ${column}. Please enter a valid ${displayData.columns?.find((c) => c.name === column)?.data_type || "value"}.`
+      );
+      return;
+    }
 
-    displayData = newDisplayData;
-    editedRows = newEditedRows;
+    // IMPORTANT: Backup original data BEFORE updating displayData
+    // (first time edit on this row)
+    if (!originalRowData.has(rowIndex)) {
+      const rowToBackup = displayData.rows[rowIndex];
+      let colNames = displayData.column_names || [];
+      if (colNames.length === 0 && displayData.columns) {
+        colNames = displayData.columns.map((col) => col.name);
+      }
+
+      // Convert array to object if needed
+      const backupData = Array.isArray(rowToBackup)
+        ? Object.fromEntries(
+            colNames.map((name, idx) => [name, rowToBackup[idx]])
+          )
+        : { ...rowToBackup };
+
+      originalRowData.set(rowIndex, backupData);
+      console.log(
+        `[savePopupEdit] Backed up original row ${rowIndex}:`,
+        backupData
+      );
+    }
+
+    // Update displayRows first with the new value
+    // column is a string (column name), not an object
+    const columnIndex = columnNames.indexOf(column);
+    const newRow = Array.isArray(displayRows[rowIndex])
+      ? [...displayRows[rowIndex]]
+      : { ...displayRows[rowIndex] };
+
+    if (Array.isArray(newRow)) {
+      newRow[columnIndex] = popupEditorValue;
+    } else {
+      newRow[column] = popupEditorValue;
+    }
+
+    // Create new array reference to trigger Svelte reactivity
+    displayRows = [
+      ...displayRows.slice(0, rowIndex),
+      newRow,
+      ...displayRows.slice(rowIndex + 1),
+    ];
+
+    // IMPORTANT: Also update displayData.rows to keep it in sync
+    const newDisplayDataRows = [...displayData.rows];
+    newDisplayDataRows[rowIndex] = newRow;
+    displayData = { ...displayData, rows: newDisplayDataRows };
+
+    // Track the edit (update editedRows only)
+    // Convert value to proper type before storing
+    const convertedValue = convertValueToColumnType(popupEditorValue, column);
+
+    if (!editedRows.has(rowIndex)) {
+      editedRows.set(rowIndex, new Map());
+    }
+    editedRows.get(rowIndex).set(column, convertedValue);
+    editedRows = new Map(editedRows);
+
+    console.log(
+      `[savePopupEdit] Cell edited - Row ${rowIndex}, Column ${column}:`,
+      {
+        original: popupEditorValue,
+        converted: convertedValue,
+        type: typeof convertedValue,
+      }
+    );
 
     closePopupEditor();
   }
 
   function cancelAllEdits() {
+    console.log("[cancelAllEdits] Before cancel:", {
+      originalRowDataSize: originalRowData.size,
+      originalRowData: Array.from(originalRowData.entries()),
+      displayDataRowsCount: displayData.rows.length,
+      newRowsCount: newRows.size,
+      deletedRowsCount: deletedRows.size,
+    });
+
     const {
       displayData: newDisplayData,
       editedRows: newEditedRows,
       originalRowData: newOriginalRowData,
     } = cancelAllEditsService(displayData, editedRows, originalRowData);
 
-    displayData = newDisplayData;
+    console.log("[cancelAllEdits] After cancel service:", {
+      displayDataRowsCount: newDisplayData.rows.length,
+      firstRow: newDisplayData.rows[0],
+    });
+
+    // Remove _isDeleted and _isNewRow flags from all rows, AND filter out new rows
+    const cleanedDisplayData = {
+      ...newDisplayData,
+      rows: newDisplayData.rows
+        .filter((row) => {
+          // Filter out rows that are marked as new
+          if (Array.isArray(row)) {
+            return true; // Keep array rows
+          } else {
+            return !row._isNewRow; // Remove rows with _isNewRow flag
+          }
+        })
+        .map((row) => {
+          if (Array.isArray(row)) {
+            // For array rows, just return as-is
+            return row;
+          } else {
+            // For object rows, remove internal flags
+            const cleanRow = { ...row };
+            delete cleanRow._isDeleted;
+            delete cleanRow._isNewRow;
+            delete cleanRow._rowId;
+            return cleanRow;
+          }
+        }),
+    };
+
+    displayData = cleanedDisplayData;
+    displayRows = cleanedDisplayData.rows;
     editedRows = newEditedRows;
     originalRowData = newOriginalRowData;
 
-    cancelEdit();
-  }
+    console.log("[cancelAllEdits] After cleanup:", {
+      displayDataRowsCount: displayData.rows.length,
+      newRowsCleared: newRows.size === 0,
+      deletedRowsCleared: deletedRows.size === 0,
+    });
 
-  function handleShowPreview() {
-    pendingUpdates = generateUpdateSql(displayData, editedRows, executedQuery);
-    if (pendingUpdates.length > 0) {
-      previewSql = pendingUpdates.map((u) => u.sql).join("\n");
-      showSqlPreview = true;
-    }
+    // Clear new rows and deleted rows
+    newRows.clear();
+    newRows = new Map();
+    deletedRows.clear();
+    deletedRows = new Set();
+
+    cancelEdit();
   }
 
   function closeSqlPreview() {
@@ -741,7 +1106,7 @@
       class="d-flex flex-column align-items-center justify-content-center h-100 text-primary"
     >
       <i class="fas fa-spinner fa-spin fa-3x mb-3"></i>
-      <p class="fs-5">Loading filtered data...</p>
+      <p class="fs-5">Loading table data...</p>
     </div>
   {:else if displayData && displayData.columns && displayData.columns.length > 0}
     <!-- Show table (with or without rows) -->
@@ -750,12 +1115,8 @@
       {executedQuery}
       {viewMode}
       {columnFilters}
-      {hasUnsavedEdits}
-      editedRowsSize={editedRows.size}
       onViewModeToggle={toggleViewMode}
       onClearFilters={handleClearAllFilters}
-      onSaveChanges={handleShowPreview}
-      onCancelChanges={cancelAllEdits}
     />
 
     {#if viewMode === "grid"}
@@ -770,8 +1131,8 @@
         {isLoadingMore}
         {hasMoreData}
         {editedRows}
-        {editingCell}
-        {editingValue}
+        bind:editingCell
+        bind:editingValue
         {originalRowData}
         {selectedCell}
         {selectedRows}
@@ -801,12 +1162,46 @@
     {/if}
 
     <DataGridFooter
-      {totalRows}
       displayRowsLength={displayRows.length}
-      columnCount={displayData.columns.length}
-      executionTime={displayData.execution_time || "0"}
       {displayData}
       onCancelChanges={cancelAllEdits}
+      connectionId={connection?.id}
+      database={databaseName}
+      table={tableName}
+      schema={schemaName}
+      {newRows}
+      {editedRows}
+      {deletedRows}
+      {displayRows}
+      {selectedRows}
+      {selectedCell}
+      {originalRowData}
+      columns={displayData.columns}
+      {paginateLimit}
+      {executionTime}
+      {fetchTime}
+      onPaginateLimitChange={(newLimit) => {
+        paginateLimit = newLimit;
+        // Reset pagination state when limit changes
+        currentOffset = 0;
+        hasMoreData = true;
+        // Reload data with new limit
+        handleReloadData();
+      }}
+      onDisplayDataChange={(newData) => {
+        // Update displayData.rows with new data
+        displayData = { ...displayData, rows: newData };
+        // Force update displayRows to trigger reactivity
+        displayRows = [...newData];
+      }}
+      onRefreshData={async () => {
+        if (isTableMode) {
+          await handleReloadData();
+        } else {
+          await handleReloadData();
+        }
+      }}
+      onEditCell={handleEditCellButton}
     />
   {:else if displayData && displayData.rows_affected !== null && displayData.rows_affected !== undefined}
     <!-- Show INSERT/UPDATE/DELETE result -->

@@ -31,6 +31,26 @@ export function startEdit(rowIndex, column, currentValue) {
 }
 
 /**
+ * Convert row data (array or object) to object format
+ * @param {Array|Object} row - Row data that could be array or object
+ * @param {Array} columnNames - Column names (required if row is array)
+ * @returns {Object} Row data as object
+ */
+function rowToObject(row, columnNames = []) {
+  if (Array.isArray(row)) {
+    // Convert array to object using column names
+    const obj = {};
+    row.forEach((value, index) => {
+      if (columnNames[index]) {
+        obj[columnNames[index]] = value;
+      }
+    });
+    return obj;
+  }
+  return { ...row };
+}
+
+/**
  * Track edits in the editedRows map
  */
 export function trackEditedRow(
@@ -39,11 +59,26 @@ export function trackEditedRow(
   newValue,
   displayData,
   editedRows,
-  originalRowData
+  originalRowData,
+  columnNames = []
 ) {
+  // Get column names from displayData if not provided
+  let colNames = columnNames || displayData.column_names || [];
+  if (colNames.length === 0 && displayData.columns) {
+    // Extract column names from columns array
+    colNames = displayData.columns.map((col) => col.name);
+  }
+
   // Backup original row data if first edit on this row
   if (!originalRowData.has(rowIndex)) {
-    originalRowData.set(rowIndex, { ...displayData.rows[rowIndex] });
+    const rowData = displayData.rows[rowIndex];
+    const originalAsObject = rowToObject(rowData, colNames);
+    originalRowData.set(rowIndex, originalAsObject);
+    console.log(`[trackEditedRow] Backing up row ${rowIndex}:`, {
+      rowData,
+      columnNames: colNames,
+      originalAsObject,
+    });
   }
 
   // Store edit
@@ -53,7 +88,14 @@ export function trackEditedRow(
   editedRows.get(rowIndex).set(column, newValue);
 
   // Update display
-  displayData.rows[rowIndex][column] = newValue;
+  if (Array.isArray(displayData.rows[rowIndex])) {
+    const columnIndex = colNames.indexOf(column);
+    if (columnIndex >= 0) {
+      displayData.rows[rowIndex][columnIndex] = newValue;
+    }
+  } else {
+    displayData.rows[rowIndex][column] = newValue;
+  }
   displayData = { ...displayData };
 
   // Force reactivity
@@ -66,12 +108,57 @@ export function trackEditedRow(
  * Cancel all edits and restore original data
  */
 export function cancelAllEdits(displayData, editedRows, originalRowData) {
-  console.log("🔄 Canceling all edits, restoring original data...");
+  console.log("[cancelAllEdits service] Starting restore:", {
+    originalRowDataSize: originalRowData.size,
+    displayDataRowsCount: displayData.rows.length,
+  });
 
   // Restore original values
   originalRowData.forEach((originalRow, rowIndex) => {
-    console.log(`  Restoring row ${rowIndex}:`, originalRow);
-    displayData.rows[rowIndex] = { ...originalRow };
+    const currentRow = displayData.rows[rowIndex];
+
+    console.log(`[cancelAllEdits] Restoring row ${rowIndex}:`, {
+      isArray: Array.isArray(currentRow),
+      originalRow,
+    });
+
+    if (Array.isArray(currentRow)) {
+      // If current row is array, restore from object back to array format
+      // Get column names from displayData
+      let colNames = displayData.column_names || [];
+      if (colNames.length === 0 && displayData.columns) {
+        colNames = displayData.columns.map((col) => col.name);
+      }
+
+      // Convert object back to array
+      const restoredArray = colNames.map((colName) => originalRow[colName]);
+      displayData.rows[rowIndex] = restoredArray;
+      console.log(
+        `[cancelAllEdits] Restored array row ${rowIndex}:`,
+        restoredArray
+      );
+    } else {
+      // If current row is object, just restore object
+      displayData.rows[rowIndex] = { ...originalRow };
+      console.log(`[cancelAllEdits] Restored object row ${rowIndex}:`);
+    }
+  });
+
+  // Restore deleted rows (remove _isDeleted flag from all rows)
+  displayData.rows = displayData.rows.map((row) => {
+    if (Array.isArray(row)) {
+      // For array rows, remove non-enumerable _isDeleted property
+      if (Object.getOwnPropertyDescriptor(row, "_isDeleted")) {
+        delete row._isDeleted;
+      }
+      return row;
+    } else if (typeof row === "object" && row._isDeleted) {
+      // For object rows, remove _isDeleted property
+      const cleanRow = { ...row };
+      delete cleanRow._isDeleted;
+      return cleanRow;
+    }
+    return row;
   });
 
   // Force reactivity
@@ -83,112 +170,9 @@ export function cancelAllEdits(displayData, editedRows, originalRowData) {
   originalRowData.clear();
   originalRowData = new Map();
 
-  console.log("✅ All edits canceled, data restored");
+  console.log("✅ All edits and deletes canceled, data restored");
 
   return { displayData, editedRows, originalRowData };
-}
-
-/**
- * Generate UPDATE SQL statements from edits
- */
-export function generateUpdateSql(displayData, editedRows, executedQuery) {
-  if (!displayData || !displayData.rows || !executedQuery) {
-    return [];
-  }
-
-  const updates = [];
-
-  // Extract table name from query
-  let tableMatch = executedQuery.match(/FROM\s+`?(\w+)`?\.`?(\w+)`?/i);
-  let tableName = "";
-
-  if (tableMatch) {
-    tableName = `\`${tableMatch[1]}\`.\`${tableMatch[2]}\``;
-    console.log("📋 Extracted table name (with schema):", tableName);
-  } else {
-    tableMatch = executedQuery.match(/FROM\s+`?(\w+)`?/i);
-    tableName = tableMatch ? `\`${tableMatch[1]}\`` : "`table`";
-    console.log("📋 Extracted table name (simple):", tableName);
-  }
-
-  console.log("📊 Available column_types:", displayData.column_types);
-
-  editedRows.forEach((changes, rowIndex) => {
-    const row = displayData.rows[rowIndex];
-    if (!row) return;
-
-    const setClauses = [];
-    const whereClauses = [];
-
-    // Build SET clause
-    changes.forEach((newValue, column) => {
-      const sqlValue =
-        newValue === "" ? "NULL" : `'${newValue.replace(/'/g, "''")}'`;
-      setClauses.push(`\`${column}\` = ${sqlValue}`);
-    });
-
-    // Build WHERE clause
-    displayData.columns.forEach((column, columnIndex) => {
-      if (!column) return;
-      const columnName = typeof column === "object" ? column.name : column;
-
-      if (!changes.has(columnName)) {
-        // Handle both array and object row formats
-        const value = Array.isArray(row) ? row[columnIndex] : row[columnName];
-
-        if (value !== null && value !== undefined) {
-          const columnType =
-            displayData.column_types?.[columnName]?.toUpperCase() || "";
-          let sqlValue;
-
-          if (
-            columnType.includes("INT") ||
-            columnType.includes("DECIMAL") ||
-            columnType.includes("NUMERIC") ||
-            columnType.includes("FLOAT") ||
-            columnType.includes("DOUBLE") ||
-            columnType.includes("REAL")
-          ) {
-            sqlValue = value;
-            console.log(`  ${columnName}: ${value} (${columnType}, no quotes)`);
-          } else if (
-            columnType.includes("BOOL") ||
-            columnType.includes("BIT")
-          ) {
-            sqlValue = value ? 1 : 0;
-            console.log(
-              `  ${columnName}: ${value} (${columnType} -> ${sqlValue})`
-            );
-          } else if (
-            columnType.includes("DATE") ||
-            columnType.includes("TIME") ||
-            columnType.includes("TIMESTAMP")
-          ) {
-            sqlValue = `'${String(value).replace(/'/g, "''")}'`;
-            console.log(`  ${columnName}: "${value}" (${columnType}, quoted)`);
-          } else {
-            sqlValue = `'${String(value).replace(/'/g, "''")}'`;
-            console.log(`  ${columnName}: "${value}" (${columnType}, quoted)`);
-          }
-
-          whereClauses.push(`\`${columnName}\` = ${sqlValue}`);
-        }
-      }
-    });
-
-    if (setClauses.length > 0 && whereClauses.length > 0) {
-      const sql = `UPDATE ${tableName} SET ${setClauses.join(
-        ", "
-      )} WHERE ${whereClauses.join(" AND ")};`;
-      console.log("✅ Generated SQL:", sql);
-      updates.push({
-        sql,
-        rowIndex,
-      });
-    }
-  });
-
-  return updates;
 }
 
 /**

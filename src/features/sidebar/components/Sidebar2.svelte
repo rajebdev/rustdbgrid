@@ -253,14 +253,22 @@
     bind:searchQuery
   >
     <i slot="title-icon" class="fas fa-network-wired"></i>
-    <button
-      slot="header-actions"
-      class="btn btn-sm btn-success"
-      on:click={() => sidebarStore.openConnectionModal(null)}
-      title="Add Connection"
-    >
-      <i class="fas fa-plus"></i>
-    </button>
+    <div slot="header-actions" class="d-flex gap-2">
+      <button
+        class="btn btn-sm btn-outline-secondary"
+        on:click={loadConnections}
+        title="Refresh Connections"
+      >
+        <i class="fas fa-sync"></i>
+      </button>
+      <button
+        class="btn btn-sm btn-success"
+        on:click={() => sidebarStore.openConnectionModal(null)}
+        title="Add Connection"
+      >
+        <i class="fas fa-plus"></i>
+      </button>
+    </div>
 
     {#if filteredConnections.length === 0}
       <p class="text-muted small p-3">No connections found</p>

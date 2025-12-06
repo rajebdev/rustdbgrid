@@ -1,3 +1,4 @@
+pub mod app;
 pub mod connection;
 pub mod connection_info;
 pub mod export;

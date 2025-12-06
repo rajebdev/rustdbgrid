@@ -1,7 +1,8 @@
-use crate::models::{connection::*, query_result::*, schema::*, table_request::*};
+use crate::models::{connection::*, query_result::*, save_request::*, schema::*, table_request::*};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::any::Any;
+use std::collections::HashMap;
 
 /// Core trait for database connections
 #[async_trait]
@@ -125,8 +126,60 @@ pub fn create_connection(db_type: &DatabaseType) -> Box<dyn DatabaseConnection> 
     }
 }
 
+/// Trait for building CRUD (INSERT, UPDATE, DELETE) queries
+pub trait CRUDQueryBuilder: QueryBuilder + Send + Sync {
+    /// Build an INSERT query with column ordering from table schema
+    fn build_insert_query(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        row: &HashMap<String, serde_json::Value>,
+        table_schema: &crate::models::schema::TableSchema,
+    ) -> Result<String>;
+
+    /// Build an UPDATE query with column ordering from table schema
+    fn build_update_query(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        edited_row: &EditedRow,
+        primary_keys: &[&String],
+        table_schema: &crate::models::schema::TableSchema,
+    ) -> Result<String>;
+
+    /// Build a DELETE query
+    fn build_delete_query(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        row: &HashMap<String, serde_json::Value>,
+        primary_keys: &[&String],
+    ) -> Result<String>;
+
+    /// Format a value for SQL based on its JSON type
+    fn format_value(&self, val: &serde_json::Value) -> String;
+
+    /// Format a WHERE condition based on JSON value
+    fn format_where_condition(&self, val: &serde_json::Value) -> String;
+
+    /// Escape SQL string literals
+    fn escape_sql_string(&self, s: &str) -> String;
+}
+
 /// Get appropriate query builder for database type
 pub fn get_query_builder(db_type: &DatabaseType) -> Box<dyn QueryBuilder> {
+    match db_type {
+        DatabaseType::MySQL => Box::new(crate::db::mysql::MySQLQueryBuilder),
+        DatabaseType::PostgreSQL => Box::new(crate::db::postgres::PostgreSQLQueryBuilder),
+        DatabaseType::MSSQL => Box::new(crate::db::mssql::MSSQLQueryBuilder),
+        DatabaseType::MongoDB => Box::new(crate::db::mongodb::MongoDBQueryBuilder),
+        DatabaseType::Redis => Box::new(crate::db::redis::RedisQueryBuilder),
+        DatabaseType::Ignite => Box::new(crate::db::ignite::IgniteQueryBuilder),
+    }
+}
+
+/// Get appropriate CRUD query builder for database type
+pub fn get_crud_query_builder(db_type: &DatabaseType) -> Box<dyn CRUDQueryBuilder> {
     match db_type {
         DatabaseType::MySQL => Box::new(crate::db::mysql::MySQLQueryBuilder),
         DatabaseType::PostgreSQL => Box::new(crate::db::postgres::PostgreSQLQueryBuilder),

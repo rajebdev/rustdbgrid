@@ -6,7 +6,6 @@ import {
 import { get } from "svelte/store";
 import {
   getNextQueryNumber,
-  loadTableDataRaw,
   disconnectFromDatabase,
 } from "../../core/integrations/tauri";
 import { recentFilesStore } from "../../features/settings/stores/recentFiles";
@@ -20,49 +19,12 @@ import {
 
 /**
  * Handle opening table tab
+ * DataGrid will auto-load table data when it mounts
  */
 export async function handleOpenTableTab(event, tabStore, tabDataStore) {
   const { table, database, connection } = event.detail;
 
   tabStore.addTableTab(table, database, connection);
-
-  const newTab = get(tabStore.activeTab);
-  if (!newTab) {
-    return;
-  }
-
-  try {
-    // Use new loadTableDataRaw API
-    const tableData = await loadTableDataRaw(
-      connection.id,
-      connection.db_type,
-      table.name,
-      {
-        database: database.name,
-        schema: table.schema || null,
-        limit: 200,
-        offset: 0,
-        filters: [],
-        orderBy: [],
-      }
-    );
-
-    tabDataStore.setQueryResult(newTab.id, tableData);
-
-    // Store the final query for reference
-    if (tableData.final_query) {
-      tabDataStore.setExecutedQuery(newTab.id, tableData.final_query);
-    }
-
-    // Clear any previous errors
-    tabDataStore.clearError(newTab.id);
-  } catch (error) {
-    // Store error to display in tab
-    const errorMessage = error.message || error;
-    tabDataStore.setError(newTab.id, errorMessage);
-    // Also show as toast notification
-    await showError(`Failed to load table data: ${errorMessage}`);
-  }
 }
 
 /**
@@ -560,29 +522,13 @@ export function createMenuHandlers(context) {
       }
 
       if (currentTab.type === "table") {
-        try {
-          const tableInfo = currentTab.tableInfo;
-
-          const tableData = await loadTableDataRaw({
-            connection_id: tableInfo.connection.id,
-            query: {
-              db_type: tableInfo.connection.db_type,
-              database: tableInfo.database,
-              schema: tableInfo.schema || null,
-              table: tableInfo.name,
-              limit: 200,
-              offset: 0,
-              filters: null,
-              order_by: null,
-            },
-          });
-
-          tabDataStore.setQueryResult(currentTab.id, tableData);
-          await showMessage("Table data refreshed");
-        } catch (error) {
-          console.error("Failed to refresh table data:", error);
-          await showError("Failed to refresh: " + error.message);
-        }
+        // Trigger DataGrid to reload data
+        document.dispatchEvent(
+          new CustomEvent("reload-datagrid", {
+            detail: { tabId: currentTab.id },
+          })
+        );
+        await showMessage("Refreshing table data...");
       } else if (currentTab.type === "query") {
         const tabData = tabDataStore.get(currentTab.id);
         if (tabData && tabData.executedQuery) {

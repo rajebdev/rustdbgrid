@@ -137,12 +137,10 @@
     <i class="fas fa-sync-alt"></i>
   </button>
 
-  <div class="toolbar-divider"></div>
-
-  <!-- Connection and Database Info - Only show for table/procedure tabs -->
-  {#if showInfoPanel && (activeConnectionInfo || activeDatabase)}
-    <div class="toolbar-divider"></div>
-    <div class="toolbar-info">
+  <!-- Connection and Database Info - Always reserve space -->
+  <div class="toolbar-info">
+    {#if showInfoPanel && (activeConnectionInfo || activeDatabase)}
+      <div class="toolbar-divider"></div>
       {#if activeConnectionInfo}
         <span class="info-item connection-item" title="Active Connection">
           {#if connectionDbType === DatabaseType.MYSQL}
@@ -169,8 +167,8 @@
           <span class="info-text">{activeDatabase}</span>
         </span>
       {/if}
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -181,8 +179,12 @@
     background: var(--bg-toolbar);
     border-bottom: 1px solid var(--border-color);
     height: 28px;
+    min-height: 28px;
+    max-height: 28px;
     padding: 0 8px;
     user-select: none;
+    overflow: hidden;
+    flex-shrink: 0;
   }
 
   .toolbar-btn {
@@ -232,6 +234,10 @@
     gap: 12px;
     margin-left: auto;
     padding-right: 8px;
+    min-height: 22px;
+    max-height: 22px;
+    overflow: hidden;
+    /* Always reserve minimum space to prevent layout shift */
   }
 
   .info-item {

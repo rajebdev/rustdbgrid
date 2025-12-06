@@ -93,6 +93,7 @@ pub struct TableDataResponse {
 pub struct ColumnInfo {
     pub name: String,
     pub data_type: String,
+    pub is_auto_increment: bool,
 }
 
 impl TableDataResponse {

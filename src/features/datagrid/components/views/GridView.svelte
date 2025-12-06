@@ -154,9 +154,9 @@
     }
   }
 
-  function handleCellClick(rowIndex, column, event) {
+  function handleCellClick(rowIndex, column, currentValue, event) {
     if (onCellClick) {
-      onCellClick(rowIndex, column, event);
+      onCellClick(rowIndex, column, currentValue, event);
     }
   }
 
@@ -167,6 +167,11 @@
   }
 
   function handleCellBlur(rowIndex, column, event) {
+    console.log(`[GridView handleCellBlur] Called:`, {
+      rowIndex,
+      column,
+      editingValue: event?.target?.value,
+    });
     if (onCellBlur) {
       onCellBlur(rowIndex, column, event);
     }
@@ -239,8 +244,11 @@
     <div class="row-number-header-cell">#</div>
     <div class="row-numbers-body" bind:this={rowNumbersWrapper}>
       {#each displayRows as row, index}
+        <!-- svelte-ignore a11y-click-events-have-key-events -->
         <div
           class="row-number-cell"
+          class:new-row={row._isNewRow === true}
+          class:deleted-row={row._isDeleted === true}
           class:row-even={index % 2 === 0}
           class:row-odd={index % 2 !== 0}
           class:edited={originalRowData.has(index)}
@@ -363,6 +371,8 @@
         <tbody>
           {#each displayRows as row, rowIndex}
             <tr
+              class:new-row={row._isNewRow === true}
+              class:deleted-row={row._isDeleted === true}
               class:edited-row={originalRowData.has(rowIndex)}
               class:selected-row={selectedRows.has(rowIndex)}
               class:row-even={rowIndex % 2 === 0}
@@ -386,7 +396,8 @@
                   class:edited-cell={isEdited}
                   class:selected-cell={isSelected && !isEditing && !isEdited}
                   class:numeric-cell={isNumeric && !isArrayValue}
-                  on:click={(e) => handleCellClick(rowIndex, column, e)}
+                  on:click={(e) =>
+                    handleCellClick(rowIndex, column, cellValue, e)}
                   on:dblclick={(e) =>
                     handleCellDoubleClick(rowIndex, column, cellValue, e)}
                 >
@@ -428,6 +439,25 @@
           <span class="ms-2"
             >All data loaded ({displayRows.length.toLocaleString()} rows)</span
           >
+        </div>
+      {/if}
+
+      <!-- Load More Button -->
+      {#if hasMoreData && !isLoadingMore && displayRows.length > 0}
+        <div class="text-center py-2 bg-light load-more-button-container">
+          <button
+            class="btn btn-sm btn-outline-primary"
+            title="Load more rows"
+            disabled={!hasMoreData || isLoadingMore}
+            on:click={() => {
+              if (onLoadMore) {
+                onLoadMore();
+              }
+            }}
+          >
+            <i class="fas fa-chevron-down"></i>
+            <span class="ms-2">Load More</span>
+          </button>
         </div>
       {/if}
     </div>
@@ -566,10 +596,17 @@
     background-color: var(--grid-row-odd);
   }
 
-  .row-number-cell.edited {
-    background-color: var(--accent-red-light);
-    color: var(--accent-red);
+  .row-number-cell.new-row {
+    background-color: #d4edda !important;
+    color: #155724 !important;
     font-weight: 600;
+  }
+
+  .row-number-cell.deleted-row {
+    background-color: #f8d7da !important;
+    color: #721c24 !important;
+    text-decoration: line-through;
+    opacity: 0.6;
   }
 
   .row-number-cell {
@@ -607,13 +644,20 @@
     background-color: var(--grid-row-odd);
   }
 
-  .data-table tbody tr.edited-row td {
-    background-color: var(--accent-red-light);
-    color: var(--accent-red);
+  .data-table tbody tr.new-row td {
+    background-color: #d4edda !important;
+    color: #155724;
+    font-weight: 500;
+  }
+
+  .data-table tbody tr.deleted-row td {
+    background-color: #f8d7da !important;
+    color: #721c24;
+    text-decoration: line-through;
+    opacity: 0.6;
   }
 
   .data-table tbody tr.selected-row td {
-    background-color: rgba(13, 110, 253, 0.08) !important;
     border-top: 1px solid var(--accent-blue);
     border-bottom: 1px solid var(--accent-blue);
   }
@@ -648,9 +692,9 @@
   }
 
   .data-table tbody td.edited-cell {
-    background-color: rgba(13, 110, 253, 0.1);
-    color: var(--accent-blue);
-    box-shadow: inset 0 0 0 2px var(--accent-blue);
+    background-color: rgba(255, 165, 0, 0.15);
+    color: #ff8c00;
+    box-shadow: inset 0 0 0 2px #ff8c00;
     font-weight: 500;
   }
 
@@ -775,5 +819,16 @@
   .loading-indicator {
     position: sticky;
     left: 0;
+  }
+
+  .load-more-button-container {
+    position: sticky;
+    left: 0;
+    border-top: 1px solid var(--grid-border);
+  }
+
+  .load-more-button-container button {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.875rem;
   }
 </style>

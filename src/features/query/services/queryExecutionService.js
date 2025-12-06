@@ -1,5 +1,7 @@
 import { loadTableDataRaw } from "../../../core/integrations/tauri";
 import { stripSqlComments } from "../utils/sqlFormatter";
+import { get } from "svelte/store";
+import { defaultPaginateLimit } from "../../../shared/stores/appSettings";
 
 /**
  * Execute SQL query
@@ -18,13 +20,16 @@ export async function executeQuery(config) {
   const cleanedQuery = query.replace(/;+\s*$/, ""); // Remove trailing semicolons
   const startTime = Date.now();
 
+  // Use defaultPaginateLimit from store for consistent pagination
+  const limit = get(defaultPaginateLimit);
+
   // Use loadTableDataRaw with subquery wrapper
   const result = await loadTableDataRaw(
     connId,
     dbType,
     `RustDBGridQuery(${cleanedQuery})`,
     {
-      limit: 200,
+      limit,
       offset: 0,
     }
   );

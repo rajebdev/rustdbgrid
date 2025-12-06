@@ -1,6 +1,8 @@
-use crate::db::traits::QueryBuilder;
+use crate::db::traits::{CRUDQueryBuilder, QueryBuilder};
+use crate::models::save_request::EditedRow;
 use crate::models::table_request::*;
 use anyhow::Result;
+use std::collections::HashMap;
 
 pub struct MongoDBQueryBuilder;
 
@@ -151,5 +153,126 @@ impl MongoDBQueryBuilder {
         }
 
         serde_json::Value::Object(sort_doc)
+    }
+}
+
+impl CRUDQueryBuilder for MongoDBQueryBuilder {
+    fn build_insert_query(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+        row: &HashMap<String, serde_json::Value>,
+        _table_schema: &crate::models::schema::TableSchema,
+    ) -> Result<String> {
+        if row.is_empty() {
+            anyhow::bail!("Cannot insert empty row");
+        }
+
+        let query_doc = serde_json::json!({
+            "collection": table,
+            "operation": "insertOne",
+            "document": serde_json::Value::Object(
+                row.iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            )
+        });
+
+        serde_json::to_string(&query_doc)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize MongoDB insert query: {}", e))
+    }
+
+    fn build_update_query(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+        edited_row: &EditedRow,
+        primary_keys: &[&String],
+        _table_schema: &crate::models::schema::TableSchema,
+    ) -> Result<String> {
+        let updated_data = &edited_row.updated_data;
+        let original_data = &edited_row.original_data;
+
+        if updated_data.is_empty() {
+            anyhow::bail!("Cannot update with no columns");
+        }
+
+        // Build filter based on primary keys
+        let filter = if !primary_keys.is_empty() {
+            let mut filter_doc = serde_json::Map::new();
+            for pk in primary_keys {
+                let val = original_data.get(pk.as_str()).ok_or_else(|| {
+                    anyhow::anyhow!("Primary key {} not found in original data", pk)
+                })?;
+                filter_doc.insert(pk.to_string(), val.clone());
+            }
+            serde_json::Value::Object(filter_doc)
+        } else {
+            serde_json::Value::Object(
+                original_data
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            )
+        };
+
+        let query_doc = serde_json::json!({
+            "collection": table,
+            "operation": "updateOne",
+            "filter": filter,
+            "update": {
+                "$set": serde_json::Value::Object(
+                    updated_data.iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect()
+                )
+            }
+        });
+
+        serde_json::to_string(&query_doc)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize MongoDB update query: {}", e))
+    }
+
+    fn build_delete_query(
+        &self,
+        table: &str,
+        _schema: Option<&str>,
+        row: &HashMap<String, serde_json::Value>,
+        primary_keys: &[&String],
+    ) -> Result<String> {
+        // Build filter based on primary keys
+        let filter = if !primary_keys.is_empty() {
+            let mut filter_doc = serde_json::Map::new();
+            for pk in primary_keys {
+                let val = row
+                    .get(pk.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Primary key {} not found in row", pk))?;
+                filter_doc.insert(pk.to_string(), val.clone());
+            }
+            serde_json::Value::Object(filter_doc)
+        } else {
+            serde_json::Value::Object(row.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        };
+
+        let query_doc = serde_json::json!({
+            "collection": table,
+            "operation": "deleteOne",
+            "filter": filter
+        });
+
+        serde_json::to_string(&query_doc)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize MongoDB delete query: {}", e))
+    }
+
+    fn format_value(&self, val: &serde_json::Value) -> String {
+        val.to_string()
+    }
+
+    fn format_where_condition(&self, val: &serde_json::Value) -> String {
+        val.to_string()
+    }
+
+    fn escape_sql_string(&self, s: &str) -> String {
+        s.to_string()
     }
 }

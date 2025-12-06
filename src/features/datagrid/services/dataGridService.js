@@ -17,6 +17,9 @@ import { DatabaseType } from "../../../core/config/databaseTypes";
  */
 function convertColumnFiltersToArray(columnFilters) {
   const filters = [];
+  if (!columnFilters || typeof columnFilters !== "object") {
+    return filters;
+  }
   for (const [column, value] of Object.entries(columnFilters)) {
     if (Array.isArray(value) && value.length > 0) {
       // Array filter - use "in" operator
@@ -66,7 +69,8 @@ export async function loadTableInitial(
   databaseName,
   schemaName,
   columnFilters,
-  sortStack
+  sortStack,
+  limit = 200
 ) {
   if (!connection || !tableName) {
     return null;
@@ -88,7 +92,7 @@ export async function loadTableInitial(
       {
         database: databaseName || null,
         schema: schemaName || null,
-        limit: 200,
+        limit: limit,
         offset: 0,
         filters,
         orderBy,
@@ -121,7 +125,8 @@ export async function loadQueryInitial(
   tableName,
   databaseName,
   columnFilters,
-  sortStack
+  sortStack,
+  limit = 200
 ) {
   if (!executedQuery || executedQuery.trim() === "") {
     return null;
@@ -134,11 +139,13 @@ export async function loadQueryInitial(
   try {
     // Convert columnFilters to the format expected by backend
     const filters = {};
-    for (const [col, value] of Object.entries(columnFilters)) {
-      if (Array.isArray(value) && value.length > 0) {
-        filters[col] = value;
-      } else if (typeof value === "string" && value.trim() !== "") {
-        filters[col] = value;
+    if (columnFilters && typeof columnFilters === "object") {
+      for (const [col, value] of Object.entries(columnFilters)) {
+        if (Array.isArray(value) && value.length > 0) {
+          filters[col] = value;
+        } else if (typeof value === "string" && value.trim() !== "") {
+          filters[col] = value;
+        }
       }
     }
 
@@ -164,7 +171,7 @@ export async function loadQueryInitial(
             database: cacheName,
             schema: null,
             table: "",
-            limit: 200,
+            limit: limit,
             offset: 0,
             filters: null,
             order_by: null,
@@ -295,7 +302,7 @@ export async function loadQueryInitial(
         connection.db_type,
         `RustDBGridQuery(${executedQuery})`,
         {
-          limit: 200,
+          limit: limit,
           offset: 0,
           filters: filterArray,
           orderBy,
@@ -321,7 +328,8 @@ export async function appendTableData(
   schemaName,
   columnFilters,
   sortStack,
-  currentOffset
+  currentOffset,
+  paginateLimit = 200
 ) {
   if (!connection || !tableName) {
     return null;
@@ -332,7 +340,7 @@ export async function appendTableData(
     const orderBy = convertSortStackToOrderBy(sortStack);
 
     console.log(
-      `[appendTableData] Appending ${tableName} at offset ${currentOffset} with orderBy:`,
+      `[appendTableData] Appending ${tableName} at offset ${currentOffset} with limit ${paginateLimit} and orderBy:`,
       orderBy
     );
 
@@ -343,7 +351,7 @@ export async function appendTableData(
       {
         database: databaseName || null,
         schema: schemaName || null,
-        limit: 200,
+        limit: paginateLimit,
         offset: currentOffset,
         filters,
         orderBy,
@@ -373,7 +381,8 @@ export async function appendQueryData(
   databaseName,
   columnFilters,
   sortStack,
-  currentOffset
+  currentOffset,
+  paginateLimit = 200
 ) {
   if (!connection || !executedQuery || executedQuery.trim() === "") {
     return null;
@@ -384,7 +393,7 @@ export async function appendQueryData(
     const orderBy = convertSortStackToOrderBy(sortStack);
 
     console.log(
-      `[appendQueryData] Appending query at offset ${currentOffset} with orderBy:`,
+      `[appendQueryData] Appending query at offset ${currentOffset} with limit ${paginateLimit} and orderBy:`,
       orderBy
     );
 
@@ -393,7 +402,7 @@ export async function appendQueryData(
       connection.db_type,
       `RustDBGridQuery(${executedQuery})`,
       {
-        limit: 200,
+        limit: paginateLimit,
         offset: currentOffset,
         filters,
         orderBy,

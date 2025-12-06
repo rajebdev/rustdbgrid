@@ -5,8 +5,22 @@
   export let pendingUpdates = [];
   export let previewSql = "";
 
+  let copySuccess = false;
+
   function execute() {
     show = false;
+  }
+
+  async function copyToClipboard() {
+    try {
+      await navigator.clipboard.writeText(previewSql);
+      copySuccess = true;
+      setTimeout(() => {
+        copySuccess = false;
+      }, 2000);
+    } catch (error) {
+      console.error("Failed to copy to clipboard:", error);
+    }
   }
 </script>
 
@@ -36,7 +50,11 @@
   </div>
 
   <div slot="footer">
-    <button type="button" class="btn btn-success" on:click={execute}>
+    <button type="button" class="btn btn-info me-2" on:click={copyToClipboard}>
+      <i class="fas fa-copy"></i>
+      {copySuccess ? "Copied!" : "Copy Query"}
+    </button>
+    <button type="button" class="btn btn-success me-2" on:click={execute}>
       <i class="fas fa-play"></i> Execute
     </button>
     <button

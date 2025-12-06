@@ -3,22 +3,18 @@
   export let executedQuery = "";
   export let viewMode = "grid";
   export let columnFilters = {};
-  export let hasUnsavedEdits = false;
-  export let editedRowsSize = 0;
 
   export let onViewModeToggle = null;
   export let onClearFilters = null;
-  export let onSaveChanges = null;
-  export let onCancelChanges = null;
 </script>
 
 <div class="d-flex align-items-center gap-2 p-2 data-header border-bottom">
-  <!-- Query Display -->
-  {#if finalQuery || executedQuery}
-    <div
-      class="d-flex align-items-center gap-2 font-monospace small flex-grow-1"
-      style="min-width: 0;"
-    >
+  <!-- Query Display - always reserve space to prevent height jumping -->
+  <div
+    class="d-flex align-items-center gap-2 font-monospace small flex-grow-1"
+    style="min-width: 0; min-height: 32px;"
+  >
+    {#if finalQuery || executedQuery}
       <div
         class="d-flex align-items-center gap-1 text-primary fw-semibold flex-shrink-0"
       >
@@ -32,8 +28,8 @@
       >
         {finalQuery || executedQuery}
       </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
 
   <!-- View Mode Toggle -->
   <div class="btn-group flex-shrink-0" role="group">
@@ -67,33 +63,6 @@
     >
       <i class="fas fa-times"></i> Clear filters
     </button>
-  {/if}
-
-  <!-- Unsaved Changes Indicator -->
-  {#if hasUnsavedEdits && editedRowsSize > 0}
-    <div class="ms-auto d-flex align-items-center gap-2">
-      <span
-        class="badge bg-warning text-dark"
-        title={`${editedRowsSize} row(s) have unsaved changes`}
-      >
-        <i class="fas fa-pencil"></i>
-        {editedRowsSize} unsaved
-      </span>
-      <button
-        class="btn btn-sm btn-success"
-        on:click={() => onSaveChanges?.()}
-        title="Save changes"
-      >
-        <i class="fas fa-save"></i>
-      </button>
-      <button
-        class="btn btn-sm btn-secondary"
-        on:click={() => onCancelChanges?.()}
-        title="Cancel changes"
-      >
-        <i class="fas fa-undo"></i>
-      </button>
-    </div>
   {/if}
 </div>
 

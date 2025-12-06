@@ -1,7 +1,34 @@
 <script>
+  import { invoke } from "@tauri-apps/api/core";
   import BaseModal from "../../../shared/components/base/BaseModal.svelte";
 
   export let show = false;
+
+  let appVersion = "loading...";
+  let appYear = "2024";
+
+  $: if (show) {
+    loadVersion();
+    loadYear();
+  }
+
+  async function loadVersion() {
+    try {
+      appVersion = await invoke("get_app_version");
+    } catch (error) {
+      console.error("Failed to get app version:", error);
+      appVersion = "unknown";
+    }
+  }
+
+  async function loadYear() {
+    try {
+      appYear = await invoke("get_app_year");
+    } catch (error) {
+      console.error("Failed to get app year:", error);
+      appYear = new Date().getFullYear().toString();
+    }
+  }
 </script>
 
 <BaseModal {show} on:close>
@@ -9,7 +36,7 @@
     <div class="mb-4">
       <i class="fas fa-database text-primary about-icon"></i>
       <h3 class="mt-3 mb-1 fw-bold">RustDBGrid</h3>
-      <p class="text-muted mb-0">v1.0.0</p>
+      <p class="text-muted mb-0">v{appVersion}</p>
     </div>
 
     <p class="lead mb-4">Universal Database Management Tool</p>
@@ -42,7 +69,7 @@
       </div>
     </div>
 
-    <p class="text-muted small mb-0">© 2024 RustDBGrid</p>
+    <p class="text-muted small mb-0">© {appYear} RustDBGrid</p>
   </div>
 
   <div slot="footer" class="border-0 pt-0 justify-content-center">
