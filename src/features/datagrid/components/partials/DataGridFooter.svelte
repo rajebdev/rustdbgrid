@@ -29,6 +29,9 @@
   export let onPaginateLimitChange = null; // Callback when limit changes
   export let executionTime = 0; // Total time from request start to render (ms)
   export let fetchTime = 0; // BE fetch time only (ms)
+  export let onSetupAutoRefresh = null; // Callback to setup auto-refresh (managed by parent)
+  export let onStopAutoRefresh = null; // Callback to stop auto-refresh (managed by parent)
+  export let isAutoRefreshActive = false; // Auto-refresh state from parent
 
   let localPaginateLimit = paginateLimit; // Local copy to track changes
 
@@ -40,7 +43,6 @@
   let lastFetchTime = new Date().toLocaleString();
   let dropdownContainer;
   let showSavePreviewModal = false;
-  let autoRefreshInterval = null;
 
   // Check if there are any changes
   $: hasChanges =
@@ -52,12 +54,6 @@
   $: fetchTimeDisplay = fetchTime > 0 ? (fetchTime / 1000).toFixed(1) : "0.0";
 
   const handleRefresh = (type) => {
-    // Clear existing auto-refresh if any
-    if (autoRefreshInterval) {
-      clearInterval(autoRefreshInterval);
-      autoRefreshInterval = null;
-    }
-
     if (type === "instant") {
       // Immediate refresh
       if (onRefreshData) {
@@ -71,11 +67,9 @@
       const match = type.match(/(\d+)s/);
       if (match) {
         const intervalMs = parseInt(match[1]) * 1000;
-        autoRefreshInterval = setInterval(() => {
-          if (onRefreshData) {
-            onRefreshData();
-          }
-        }, intervalMs);
+        if (onSetupAutoRefresh) {
+          onSetupAutoRefresh(intervalMs);
+        }
         console.log(`🔄 Auto-refresh enabled every ${match[1]}s`);
       }
     }
@@ -297,6 +291,14 @@
     saveDropdownOpen = false;
   };
 
+  const handleStopRefresh = () => {
+    if (onStopAutoRefresh) {
+      onStopAutoRefresh();
+    }
+    console.log("⏹️ Auto-refresh stopped");
+    closeDropdowns();
+  };
+
   const handleSaveSuccess = (response) => {
     console.log("✅ Save successful!", response);
     showSavePreviewModal = false;
@@ -384,15 +386,29 @@
           {/if}
           <div class="btn-group-refresh">
             <button
-              class="btn btn-sm btn-outline-primary d-flex align-items-center gap-2"
-              title="Refresh Data"
-              on:click={() => handleRefresh("instant")}
+              class="btn btn-sm {isAutoRefreshActive
+                ? 'btn-outline-danger'
+                : 'btn-outline-primary'} d-flex align-items-center gap-2"
+              title={isAutoRefreshActive ? "Stop Auto-Refresh" : "Refresh Data"}
+              on:click={() => {
+                if (isAutoRefreshActive) {
+                  handleStopRefresh();
+                } else {
+                  handleRefresh("instant");
+                }
+              }}
             >
-              <i class="fas fa-sync-alt"></i>
-              <span>Refresh</span>
+              <i
+                class={isAutoRefreshActive
+                  ? "fas fa-stop-circle"
+                  : "fas fa-sync-alt"}
+              ></i>
+              <span>{isAutoRefreshActive ? "Stop" : "Refresh"}</span>
             </button>
             <button
-              class="btn btn-sm btn-outline-primary"
+              class="btn btn-sm {isAutoRefreshActive
+                ? 'btn-outline-danger'
+                : 'btn-outline-primary'}"
               on:click={() => {
                 refreshDropdownOpen = !refreshDropdownOpen;
                 if (refreshDropdownOpen) saveDropdownOpen = false;

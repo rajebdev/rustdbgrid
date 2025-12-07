@@ -1,5 +1,5 @@
 <script>
-  import { onMount, afterUpdate } from "svelte";
+  import { onMount, afterUpdate, onDestroy, tick } from "svelte";
   import { tabDataStore } from "../../../shared/stores/tabData";
   import { defaultPaginateLimit } from "../../../shared/stores/appSettings";
   import { loadTableDataRaw } from "../../../core/integrations/tauri";
@@ -95,6 +95,10 @@
   // Performance timing
   let executionTime = 0; // Total time from request start to data render (ms)
   let fetchTime = 0; // Only BE fetch time (ms)
+
+  // Auto-refresh state (managed at parent level to survive component remounting)
+  let autoRefreshInterval = null;
+  let isAutoRefreshActive = false;
 
   // Scroll state
   let tableWrapper;
@@ -237,11 +241,42 @@
         resizeObserver.disconnect();
       }
       document.removeEventListener("reload-datagrid", handleReloadEvent);
+      // Cleanup auto-refresh when component is destroyed
+      stopAutoRefresh();
     };
   });
 
   $: if (tableWrapper && resizeObserver) {
     resizeObserver.observe(tableWrapper);
+  }
+
+  // Auto-refresh management function
+  function setupAutoRefresh(intervalMs) {
+    // Clear any existing interval
+    if (autoRefreshInterval) {
+      clearInterval(autoRefreshInterval);
+      autoRefreshInterval = null;
+    }
+
+    if (intervalMs <= 0) {
+      isAutoRefreshActive = false;
+      return;
+    }
+
+    isAutoRefreshActive = true;
+    autoRefreshInterval = setInterval(() => {
+      handleReloadData();
+    }, intervalMs);
+    console.log(`🔄 Auto-refresh setup: every ${intervalMs}ms`);
+  }
+
+  function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+      clearInterval(autoRefreshInterval);
+      autoRefreshInterval = null;
+      isAutoRefreshActive = false;
+      console.log("⏹️ Auto-refresh stopped");
+    }
   }
 
   async function handleReloadData() {
@@ -320,6 +355,27 @@
 
       if (result.final_query) {
         finalQuery = result.final_query;
+      }
+
+      // Auto-select first cell (column 0, row 0) when table loads
+      if (displayRows.length > 0 && result?.columns?.length > 0) {
+        const firstColumnName =
+          typeof result.columns[0] === "string"
+            ? result.columns[0]
+            : result.columns[0].name;
+        const firstRowValue = Array.isArray(displayRows[0])
+          ? displayRows[0][0]
+          : displayRows[0][firstColumnName];
+        selectedCell = {
+          rowIndex: 0,
+          column: firstColumnName,
+          currentValue: firstRowValue,
+        };
+        selectedRows.clear();
+        console.log(
+          `[DataGrid] Auto-selected cell at row 0, column 0:`,
+          selectedCell
+        );
       }
 
       // Mark that this data came from our sort/filter operation, not from parent prop
@@ -499,6 +555,7 @@
 
   // Filtering
   function handleFilterClick(column, event) {
+    console.log("🟢 handleFilterClick called for column:", column);
     const result = openFilterModalService(
       column,
       event,
@@ -510,6 +567,10 @@
       filterModalPosition = result.position;
       filterSearchQuery = "";
       showFilterModal = true;
+      console.log(
+        "🟢 showFilterModal set to true, filterModalColumn:",
+        filterModalColumn
+      );
       handleLoadFilterValues(column);
     }
   }
@@ -551,6 +612,10 @@
   }
 
   function handleApplyFilter(event) {
+    console.log(
+      "🟢 handleApplyFilter called, column:",
+      event?.detail?.column || filterModalColumn
+    );
     const column = event?.detail?.column || filterModalColumn;
     const selected =
       event?.detail?.selectedValues || selectedFilterValues[column];
@@ -569,8 +634,12 @@
       tabDataStore.setFilters(tabId, columnFilters);
     }
 
-    closeFilterModal();
-    handleReloadData();
+    // Use tick() to defer closing until event is fully processed
+    tick().then(() => {
+      console.log("🟢 After tick, calling closeFilterModal");
+      closeFilterModal();
+      handleReloadData();
+    });
   }
 
   function handleClearFilter(event) {
@@ -588,11 +657,18 @@
     }
 
     finalQuery = "";
-    closeFilterModal();
-    handleReloadData();
+
+    // Use tick() to defer closing until event is fully processed
+    tick().then(() => {
+      closeFilterModal();
+      handleReloadData();
+    });
   }
 
   function closeFilterModal() {
+    console.log(
+      "🟢 closeFilterModal called, setting showFilterModal=false, filterModalColumn=null"
+    );
     showFilterModal = false;
     filterModalColumn = null;
     filterSearchQuery = "";
@@ -1201,6 +1277,9 @@
           await handleReloadData();
         }
       }}
+      onSetupAutoRefresh={setupAutoRefresh}
+      onStopAutoRefresh={stopAutoRefresh}
+      {isAutoRefreshActive}
       onEditCell={handleEditCellButton}
     />
   {:else if displayData && displayData.rows_affected !== null && displayData.rows_affected !== undefined}

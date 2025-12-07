@@ -22,7 +22,7 @@
 
   // Components
   import EditorToolbar from "./partials/EditorToolbar.svelte";
-  import MonacoEditorView from "./views/MonacoEditorView.svelte";
+  import MonacoEditorView from "../../datagrid/components/views/MonacoEditorView.svelte";
   import EditorContextMenu from "./EditorContextMenu.svelte";
 
   export let tabId;

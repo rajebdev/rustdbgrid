@@ -13,18 +13,20 @@
   export let position = { top: 0, left: 0 };
 
   function apply() {
+    console.log("🔵 FilterModal apply clicked for column:", column);
     dispatch("apply", {
       column,
       selectedValues,
     });
-    show = false;
+    dispatch("close");
   }
 
   function clear() {
+    console.log("🔵 FilterModal clear clicked for column:", column);
     dispatch("clear", {
       column,
     });
-    show = false;
+    dispatch("close");
   }
 
   function toggleValue(value) {
@@ -149,7 +151,7 @@
       <button class="btn btn-danger" on:click={clear}>
         <i class="fas fa-eraser"></i> Clear
       </button>
-      <button class="btn btn-secondary" on:click={() => (show = false)}>
+      <button class="btn btn-secondary" on:click={() => dispatch("close")}>
         Cancel
       </button>
     </div>

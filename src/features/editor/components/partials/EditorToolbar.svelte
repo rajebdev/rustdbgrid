@@ -8,7 +8,7 @@
 </script>
 
 <div
-  class="editor-actions-sidebar d-flex flex-column align-items-center py-2 gap-1"
+  class="editor-actions-sidebar p-3 d-flex flex-column align-items-center py-2 gap-1"
 >
   <button
     class="btn-action btn-execute"

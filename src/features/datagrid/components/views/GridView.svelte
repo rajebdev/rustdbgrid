@@ -665,7 +665,7 @@
   .data-table tbody td {
     height: 24px;
     line-height: 1.5;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-primary);
     cursor: pointer;
   }
@@ -706,7 +706,6 @@
   /* Numeric column styling - right-align and monospace font */
   .data-table tbody td.numeric-cell {
     text-align: right !important;
-    font-family: var(--bs-font-monospace);
     font-size: 11px;
   }
 
