@@ -435,6 +435,31 @@ impl DatabaseConnection for IgniteConnection {
         Ok(result.success)
     }
 
+    async fn execute_update(&mut self, query: &str) -> Result<u64> {
+        self.ensure_bridge_running().await?;
+
+        let _connection_id = self
+            .connection_id
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not connected to Ignite"))?;
+
+        let query_upper = query.trim().to_uppercase();
+
+        // For Ignite, execute the query and return the affected rows count
+        // This is used for INSERT, UPDATE, DELETE operations
+        if query_upper.starts_with("INSERT")
+            || query_upper.starts_with("UPDATE")
+            || query_upper.starts_with("DELETE")
+        {
+            let result = self.execute_query(query).await?;
+            Ok(result.rows_affected.unwrap_or(0))
+        } else {
+            Err(anyhow!(
+                "execute_update only supports INSERT, UPDATE, DELETE queries"
+            ))
+        }
+    }
+
     async fn execute_query(&mut self, query: &str) -> Result<QueryResult> {
         self.ensure_bridge_running().await?;
 

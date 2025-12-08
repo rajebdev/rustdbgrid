@@ -294,14 +294,13 @@ pub async fn save_data(
                 match state
                     .pool
                     .with_connection(&connection_id_clone, |conn| {
-                        async move { conn.execute_query(&query_clone).await }.boxed()
+                        async move { conn.execute_update(&query_clone).await }.boxed()
                     })
                     .await
                 {
-                    Ok(result) => {
-                        let rows_affected = result.rows_affected.unwrap_or(0) as i64;
+                    Ok(rows_affected) => {
                         executed_queries.push(query);
-                        affected_rows += rows_affected;
+                        affected_rows += rows_affected as i64;
                     }
                     Err(e) => {
                         let error_msg = format!("Failed to insert row {}: {}", idx, e);
@@ -333,12 +332,11 @@ pub async fn save_data(
                 match state
                     .pool
                     .with_connection(&connection_id_clone, |conn| {
-                        async move { conn.execute_query(&query_clone).await }.boxed()
+                        async move { conn.execute_update(&query_clone).await }.boxed()
                     })
                     .await
                 {
-                    Ok(result) => {
-                        let rows_affected = result.rows_affected.unwrap_or(0) as i64;
+                    Ok(rows_affected) => {
                         if rows_affected == 0 {
                             let error_msg =
                                 "No rows updated - row may have been deleted or modified"
@@ -347,7 +345,7 @@ pub async fn save_data(
                             errors.push(error_msg);
                         } else {
                             executed_queries.push(query);
-                            affected_rows += rows_affected;
+                            affected_rows += rows_affected as i64;
                         }
                     }
                     Err(e) => {
@@ -374,14 +372,13 @@ pub async fn save_data(
                 match state
                     .pool
                     .with_connection(&connection_id_clone, |conn| {
-                        async move { conn.execute_query(&query_clone).await }.boxed()
+                        async move { conn.execute_update(&query_clone).await }.boxed()
                     })
                     .await
                 {
-                    Ok(result) => {
-                        let rows_affected = result.rows_affected.unwrap_or(0) as i64;
+                    Ok(rows_affected) => {
                         executed_queries.push(query);
-                        affected_rows += rows_affected;
+                        affected_rows += rows_affected as i64;
                     }
                     Err(e) => {
                         let error_msg = format!("Failed to delete row {}: {}", idx, e);

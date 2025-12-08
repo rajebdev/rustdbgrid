@@ -67,6 +67,58 @@ impl DatabaseConnection for MongoDBConnection {
         }
     }
 
+    async fn execute_update(&mut self, query: &str) -> Result<u64> {
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not connected"))?;
+
+        let query_doc: serde_json::Value =
+            serde_json::from_str(query).map_err(|e| anyhow!("Invalid JSON query: {}", e))?;
+
+        let db_name = query_doc["db"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing 'db' field in query"))?;
+        let collection_name = query_doc["collection"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing 'collection' field in query"))?;
+        let operation = query_doc["operation"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing 'operation' field in query"))?;
+
+        let db = client.database(db_name);
+        let collection = db.collection::<serde_json::Value>(collection_name);
+
+        match operation {
+            "insert" => {
+                let documents = query_doc["documents"]
+                    .as_array()
+                    .ok_or_else(|| anyhow!("Missing 'documents' array"))?;
+                let result = collection.insert_many(documents.clone()).await?;
+                Ok(result.inserted_ids.len() as u64)
+            }
+            "update" => {
+                let filter = query_doc["filter"].clone();
+                let update = query_doc["update"].clone();
+                let result = collection
+                    .update_many(
+                        mongodb::bson::to_document(&filter)?,
+                        mongodb::bson::to_document(&update)?,
+                    )
+                    .await?;
+                Ok(result.modified_count)
+            }
+            "delete" => {
+                let filter = query_doc["filter"].clone();
+                let result = collection
+                    .delete_many(mongodb::bson::to_document(&filter)?)
+                    .await?;
+                Ok(result.deleted_count)
+            }
+            _ => Err(anyhow!("Unknown operation: {}", operation)),
+        }
+    }
+
     async fn execute_query(&mut self, query: &str) -> Result<QueryResult> {
         let client = self
             .client

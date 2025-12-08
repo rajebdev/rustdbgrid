@@ -71,6 +71,12 @@ impl DatabaseConnection for MySQLConnection {
         }
     }
 
+    async fn execute_update(&mut self, query: &str) -> Result<u64> {
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+        let result = sqlx::query(query).execute(pool).await?;
+        Ok(result.rows_affected())
+    }
+
     async fn execute_query(&mut self, query: &str) -> Result<QueryResult> {
         let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
         let start = Instant::now();

@@ -83,6 +83,27 @@ impl DatabaseConnection for MSSQLConnection {
         }
     }
 
+    async fn execute_update(&mut self, query: &str) -> Result<u64> {
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
+        let mut conn = pool
+            .get()
+            .await
+            .map_err(|e| anyhow!("Failed to get connection from pool: {}", e))?;
+
+        // For DML statements (INSERT, UPDATE, DELETE), execute and get total result sets
+        let stream = conn.query(query, &[]).await?;
+        let mut total_affected: u64 = 0;
+
+        // Process all result sets
+        if let Ok(results) = stream.into_results().await {
+            for result in results {
+                total_affected += result.len() as u64;
+            }
+        }
+
+        Ok(total_affected)
+    }
+
     async fn execute_query(&mut self, query: &str) -> Result<QueryResult> {
         let pool = self.pool.as_ref().ok_or_else(|| anyhow!("Not connected"))?;
 

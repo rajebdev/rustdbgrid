@@ -11,6 +11,7 @@ pub trait DatabaseConnection: Send + Sync {
     async fn disconnect(&mut self) -> Result<()>;
     async fn test_connection(&mut self) -> Result<bool>;
     async fn execute_query(&mut self, query: &str) -> Result<QueryResult>;
+    async fn execute_update(&mut self, query: &str) -> Result<u64>;
     async fn get_databases(&mut self) -> Result<Vec<Database>>;
     async fn get_tables(&mut self, database: &str) -> Result<Vec<Table>>;
     async fn get_table_schema(&mut self, database: &str, table: &str) -> Result<TableSchema>;

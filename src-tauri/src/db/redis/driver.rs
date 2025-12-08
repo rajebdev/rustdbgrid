@@ -79,6 +79,77 @@ impl DatabaseConnection for RedisConnection {
         }
     }
 
+    async fn execute_update(&mut self, query: &str) -> Result<u64> {
+        let conn = self
+            .connection
+            .as_mut()
+            .ok_or_else(|| anyhow!("Not connected"))?;
+
+        let parts: Vec<&str> = query.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err(anyhow!("Empty query"));
+        }
+
+        let command = parts[0].to_uppercase();
+        let args = &parts[1..];
+
+        // Execute the command using redis commands
+        match command.as_str() {
+            "SET" => {
+                if args.len() < 2 {
+                    return Err(anyhow!("SET requires key and value"));
+                }
+                let key = args[0];
+                let value = args[1];
+                let _: () = redis::cmd("SET")
+                    .arg(key)
+                    .arg(value)
+                    .query_async(conn)
+                    .await?;
+                Ok(1)
+            }
+            "DEL" => {
+                if args.is_empty() {
+                    return Err(anyhow!("DEL requires at least one key"));
+                }
+                let count: u64 = redis::cmd("DEL").arg(args).query_async(conn).await?;
+                Ok(count)
+            }
+            "HSET" => {
+                if args.len() < 3 {
+                    return Err(anyhow!("HSET requires hash, field, and value"));
+                }
+                let hash = args[0];
+                let field = args[1];
+                let value = args[2];
+                let _: () = redis::cmd("HSET")
+                    .arg(hash)
+                    .arg(field)
+                    .arg(value)
+                    .query_async(conn)
+                    .await?;
+                Ok(1)
+            }
+            "HDEL" => {
+                if args.len() < 2 {
+                    return Err(anyhow!("HDEL requires hash and fields"));
+                }
+                let hash = args[0];
+                let fields = &args[1..];
+                let count: u64 = redis::cmd("HDEL")
+                    .arg(hash)
+                    .arg(fields)
+                    .query_async(conn)
+                    .await?;
+                Ok(count)
+            }
+            _ => Err(anyhow!(
+                "Unsupported command for execute_update: {}",
+                command
+            )),
+        }
+    }
+
     async fn execute_query(&mut self, query: &str) -> Result<QueryResult> {
         let conn = self
             .connection
