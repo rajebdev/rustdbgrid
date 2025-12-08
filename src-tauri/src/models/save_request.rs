@@ -21,24 +21,43 @@ pub struct SaveResponse {
     pub affected_rows: i64,
     pub executed_queries: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub inserted_rows: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_rows: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_rows: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<String>>,
 }
 
 impl SaveResponse {
-    pub fn success(message: String, affected_rows: i64, executed_queries: Vec<String>) -> Self {
+    pub fn success_with_counts(
+        message: String,
+        affected_rows: i64,
+        executed_queries: Vec<String>,
+        inserted_rows: i64,
+        updated_rows: i64,
+        deleted_rows: i64,
+    ) -> Self {
         SaveResponse {
             status: "success".to_string(),
             message,
             affected_rows,
             executed_queries,
+            inserted_rows: Some(inserted_rows),
+            updated_rows: Some(updated_rows),
+            deleted_rows: Some(deleted_rows),
             errors: None,
         }
     }
 
-    pub fn partial(
+    pub fn partial_with_counts(
         message: String,
         affected_rows: i64,
         executed_queries: Vec<String>,
+        inserted_rows: i64,
+        updated_rows: i64,
+        deleted_rows: i64,
         errors: Vec<String>,
     ) -> Self {
         SaveResponse {
@@ -46,6 +65,9 @@ impl SaveResponse {
             message,
             affected_rows,
             executed_queries,
+            inserted_rows: Some(inserted_rows),
+            updated_rows: Some(updated_rows),
+            deleted_rows: Some(deleted_rows),
             errors: Some(errors),
         }
     }
@@ -56,6 +78,9 @@ impl SaveResponse {
             message,
             affected_rows: 0,
             executed_queries: vec![],
+            inserted_rows: None,
+            updated_rows: None,
+            deleted_rows: None,
             errors: None,
         }
     }

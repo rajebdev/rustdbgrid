@@ -262,6 +262,9 @@ pub async fn save_data(
     let mut executed_queries = Vec::new();
     let mut errors = Vec::new();
     let mut affected_rows: i64 = 0;
+    let mut inserted_rows: i64 = 0;
+    let mut updated_rows: i64 = 0;
+    let mut deleted_rows: i64 = 0;
     let crud_builder = get_crud_query_builder(&db_type);
 
     // Get table schema to find primary keys
@@ -301,6 +304,7 @@ pub async fn save_data(
                     Ok(rows_affected) => {
                         executed_queries.push(query);
                         affected_rows += rows_affected as i64;
+                        inserted_rows += rows_affected as i64;
                     }
                     Err(e) => {
                         let error_msg = format!("Failed to insert row {}: {}", idx, e);
@@ -346,6 +350,7 @@ pub async fn save_data(
                         } else {
                             executed_queries.push(query);
                             affected_rows += rows_affected as i64;
+                            updated_rows += rows_affected as i64;
                         }
                     }
                     Err(e) => {
@@ -379,6 +384,7 @@ pub async fn save_data(
                     Ok(rows_affected) => {
                         executed_queries.push(query);
                         affected_rows += rows_affected as i64;
+                        deleted_rows += rows_affected as i64;
                     }
                     Err(e) => {
                         let error_msg = format!("Failed to delete row {}: {}", idx, e);
@@ -400,10 +406,13 @@ pub async fn save_data(
             "✅ Successfully saved all changes - {} rows affected",
             affected_rows
         );
-        Ok(SaveResponse::success(
+        Ok(SaveResponse::success_with_counts(
             "All changes saved successfully".to_string(),
             affected_rows,
             executed_queries,
+            inserted_rows,
+            updated_rows,
+            deleted_rows,
         ))
     } else if !executed_queries.is_empty() {
         let message = format!(
@@ -412,10 +421,13 @@ pub async fn save_data(
             errors.len()
         );
         warn!("{}", message);
-        Ok(SaveResponse::partial(
+        Ok(SaveResponse::partial_with_counts(
             message,
             affected_rows,
             executed_queries,
+            inserted_rows,
+            updated_rows,
+            deleted_rows,
             errors,
         ))
     } else {

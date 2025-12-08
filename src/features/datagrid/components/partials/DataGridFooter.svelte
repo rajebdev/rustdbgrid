@@ -6,6 +6,7 @@
     duplicateRow,
     getColumnsFromData,
   } from "../../services/gridRowService";
+  import { saveStatus } from "../../../connection/stores/connections";
 
   export let displayRowsLength = 0;
   export let displayData = null;
@@ -302,6 +303,25 @@
   const handleSaveSuccess = (response) => {
     console.log("✅ Save successful!", response);
     showSavePreviewModal = false;
+
+    // Extract counts from response
+    const insertedCount = response.inserted_rows || newRows.size;
+    const updatedCount = response.updated_rows || editedRows.size;
+    const deletedCount = response.deleted_rows || deletedRows.size;
+
+    // Show status in status bar
+    const statusMessage = `Inserted: ${insertedCount} / Updated: ${updatedCount} / Deleted: ${deletedCount}`;
+    saveStatus.set({
+      message: statusMessage,
+      type: "success",
+      timestamp: Date.now(),
+    });
+
+    // Clear status after 3 seconds
+    setTimeout(() => {
+      saveStatus.set({ message: null, type: null, timestamp: null });
+    }, 5000);
+
     // Clear all changes
     newRows.clear();
     editedRows.clear();
