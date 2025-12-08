@@ -8,7 +8,13 @@ export default defineConfig({
   plugins: [
     svelte(),
     monacoEditorPlugin.default({
-      languageWorkers: ["editorWorkerService"],
+      languageWorkers: [
+        "editorWorkerService",
+        "json",
+        "sql",
+        "javascript",
+        "redis",
+      ],
     }),
   ],
   clearScreen: false,

@@ -1,8 +1,7 @@
 <script>
-  import { onMount, afterUpdate, onDestroy, tick } from "svelte";
+  import { onMount, afterUpdate, tick } from "svelte";
   import { tabDataStore } from "../../../shared/stores/tabData";
   import { defaultPaginateLimit } from "../../../shared/stores/appSettings";
-  import { loadTableDataRaw } from "../../../core/integrations/tauri";
   import { DatabaseType } from "../../../core/config/databaseTypes";
 
   // Views
@@ -12,7 +11,6 @@
   // Partials
   import DataGridHeader from "./partials/DataGridHeader.svelte";
   import DataGridFooter from "./partials/DataGridFooter.svelte"; // Modals
-  import SqlPreviewModal from "../../../shared/components/modals/SqlPreviewModal.svelte";
   import FilterModal from "../modals/FilterModal.svelte";
   import CellEditorModal from "../modals/CellEditorModal.svelte";
 
@@ -26,7 +24,6 @@
   } from "../services/dataGridService";
   import {
     startEdit,
-    trackEditedRow,
     cancelAllEdits as cancelAllEditsService,
   } from "../services/gridEditService";
   import { openFilterModal as openFilterModalService } from "../services/gridFilterService";
@@ -82,9 +79,6 @@
   let newRows = new Map();
   let deletedRows = new Set();
   let originalRowData = new Map();
-  let showSqlPreview = false;
-  let previewSql = "";
-  let pendingUpdates = [];
   let showPopupEditor = false;
   let popupEditorValue = "";
   let popupEditingCell = null;
@@ -133,8 +127,6 @@
       displayRows = displayData.rows;
     }
   }
-
-  $: hasUnsavedEdits = editedRows.size > 0;
 
   // Set default view mode
   $: if (connection && !$tabDataStore[tabId]?.viewMode) {
@@ -1134,37 +1126,31 @@
     cancelEdit();
   }
 
-  function closeSqlPreview() {
-    showSqlPreview = false;
-    previewSql = "";
-    pendingUpdates = [];
-  }
-
-  async function handleExecuteUpdates() {
-    if (pendingUpdates.length === 0 || !connection) return;
-
+  async function handleQueryEdit(newQuery) {
     try {
-      for (const update of pendingUpdates) {
-        // Execute UPDATE/DELETE/INSERT statements using loadTableDataRaw with subquery
-        await loadTableDataRaw(
-          connection.id,
-          connection.db_type,
-          `RustDBGridQuery(${update.sql})`,
-          { limit: 1, offset: 0 }
-        );
+      // Update finalQuery with edited query
+      finalQuery = newQuery;
+
+      // If not in table mode, reload data with the new query
+      if (!isTableMode && newQuery) {
+        isLoadingData = true;
+        displayData = null;
+        currentOffset = 0;
+        hasMoreData = true;
+
+        // Reload with the edited query
+        await loadQueryInitial({
+          connection,
+          query: newQuery,
+          limit: paginateLimit,
+          offset: 0,
+        });
       }
-
-      editedRows.clear();
-      editedRows = new Map();
-
-      await handleReloadData();
-
-      closeSqlPreview();
-
-      alert("Updates executed successfully!");
     } catch (error) {
-      console.error("Failed to execute updates:", error);
-      alert(`Failed to execute updates: ${error}`);
+      console.error("Failed to execute edited query:", error);
+      alert(`Failed to execute query: ${error}`);
+    } finally {
+      isLoadingData = false;
     }
   }
 
@@ -1191,8 +1177,10 @@
       {executedQuery}
       {viewMode}
       {columnFilters}
+      databaseType={connection?.db_type}
       onViewModeToggle={toggleViewMode}
       onClearFilters={handleClearAllFilters}
+      onQueryEdit={handleQueryEdit}
     />
 
     {#if viewMode === "grid"}
@@ -1304,15 +1292,6 @@
     </div>
   {/if}
 </div>
-
-<!-- Modals -->
-<SqlPreviewModal
-  show={showSqlPreview}
-  {pendingUpdates}
-  {previewSql}
-  on:close={closeSqlPreview}
-  on:execute={handleExecuteUpdates}
-/>
 
 <FilterModal
   show={showFilterModal}
